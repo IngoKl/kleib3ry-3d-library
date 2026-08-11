@@ -541,6 +541,7 @@ fn serve_static(request: &Request, state: &State) -> Handler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     fn temp_root(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("kleib3ry-server-{name}"));
@@ -548,7 +549,316 @@ mod tests {
         fs::create_dir_all(dir.join("music")).unwrap();
         fs::create_dir_all(dir.join("books")).unwrap();
         fs::create_dir_all(save_files(&dir).covers).unwrap();
-        dir
+        // Canonicalised, because `is_allowed` canonicalises what it is given and
+        // the temp directory is a symlink on some machines.
+        dir.canonicalize().unwrap_or(dir)
+    }
+
+    /// The routing table, driven directly.
+    ///
+    /// No sockets: `route` is a pure function of a request and a library folder,
+    /// so the interesting half of this program can be tested without binding a
+    /// port or waiting for a thread. What that leaves untested is the parsing in
+    /// `http.rs`, which has its own tests, and the accept loop, which is four
+    /// lines.
+    struct Harness {
+        root: PathBuf,
+        state: State,
+    }
+
+    impl Harness {
+        fn new(name: &str) -> Self {
+            let root = temp_root(name);
+            Self {
+                state: State {
+                    config: Config { root: root.clone(), dist: root.join("no-dist") },
+                    progress: Mutex::new(Progress::default()),
+                    scanning: AtomicU32::new(0),
+                },
+                root,
+            }
+        }
+
+        fn call(&self, method: &str, path: &str, body: &[u8]) -> Response {
+            self.with_headers(method, path, body, HashMap::new())
+        }
+
+        fn with_headers(
+            &self,
+            method: &str,
+            path: &str,
+            body: &[u8],
+            headers: HashMap<String, String>,
+        ) -> Response {
+            let request = Request {
+                method: method.to_string(),
+                path: path.to_string(),
+                headers,
+                body: body.to_vec(),
+            };
+            route(&request, &self.state).unwrap_or_else(|e| panic!("{method} {path}: {e}"))
+        }
+
+        /// The same, but keeping the failure — some routes are *meant* to refuse.
+        fn try_call(&self, method: &str, path: &str, body: &[u8]) -> Handler {
+            route(
+                &Request {
+                    method: method.to_string(),
+                    path: path.to_string(),
+                    headers: HashMap::new(),
+                    body: body.to_vec(),
+                },
+                &self.state,
+            )
+        }
+
+        fn json(&self, method: &str, path: &str) -> serde_json::Value {
+            let response = self.call(method, path, b"");
+            assert_eq!(response.status, 200, "{method} {path}");
+            serde_json::from_slice(&response.body).expect("not json")
+        }
+    }
+
+    impl Drop for Harness {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn the_root_is_the_mount() {
+        let h = Harness::new("root");
+        let body = h.json("GET", "/api/root");
+        assert_eq!(body["root"].as_str().unwrap(), h.root.to_string_lossy());
+    }
+
+    /// The world document is text, and writing it must never overwrite.
+    #[test]
+    fn the_world_document_round_trips_as_text_and_is_written_once() {
+        let h = Harness::new("world");
+        assert_eq!(h.call("GET", "/api/world", b"").status, 404);
+        // No file yet, so no stamp to report.
+        assert!(h.json("GET", "/api/world/stamp")["stamp"].is_null());
+
+        // Comments and all: this is a file a person edits.
+        let text = b"{\n  // a room\n  \"rooms\": []\n}";
+        let written = h.call("POST", "/api/world", text);
+        assert_eq!(written.status, 200);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&written.body).unwrap()["written"],
+            serde_json::Value::Bool(true),
+        );
+
+        let read = h.call("GET", "/api/world", b"");
+        assert_eq!(read.status, 200);
+        assert_eq!(read.body, text.to_vec(), "the comments did not survive");
+        assert!(read.content_type.starts_with("text/plain"));
+        assert!(h.json("GET", "/api/world/stamp")["stamp"].is_string());
+
+        // A second write is refused rather than replacing a room somebody built.
+        let again = h.call("POST", "/api/world", b"{}");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&again.body).unwrap()["written"],
+            serde_json::Value::Bool(false),
+        );
+        assert_eq!(h.call("GET", "/api/world", b"").body, text.to_vec());
+    }
+
+    #[test]
+    fn the_layout_round_trips_and_a_truncated_one_is_refused() {
+        let h = Harness::new("layout");
+        assert_eq!(h.call("GET", "/api/layout", b"").status, 404);
+
+        let layout = br#"{"schemaVersion":3,"rows":{"west-0:0":["abc"]}}"#;
+        assert_eq!(h.call("PUT", "/api/layout", layout).status, 204);
+
+        let back: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/layout", b"").body).unwrap();
+        assert_eq!(back["rows"]["west-0:0"][0], "abc");
+
+        // Parsed before it is written: a half-sent PUT must not leave a layout the
+        // next load refuses, which would look like the library forgetting where
+        // every book was.
+        assert!(h.try_call("PUT", "/api/layout", br#"{"rows":"#).is_err());
+        let still: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/layout", b"").body).unwrap();
+        assert_eq!(still["rows"]["west-0:0"][0], "abc");
+    }
+
+    #[test]
+    fn the_lamps_round_trip_too() {
+        let h = Harness::new("lights");
+        assert_eq!(h.call("GET", "/api/lights", b"").status, 404);
+        assert_eq!(h.call("PUT", "/api/lights", br#"{"schemaVersion":1,"on":{"lamp":false}}"#).status, 204);
+        let back: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/lights", b"").body).unwrap();
+        assert_eq!(back["on"]["lamp"], serde_json::Value::Bool(false));
+    }
+
+    /// The three folders that are not books, each answering with a list rather
+    /// than an error when it is not there.
+    #[test]
+    fn the_media_folders_are_listed_and_an_absent_one_is_simply_empty() {
+        let h = Harness::new("media-lists");
+        assert_eq!(h.json("GET", "/api/music").as_array().unwrap().len(), 0);
+        assert_eq!(h.json("GET", "/api/artwork").as_array().unwrap().len(), 0);
+        assert_eq!(h.json("GET", "/api/video").as_array().unwrap().len(), 0);
+
+        fs::write(h.root.join("music/04 four women.mp3"), b"not really an mp3").unwrap();
+        fs::create_dir_all(h.root.join("video/Tarkovsky")).unwrap();
+        fs::write(h.root.join("video/Tarkovsky/stalker.mp4"), b"not really an mp4").unwrap();
+
+        let tracks = h.json("GET", "/api/music");
+        assert_eq!(tracks.as_array().unwrap().len(), 1);
+        assert_eq!(tracks[0]["title"], "04 Four Women");
+
+        let tapes = h.json("GET", "/api/video");
+        assert_eq!(tapes.as_array().unwrap().len(), 1);
+        assert_eq!(tapes[0]["title"], "Stalker");
+        assert_eq!(tapes[0]["series"], "Tarkovsky");
+        // camelCase across the wire, because the front end reads it directly.
+        assert!(tapes[0]["sizeBytes"].is_number());
+    }
+
+    /// A scan, end to end, through the route the container actually uses.
+    #[test]
+    fn a_scan_indexes_the_books_folder_and_nothing_else() {
+        let h = Harness::new("scan");
+        fs::write(h.root.join("books/on_the_provinces.pdf"), b"%PDF-1.4 not really").unwrap();
+        fs::write(h.root.join("music/track.mp3"), b"notes").unwrap();
+
+        assert_eq!(h.json("GET", "/api/books").as_array().unwrap().len(), 0);
+
+        let summary = serde_json::from_slice::<serde_json::Value>(
+            &h.call("POST", "/api/scan", b"").body,
+        )
+        .unwrap();
+        assert_eq!(summary["found"], 1, "the mp3 was indexed as a book");
+
+        let books = h.json("GET", "/api/books");
+        assert_eq!(books.as_array().unwrap().len(), 1);
+        // Unreadable is still indexed, under its filename.
+        assert_eq!(books[0]["title"], "On The Provinces");
+
+        // The progress poll reports a finished scan rather than one still running,
+        // or the driver polls forever.
+        let progress = h.json("GET", "/api/scan/progress");
+        assert_eq!(progress["running"], serde_json::Value::Bool(false));
+        assert_eq!(progress["total"], 1);
+    }
+
+    #[test]
+    fn a_book_is_fetched_by_index_id_and_an_unknown_one_is_a_404() {
+        let h = Harness::new("book");
+        fs::write(h.root.join("books/letters.pdf"), b"%PDF-1.4 pages here").unwrap();
+        h.call("POST", "/api/scan", b"");
+
+        let books = h.json("GET", "/api/books");
+        let id = books[0]["id"].as_str().unwrap().to_string();
+
+        let bytes = h.call("GET", &format!("/api/book/{id}"), b"");
+        assert_eq!(bytes.status, 200);
+        assert_eq!(bytes.body, b"%PDF-1.4 pages here".to_vec());
+
+        assert_eq!(h.call("GET", "/api/book/nothing-like-that", b"").status, 404);
+    }
+
+    #[test]
+    fn a_cover_is_cached_and_a_forged_id_is_refused() {
+        let h = Harness::new("cover");
+        fs::write(h.root.join("books/one.pdf"), b"%PDF-1.4 x").unwrap();
+        h.call("POST", "/api/scan", b"");
+        let id = h.json("GET", "/api/books")[0]["id"].as_str().unwrap().to_string();
+
+        let png = b"data:image/png;base64,aGVsbG8=";
+        let saved = h.call("POST", &format!("/api/cover/{id}"), png);
+        assert_eq!(saved.status, 200);
+        let path = serde_json::from_slice::<serde_json::Value>(&saved.body).unwrap()["path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(fs::read(&path).unwrap(), b"hello".to_vec());
+
+        // The index now knows about it, so the next `list_books` hands it over.
+        assert!(h.json("GET", "/api/books")[0]["cover"].as_str().unwrap().ends_with(".png"));
+
+        // The id becomes a filename, and `join` follows `..`.
+        assert_eq!(h.call("POST", "/api/cover/..%2Fescape", png).status, 400);
+        assert_eq!(h.call("POST", "/api/cover/has spaces", png).status, 400);
+        // A body that is not a data URL is refused rather than written as bytes.
+        assert!(h.try_call("POST", &format!("/api/cover/{id}"), b"just some text").is_err());
+    }
+
+    /// Serving a media file, including the part that makes a tape seekable.
+    #[test]
+    fn media_is_served_with_ranges_and_only_from_the_allowed_folders() {
+        let h = Harness::new("media-serve");
+        let track = h.root.join("music/side-a.mp3");
+        fs::write(&track, b"0123456789").unwrap();
+        fs::write(h.root.join("books/private.pdf"), b"secret").unwrap();
+
+        let whole = h.call("GET", &format!("/media/{}", track.to_string_lossy()), b"");
+        assert_eq!(whole.status, 200);
+        assert_eq!(whole.body, b"0123456789".to_vec());
+        assert_eq!(whole.content_type, "audio/mpeg");
+        // Advertised, or a player will not attempt to seek at all.
+        assert!(whole.extra.iter().any(|(k, v)| k == "Accept-Ranges" && v == "bytes"));
+
+        let mut headers = HashMap::new();
+        headers.insert("range".to_string(), "bytes=2-5".to_string());
+        let part = h.with_headers("GET", &format!("/media/{}", track.to_string_lossy()), b"", headers);
+        assert_eq!(part.status, 206);
+        assert_eq!(part.body, b"2345".to_vec());
+        assert!(part
+            .extra
+            .iter()
+            .any(|(k, v)| k == "Content-Range" && v == "bytes 2-5/10"));
+
+        let mut past = HashMap::new();
+        past.insert("range".to_string(), "bytes=99-200".to_string());
+        let refused = h.with_headers("GET", &format!("/media/{}", track.to_string_lossy()), b"", past);
+        assert_eq!(refused.status, 416);
+
+        // A book is never reachable by name, only through the index.
+        let book = h.root.join("books/private.pdf");
+        assert_eq!(h.call("GET", &format!("/media/{}", book.to_string_lossy()), b"").status, 404);
+        // Nor is anything above the mount, however it is spelled.
+        assert_eq!(
+            h.call("GET", &format!("/media/{}/music/../../etc/passwd", h.root.to_string_lossy()), b"").status,
+            404,
+        );
+    }
+
+    #[test]
+    fn the_front_end_falls_back_to_index_html_and_refuses_to_climb_out_of_dist() {
+        let h = Harness::new("static");
+        // No dist at all: a plain answer that says what to do, not a 500.
+        let missing = h.call("GET", "/", b"");
+        assert_eq!(missing.status, 404);
+        assert!(String::from_utf8_lossy(&missing.body).contains("build:http"));
+
+        let dist = h.root.join("no-dist");
+        fs::create_dir_all(dist.join("assets")).unwrap();
+        fs::write(dist.join("index.html"), b"<!doctype html>room").unwrap();
+        fs::write(dist.join("assets/app.js"), b"console.log(1)").unwrap();
+
+        let index = h.call("GET", "/", b"");
+        assert_eq!(index.status, 200);
+        assert!(index.content_type.starts_with("text/html"));
+
+        let js = h.call("GET", "/assets/app.js", b"");
+        assert_eq!(js.status, 200);
+        assert!(js.content_type.starts_with("text/javascript"));
+
+        // A single-page app: an unknown path is a route, not a missing file.
+        assert_eq!(h.call("GET", "/some/deep/route", b"").body, b"<!doctype html>room".to_vec());
+
+        // ...but `..` is never a route.
+        assert_eq!(h.call("GET", "/../../secret", b"").status, 404);
+    }
+
+    #[test]
+    fn a_method_nothing_answers_is_a_405() {
+        let h = Harness::new("method");
+        assert_eq!(h.call("DELETE", "/api/layout", b"").status, 405);
+        assert_eq!(h.call("PUT", "/api/books", b"").status, 405);
     }
 
     #[test]

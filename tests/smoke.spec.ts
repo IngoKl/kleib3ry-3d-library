@@ -22,6 +22,10 @@ type Stats = {
   rooms: number
   shelves: number
   worldRevision: number
+  /** `stats()` spreads the whole app store; these are the slots tests read. */
+  focusedFixture: string | null
+  focusedTape: string | null
+  heldTape: string | null
 }
 
 type ShelfTarget = { shelf: number; shelfId: string; row: number; index: number }
@@ -54,6 +58,9 @@ declare global {
         /** Height of the floor underfoot. Zero everywhere but the loft. */
         floor: number
         crouch: number
+        /** 0 standing, 1 fully zoomed, and the field of view that produces. */
+        zoom: number
+        fov: number
       }
       focusedBook: () => Book | null
       heldBook: () => Book | null
@@ -100,6 +107,23 @@ declare global {
       nowPlaying: () => string | null
       artwork: () => string[]
       look: (yaw: number, pitch?: number) => void
+      tapes: () => string[]
+      focusedTape: () => string | null
+      heldTape: () => string | null
+      nowWatching: () => { playing: string | null; error: string | null }
+      pins: () => {
+        id: string
+        kind: 'page' | 'note'
+        bookId?: string
+        page?: number
+        text?: string
+        x: number
+        y: number
+        z: number
+      }[]
+      heldPin: () => { kind: 'page' | 'note'; page?: number; text?: string } | null
+      pinTarget: () => { x: number; y: number; z: number; yaw: number } | null
+      focusedPin: () => string | null
       reader: () => ReaderStatus
       readForTest: (id: string) => Promise<ReaderStatus>
       setModeForTest: (mode: string) => void
@@ -1179,4 +1203,180 @@ test('shelving the whole library costs nothing to draw', async ({ page }) => {
    * has started drawing books one at a time.
    */
   expect(Math.abs(shelved.drawCalls - boxed.drawCalls)).toBeLessThan(20)
+})
+
+// --- what has been added since the room was first walkable ------------------
+
+test('the view zooms while the key is held, and opens back out', async ({ page }) => {
+  await boot(page)
+
+  const wide = await page.evaluate(() => window.__app.player().fov)
+  expect(wide, 'the walking field of view').toBeGreaterThan(60)
+
+  await page.keyboard.down('KeyZ')
+  const narrowed = await settled(page, () => window.__app.player().fov < 40, 20_000)
+  const zoomed = await page.evaluate(() => window.__app.player())
+  await page.keyboard.up('KeyZ')
+
+  expect(narrowed, `field of view went ${wide} -> ${zoomed.fov}`).toBe(true)
+  expect(zoomed.zoom).toBeGreaterThan(0.5)
+
+  // Held, not toggled: letting go opens the view back out on its own.
+  const opened = await settled(page, () => window.__app.player().fov > 60, 20_000)
+  expect(opened, 'the view stayed narrowed after the key came up').toBe(true)
+})
+
+/**
+ * Stand in the loft and find the tape crate, or the television.
+ *
+ * Derived from the world rather than written down, like `faceTheShelves`: the
+ * default map is a document somebody edits, and a test that knows where the
+ * television *was* fails the day it is moved. So this asks where the piece is,
+ * stands a stride back from it, and sweeps until the crosshair reports.
+ */
+async function facePiece(page: Page, kind: string, found: () => boolean) {
+  const pieces = await page.evaluate(
+    (want: string) => window.__app.furniture().filter((item) => item.kind === want),
+    kind,
+  )
+  expect(pieces.length, `this world has no ${kind}`).toBeGreaterThan(0)
+
+  for (const piece of pieces) {
+    for (const back of [0.7, 1.0, 1.35]) {
+      for (const pitch of [-0.5, -0.75, -0.3, -0.95]) {
+        // A stride to the south of it, looking north and down into it: the loft's
+        // den faces the balustrade, so this is the side you would stand on.
+        await page.evaluate(
+          ([x, z, floor]) => window.__app.teleport(x!, z!, Math.PI, floor!),
+          [piece.x, piece.z + back, piece.y],
+        )
+        await page.evaluate((p) => window.__app.look(Math.PI, p), pitch)
+        if (await settled(page, found, 3000)) return true
+      }
+    }
+  }
+  return false
+}
+
+test('a tape comes out of the crate and goes into the television', async ({ page }) => {
+  await boot(page)
+
+  const tapes = await page.evaluate(() => window.__app.tapes())
+  expect(tapes.length, 'nothing in video/').toBeGreaterThan(0)
+
+  const atCrate = await facePiece(page, 'tapecrate', () => window.__app.focusedTape() !== null)
+  expect(atCrate, 'never found a tape in the crate').toBe(true)
+
+  await page.keyboard.press('KeyE')
+  const held = await settled(page, () => window.__app.heldTape() !== null, 5000)
+  expect(held, 'E did not take the tape out').toBe(true)
+  await expect(page.getByTestId('held-tape-card')).toBeVisible()
+
+  // Now the set. With a tape in hand nothing else is on offer, so the crosshair
+  // reporting a fixture at all means the television.
+  const atSet = await facePiece(page, 'crt', () => window.__app.stats().focusedFixture !== null)
+  expect(atSet, 'never found the television').toBe(true)
+
+  await page.keyboard.press('KeyE')
+  const inTheMachine = await settled(page, () => window.__app.heldTape() === null, 5000)
+  expect(inTheMachine, 'E did not put the tape in').toBe(true)
+
+  /**
+   * And it says what happened.
+   *
+   * The placeholder tapes point at nothing, so playback *fails* — which is the
+   * interesting case, and the same one a real container the WebView cannot decode
+   * produces. What must not happen is silence: the tape leaves your hand either
+   * way, so a failure nobody reports is a television that ate your cassette.
+   */
+  const reported = await settled(
+    page,
+    () => window.__app.nowWatching().error !== null || window.__app.nowWatching().playing !== null,
+    10_000,
+  )
+  const watching = await page.evaluate(() => window.__app.nowWatching())
+  expect(reported, `neither playing nor complaining: ${JSON.stringify(watching)}`).toBe(true)
+})
+
+test('a page torn out of a book pins to a wall, and the book keeps its own', async ({ page }) => {
+  await boot(page)
+
+  const opened = await page.evaluate(() => window.__app.readForTest('sample-book'))
+  expect(opened.rendered, `the book never rendered: ${opened.failure ?? ''}`).toBe(true)
+
+  // `P` copies the page you are looking at. Nothing is removed from anything.
+  await page.keyboard.press('KeyP')
+  const torn = await settled(page, () => window.__app.heldPin() !== null, 8000)
+  const sheet = await page.evaluate(() => window.__app.heldPin())
+  expect(torn, 'P tore nothing out').toBe(true)
+  expect(sheet!.kind).toBe('page')
+  expect(sheet!.page, 'a page number, so it can be rasterised again').toBeGreaterThan(0)
+
+  // The book is untouched: it is still readable, and still has its pages.
+  await page.keyboard.press('Escape')
+  await settled(page, () => window.__app.stats().mode === 'walk', 8000)
+  const stillThere = await page.evaluate(() => window.__app.readForTest('sample-book'))
+  expect(stillThere.rendered, 'the book lost the page it was copied from').toBe(true)
+  await page.keyboard.press('Escape')
+  await settled(page, () => window.__app.stats().mode === 'walk', 8000)
+
+  // Somewhere with plaster on it: the north wall east of the window and clear of
+  // the bookcase, which is the one stretch of the great room that is only wall.
+  await page.evaluate(() => window.__app.teleport(4.0, -3.2, 0, 0))
+  await page.evaluate(() => window.__app.look(0, 0))
+  const aimed = await settled(page, () => window.__app.pinTarget() !== null, 8000)
+  expect(aimed, 'a wall a stride away was not offered as somewhere to pin').toBe(true)
+  await expect(page.getByTestId('held-sheet-card')).toBeVisible()
+
+  await page.keyboard.press('KeyE')
+  const up = await settled(page, () => window.__app.pins().length === 1, 8000)
+  expect(up, 'E did not pin it up').toBe(true)
+
+  const pinned = (await page.evaluate(() => window.__app.pins()))[0]!
+  expect(pinned.kind).toBe('page')
+  expect(pinned.bookId).toBe('sample-book')
+  // On the wall it was aimed at, not at the origin.
+  expect(pinned.z).toBeLessThan(-3.5)
+  expect(Math.abs(pinned.x - 4.0)).toBeLessThan(0.5)
+  // Your hands are empty again.
+  expect(await page.evaluate(() => window.__app.heldPin())).toBeNull()
+
+  // And it comes back down into your hand, which is what makes moving one from a
+  // wall to the whiteboard two presses of the same key.
+  const seen = await settled(page, () => window.__app.focusedPin() !== null, 8000)
+  expect(seen, 'the sheet on the wall was not offered').toBe(true)
+  await page.keyboard.press('KeyE')
+  const down = await settled(page, () => window.__app.pins().length === 0, 8000)
+  expect(down, 'E did not take it down').toBe(true)
+  expect(await page.evaluate(() => window.__app.heldPin())).not.toBeNull()
+})
+
+test('a note is written, stuck up, and is still there after a reload', async ({ page }) => {
+  await boot(page)
+
+  await page.keyboard.press('KeyT')
+  await expect(page.getByTestId('note-field')).toBeVisible()
+  await page.getByTestId('note-field').locator('input').fill('ask about the 1963 edition')
+  await page.keyboard.press('Enter');
+
+  const written = await settled(page, () => window.__app.heldPin() !== null, 8000)
+  expect(written, 'the note never reached your hand').toBe(true)
+  expect((await page.evaluate(() => window.__app.heldPin()))!.kind).toBe('note')
+
+  await page.evaluate(() => window.__app.teleport(4.0, -3.2, 0, 0))
+  await page.evaluate(() => window.__app.look(0, 0))
+  expect(await settled(page, () => window.__app.pinTarget() !== null, 8000)).toBe(true)
+
+  await page.keyboard.press('KeyE')
+  expect(await settled(page, () => window.__app.pins().length === 1, 8000)).toBe(true)
+  expect((await page.evaluate(() => window.__app.pins()))[0]!.text).toBe(
+    'ask about the 1963 edition',
+  )
+
+  // Notes go in the layout document, so they survive the room being rebuilt.
+  await boot(page)
+  const after = await page.evaluate(() => window.__app.pins())
+  expect(after.length, 'the note was not saved').toBe(1)
+  expect(after[0]!.text).toBe('ask about the 1963 edition')
+  expect(after[0]!.kind).toBe('note')
 })
