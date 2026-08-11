@@ -1,0 +1,142 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --ink: #e8e2d6;
+  --dim: #9a9081;
+  --ok: #7fd39a;
+  --warn: #e6c169;
+  --bad: #e88b7d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+.app {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #15120f;
+  color: var(--ink);
+}
+
+canvas {
+  display: block;
+}
+
+.panel {
+  position: fixed;
+  top: 12px;
+  width: 300px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(20, 17, 14, 0.86);
+  border: 1px solid rgba(232, 226, 214, 0.14);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.panel-left {
+  left: 12px;
+}
+.panel-right {
+  right: 12px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.source {
+  margin: 0 0 10px;
+  color: var(--dim);
+  font-size: 11px;
+  word-break: break-word;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  margin: 0 0 10px;
+}
+
+dt {
+  color: var(--dim);
+}
+
+dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dim {
+  color: var(--dim);
+}
+.ok {
+  color: var(--ok);
+}
+.warn {
+  color: var(--warn);
+}
+.bad {
+  color: var(--bad);
+}
+
+.note {
+  margin: 8px 0 0;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.row {
+  margin-bottom: 8px;
+}
+
+.row-label {
+  display: block;
+  color: var(--dim);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.row-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+button {
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(232, 226, 214, 0.2);
+  background: rgba(232, 226, 214, 0.06);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(232, 226, 214, 0.14);
+}
+
+button.on {
+  background: #e8e2d6;
+  color: #15120f;
+  border-color: #e8e2d6;
+}
+
+input[type='file'] {
+  font-size: 11px;
+  max-width: 100%;
+}

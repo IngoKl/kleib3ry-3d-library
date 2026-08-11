@@ -1,0 +1,105 @@
+import * as THREE from 'three'
+
+/**
+ * Surfaces shared by every room. Sizes and positions come from the world
+ * document; what a floor or a wall *is* does not, because that is a decision
+ * about what a library looks like rather than about your library.
+ */
+export const MATERIALS = {
+  wall: '#e6ddcd',
+  ceiling: '#f3eee4',
+  skirting: '#d6cbb6',
+  daylight: '#cfe2f2',
+  carcass: '#8a6039',
+} as const
+
+/** One texture tile covers this many metres of floor in each direction. */
+const FLOOR_TILE_M = 2.4
+/** Board width in metres -- narrow enough to read as flooring, not panelling. */
+const PLANK_WIDTH_M = 0.15
+
+/** Deterministic PRNG, so the floor is identical on every run and in every screenshot. */
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Oak planks, drawn once into a canvas rather than shipped as an asset: it
+ * keeps the repo text-only and the parameters legible.
+ */
+export function makeFloorTexture(width: number, depth: number): THREE.CanvasTexture {
+  const size = 1024
+  const planks = Math.round(FLOOR_TILE_M / PLANK_WIDTH_M)
+  const plankHeight = size / planks
+  const random = mulberry32(0x1b7a)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = '#8a6440'
+  ctx.fillRect(0, 0, size, size)
+
+  type Board = { x: number; y: number; w: number }
+  const boards: Board[] = []
+
+  for (let row = 0; row < planks; row++) {
+    const y = row * plankHeight
+    // Stagger the end joints and vary board length so no two rows line up.
+    let x = -random() * size * 0.5
+    while (x < size) {
+      const w = size * (0.38 + random() * 0.34)
+      boards.push({ x, y, w })
+      // Keep the tint range tight; large jumps read as a checkerboard.
+      const shade = 0.93 + random() * 0.12
+      ctx.fillStyle = `rgb(${(138 * shade) | 0}, ${(100 * shade) | 0}, ${(64 * shade) | 0})`
+      ctx.fillRect(x, y, w, plankHeight)
+      x += w
+    }
+  }
+
+  // Grain: long, low-contrast streaks running with the boards.
+  ctx.globalAlpha = 0.05
+  for (let i = 0; i < 2600; i++) {
+    const y = random() * size
+    const x = random() * size
+    const len = 40 + random() * 220
+    ctx.strokeStyle = random() > 0.5 ? '#000000' : '#d8a878'
+    ctx.lineWidth = 0.5 + random()
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + len, y + (random() - 0.5) * 1.5)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  // Seams: between rows, and at every end joint.
+  ctx.strokeStyle = 'rgba(40, 24, 12, 0.5)'
+  ctx.lineWidth = 1.5
+  for (let row = 0; row <= planks; row++) {
+    const y = row * plankHeight
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(size, y)
+    ctx.stroke()
+  }
+  for (const board of boards) {
+    ctx.beginPath()
+    ctx.moveTo(board.x, board.y)
+    ctx.lineTo(board.x, board.y + plankHeight)
+    ctx.stroke()
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(width / FLOOR_TILE_M, depth / FLOOR_TILE_M)
+  return texture
+}

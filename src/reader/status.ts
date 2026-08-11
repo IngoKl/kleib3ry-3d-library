@@ -1,0 +1,48 @@
+/**
+ * What the reader is currently doing. Kept outside React because it changes
+ * mid-render-loop; the HUD and the desktop probe read it.
+ */
+export type ReaderStatus = {
+  bookId: string | null
+  pages: number
+  spread: number
+  /** True once a page has actually been rasterised onto the mesh. */
+  rendered: boolean
+  /**
+   * The page numbers whose textures are on the static sheets. It must always
+   * agree with `spread`: a turn that commits before its destination has
+   * rasterised is exactly the flash where the old spread reappears mid-turn.
+   */
+  showing: [number, number] | null
+  /**
+   * Whether the turning leaf is on screen. It is what hides the swap, so it may
+   * only come down once `showing` has already moved to the destination spread —
+   * dropping it first is what exposed the old spread mid-turn.
+   */
+  turning: boolean
+  /** How far through the turn the leaf is, 0 to 1. Drives the drag tests. */
+  progress: number
+  failure: string | null
+}
+
+export const readerStatus: ReaderStatus = {
+  bookId: null,
+  pages: 0,
+  spread: 0,
+  rendered: false,
+  showing: null,
+  turning: false,
+  progress: 0,
+  failure: null,
+}
+
+export function resetReaderStatus(bookId: string | null) {
+  readerStatus.bookId = bookId
+  readerStatus.pages = 0
+  readerStatus.spread = 0
+  readerStatus.rendered = false
+  readerStatus.showing = null
+  readerStatus.turning = false
+  readerStatus.progress = 0
+  readerStatus.failure = null
+}

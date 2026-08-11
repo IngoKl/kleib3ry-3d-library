@@ -1,0 +1,45 @@
+[package]
+name = "library3d"
+version = "0.1.0"
+description = "A 3D personal library"
+authors = ["iklei"]
+edition = "2021"
+rust-version = "1.77.2"
+# `src/bin/scan.rs` is a dev-only harness, so bare `cargo run` (which is what
+# `tauri dev` shells out to) would otherwise be ambiguous.
+default-run = "library3d"
+
+[lib]
+# The desktop binary and any future mobile target share this crate.
+name = "library3d_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+walkdir = "2.5.0"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+zip = "4.2.0"
+quick-xml = "0.39.4"
+sha2 = "0.10.9"
+lopdf = "0.36.0"
+base64 = "0.23.1"
+
+[features]
+# Used by `tauri dev` to keep the devtools available in release-ish builds.
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+# NOT `panic = "abort"`. Third-party format parsers panic on malformed files,
+# and a single unreadable book must not take the whole app down mid-scan; the
+# indexer catches unwinds per file and carries on.
+strip = true

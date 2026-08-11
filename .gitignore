@@ -1,0 +1,25 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+tests/screenshots/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+public/standard_fonts/
+public/cmaps/
+public/sample-book.pdf
