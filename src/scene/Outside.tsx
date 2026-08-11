@@ -9,6 +9,8 @@ import {
   LAKE,
   SHORE_EDGE,
   SHORE_Y,
+  TRAIL,
+  TRAIL_WIDTH,
   WATER_Y,
 } from '../world/terrain'
 import { useLightStore } from '../state/lights'
@@ -172,7 +174,7 @@ function Forest({ trees }: { trees: Tree[] }) {
  * hills against. Drawn on the inside of a sphere with a two-stop gradient baked
  * into a 2x64 canvas — cheaper than a shader and easier to argue with.
  */
-function Sky({ night }: { night: boolean }) {
+function Sky({ night, rain }: { night: boolean; rain: boolean }) {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas')
     // Wide enough to scatter stars into at night; the day gradient does not care.
@@ -180,11 +182,22 @@ function Sky({ night }: { night: boolean }) {
     canvas.height = 128
     const ctx = canvas.getContext('2d')!
     const gradient = ctx.createLinearGradient(0, 0, 0, 128)
-    if (night) {
+    if (night && rain) {
+      // No stars under cloud, which is the whole difference: a rainy night is
+      // darker *and* flatter than a clear one, not merely darker.
+      gradient.addColorStop(0, '#141721')
+      gradient.addColorStop(0.6, '#1b1f29')
+      gradient.addColorStop(1, '#191c22')
+    } else if (night) {
       gradient.addColorStop(0, '#0a1024')
       gradient.addColorStop(0.5, '#141d33')
       gradient.addColorStop(0.78, '#1d2536')
       gradient.addColorStop(1, '#12141c')
+    } else if (rain) {
+      gradient.addColorStop(0, '#5d6771')
+      gradient.addColorStop(0.45, '#7e8892')
+      gradient.addColorStop(0.72, '#9aa3aa')
+      gradient.addColorStop(1, '#adb2b0')
     } else {
       gradient.addColorStop(0, '#4d7fb5')
       gradient.addColorStop(0.45, '#9dc0dc')
@@ -194,7 +207,7 @@ function Sky({ night }: { night: boolean }) {
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    if (night) {
+    if (night && !rain) {
       // A seeded scatter of stars in the upper half, brighter towards the top.
       const random = mulberry32(0x57a2)
       for (let i = 0; i < 220; i++) {
@@ -209,13 +222,65 @@ function Sky({ night }: { night: boolean }) {
     const made = new THREE.CanvasTexture(canvas)
     made.colorSpace = THREE.SRGBColorSpace
     return made
-  }, [night])
+  }, [night, rain])
   useEffect(() => () => texture.dispose(), [texture])
 
   return (
     <mesh>
       <sphereGeometry args={[GROUND_RADIUS + 40, 24, 16]} />
       <meshBasicMaterial map={texture} toneMapped={false} side={THREE.BackSide} fog={false} />
+    </mesh>
+  )
+}
+
+/**
+ * The trail between the two buildings: worn earth, laid on top of the grass.
+ *
+ * One quad per leg plus a disc at each bend, merged into a single geometry. The
+ * discs are what make a corner read as a corner rather than as two planks with a
+ * notch bitten out of the inside of the turn.
+ *
+ * Drawn a centimetre over the ground for the same reason the beach is: three
+ * sheets stacked centimetres apart beats cutting a hole in a circle you can walk
+ * on. It is scenery only — the ground under it is walkable because it is ground,
+ * not because there is a path on it.
+ */
+function Trail() {
+  const geometry = useMemo(() => {
+    const parts: THREE.BufferGeometry[] = []
+    const half = TRAIL_WIDTH / 2
+
+    for (let i = 1; i < TRAIL.length; i++) {
+      const [ax, az] = TRAIL[i - 1]!
+      const [bx, bz] = TRAIL[i]!
+      const length = Math.hypot(bx - ax, bz - az)
+      if (length < 1e-6) continue
+      const strip = new THREE.PlaneGeometry(TRAIL_WIDTH, length)
+      strip.rotateX(-Math.PI / 2)
+      // The plane's local +Y runs along the leg once it is laid flat, so the
+      // turn is measured from +Z.
+      strip.rotateY(-Math.atan2(bx - ax, bz - az))
+      strip.translate((ax + bx) / 2, 0, (az + bz) / 2)
+      parts.push(strip)
+    }
+
+    for (const [x, z] of TRAIL) {
+      const cap = new THREE.CircleGeometry(half, 10)
+      cap.rotateX(-Math.PI / 2)
+      cap.translate(x, 0, z)
+      parts.push(cap)
+    }
+
+    const merged = mergeGeometries(parts, false)
+    parts.forEach((part) => part.dispose())
+    return merged
+  }, [])
+  useEffect(() => () => geometry?.dispose(), [geometry])
+
+  if (!geometry) return null
+  return (
+    <mesh geometry={geometry} position={[0, GROUND_Y + 0.012, 0]} receiveShadow>
+      <meshStandardMaterial color="#6d6047" roughness={1} />
     </mesh>
   )
 }
@@ -261,6 +326,7 @@ function Hills() {
 export function Outside() {
   const world = useWorldStore((s) => s.world)
   const night = useLightStore((s) => s.night)
+  const rain = useLightStore((s) => s.rain)
 
   // The same trunks the walk controller collides with. Grown in `deriveWorld`
   // rather than here, which is what stops the forest you can see and the forest
@@ -271,8 +337,11 @@ export function Outside() {
     <group>
       {/* The clear colour behind everything lives with the sky it has to match,
           not in App: the two changing in different frames is a visible flash. */}
-      <color attach="background" args={[night ? '#0b101c' : '#9dc0dc']} />
-      <Sky night={night} />
+      <color
+        attach="background"
+        args={[night ? (rain ? '#171a21' : '#0b101c') : rain ? '#818b93' : '#9dc0dc']}
+      />
+      <Sky night={night} rain={rain} />
       <Hills />
 
       {/* The ground you now walk on, a whisker below the floor slabs so the two
@@ -282,6 +351,8 @@ export function Outside() {
         <circleGeometry args={[GROUND_RADIUS, 48]} />
         <meshStandardMaterial color="#4a5c34" roughness={1} />
       </mesh>
+
+      <Trail />
 
       {/* A pale shore, so the water meets the grass at something. Under the
           water and over the grass: three sheets stacked centimetres apart,
@@ -300,14 +371,20 @@ export function Outside() {
       </mesh>
 
       {/* The lake. Smooth and a little metallic, which at this distance is all
-          that separates water from a green field of a different colour. */}
+          that separates water from a green field of a different colour — and
+          rough and grey in the rain, because what a shower does to a lake is
+          take the reflection off it. */}
       <mesh
         position={[LAKE.x, WATER_Y, LAKE.z]}
         rotation-x={-Math.PI / 2}
         scale={[LAKE.radiusX, LAKE.radiusZ, 1]}
       >
         <circleGeometry args={[1, 64]} />
-        <meshStandardMaterial color="#3f6076" roughness={0.12} metalness={0.55} />
+        <meshStandardMaterial
+          color={rain ? '#4b5a63' : '#3f6076'}
+          roughness={rain ? 0.62 : 0.12}
+          metalness={rain ? 0.2 : 0.55}
+        />
       </mesh>
 
       <Forest trees={trees} />
@@ -316,7 +393,18 @@ export function Outside() {
           rather than as a lot of cones. Thin enough not to fog the room. At
           night it thickens a little and goes dark, which is what darkness at a
           distance actually looks like. */}
-      <fogExp2 attach="fog" args={night ? ['#101624', 0.0105] : ['#c3d2dd', 0.0085]} />
+      <fogExp2
+        attach="fog"
+        args={
+          night
+            ? rain
+              ? ['#161a21', 0.018]
+              : ['#101624', 0.0105]
+            : rain
+              ? ['#8d969c', 0.019]
+              : ['#c3d2dd', 0.0085]
+        }
+      />
     </group>
   )
 }

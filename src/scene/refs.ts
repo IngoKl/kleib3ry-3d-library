@@ -63,6 +63,11 @@ export const sceneRefs: {
   openBooks: THREE.Object3D | null
   /** Everything you can sit on. Each mesh carries its furniture id in userData. */
   seats: THREE.Object3D | null
+  /**
+   * The cat's hitbox — one invisible box round the whole animal, so pointing at
+   * it finds a cat rather than an ear.
+   */
+  cat: THREE.Object3D | null
   /** How many shelved books currently hold an atlas cell, i.e. are printed. */
   printedSpines: number
   /** Cells drawn since launch. Rises when you move, flat when you stand still. */
@@ -97,6 +102,7 @@ export const sceneRefs: {
   looseIds: [],
   openBooks: null,
   seats: null,
+  cat: null,
   printedSpines: 0,
   spinesReprinted: 0,
   spineDirty: new Set<string>(),

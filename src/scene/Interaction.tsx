@@ -100,6 +100,7 @@ export function Interaction() {
       store.setSurfaceTarget(null)
       store.setPinTarget(null)
       store.setFocusedPin(null)
+      store.setFocusedCat(false)
       return
     }
 
@@ -120,6 +121,7 @@ export function Interaction() {
       store.setSurfaceTarget(null)
       store.setPinTarget(null)
       store.setFocusedPin(null)
+      store.setFocusedCat(false)
       return
     }
 
@@ -128,6 +130,11 @@ export function Interaction() {
 
     raycaster.setFromCamera(centre, camera)
     raycaster.far = REACH
+
+    // Cleared up front rather than in each of the six branches below: with your
+    // hands full of a record, a tape, a sheet or a book, the cat is not on
+    // offer, and only the empty-handed branch turns it back on.
+    store.setFocusedCat(false)
 
     // Holding a record: the deck takes it, a crate takes it back. Nothing else
     // is offered — the sleeve fills the hand a book would need.
@@ -291,6 +298,37 @@ export function Interaction() {
       store.setBoxTarget(null)
       store.setSurfaceTarget(null)
 
+      /**
+       * The cat, if it is in front of you and nearer than anything else.
+       *
+       * Nearest rather than outright, which it used to be: a cat that happened
+       * to sit down in front of a bookcase would take the whole case's worth of
+       * books off the crosshair, because it won a comparison it was never in.
+       * Not offered at all while you are sitting, for the same reason a chair
+       * is not — `E` from a seat means stand up.
+       */
+      let animal: { distance: number } | null = null
+      const pet = store.seat === null ? sceneRefs.cat : null
+      if (pet) {
+        const hit = raycaster.intersectObject(pet, true)[0]
+        if (hit) {
+          /**
+           * …and only if there is no wall in the way.
+           *
+           * Nothing else in here tests for an occluder — a book behind a wall
+           * within arm's reach is already offered, and has been forever, because
+           * every candidate is raycast against its own group and the nearest
+           * wins. That is fine for furniture, which does not move: you have to
+           * deliberately stand nose to the plaster to notice. The cat walks into
+           * the next room on its own, so without this it is quite normal to be
+           * offered a fuss through a wall.
+           */
+          const shells = sceneRefs.walls
+          const wall = shells ? raycaster.intersectObject(shells, true)[0] : undefined
+          if (!wall || wall.distance > hit.distance) animal = { distance: hit.distance }
+        }
+      }
+
       // Whichever is nearer: a book on a shelf, or one in a box. A book in a
       // box carries that box with it, so looking into a pile offers both the
       // one book (E) and the boxful (G) without having to find the cardboard.
@@ -375,6 +413,27 @@ export function Interaction() {
         const hit = raycaster.intersectObject(operable, true)[0]
         const id = furnitureIdOf(hit)
         if (hit && id) fixture = { distance: hit.distance, id }
+      }
+
+      // The cat, if it is genuinely the thing in front of you. It goes first
+      // because it is the only candidate that moves on its own, and reaching
+      // past a cat for the book behind it is a thing you can do by waiting.
+      const catAt = animal?.distance ?? Infinity
+      if (
+        Number.isFinite(catAt) &&
+        [best, seat, box, fixture, record, tape, sheet].every(
+          (other) => other === null || catAt < other.distance,
+        )
+      ) {
+        store.setFocusedCat(true)
+        store.setFocusedBook(null)
+        store.setFocusedSeat(null)
+        store.setFocusedBox(null)
+        store.setFocusedFixture(null)
+        store.setFocusedRecord(null)
+        store.setFocusedTape(null)
+        store.setFocusedPin(null)
+        return
       }
 
       // A sheet on the wall wins outright when it is the nearest thing: nothing

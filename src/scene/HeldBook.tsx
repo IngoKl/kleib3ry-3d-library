@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { makeHand } from './hand'
 import { useLibraryStore } from '../state/library'
 import { useAppStore } from '../state/store'
 import { coverFor, coverImageFor, onCoverReady, peekCoverImage } from '../state/covers'
@@ -87,29 +88,26 @@ export function HeldBook() {
   useEffect(() => () => cover?.dispose(), [cover])
 
   const drift = useRef(0)
-  const forward = useRef(new THREE.Vector3())
-  const right = useRef(new THREE.Vector3())
-  const up = useRef(new THREE.Vector3())
+  const hand = useMemo(makeHand, [])
 
   useFrame((_, delta) => {
     const node = group.current
     if (!node || !size) return
 
     drift.current += delta
-
-    camera.getWorldDirection(forward.current)
-    right.current.crossVectors(forward.current, camera.up).normalize()
-    up.current.crossVectors(right.current, forward.current).normalize()
+    // The hand lags the head, so turning swings the book out a little and lets
+    // it settle — see `hand.ts`.
+    const { quaternion, forward, right, up } = hand.follow(camera, delta)
 
     // Held low and off to the side: far enough not to block the shelf you are
     // reading, close enough to be clearly in hand.
     node.position
       .copy(camera.position)
-      .addScaledVector(forward.current, 0.54)
-      .addScaledVector(right.current, 0.21)
-      .addScaledVector(up.current, -0.2)
+      .addScaledVector(forward, 0.54)
+      .addScaledVector(right, 0.21)
+      .addScaledVector(up, -0.2)
 
-    node.quaternion.copy(camera.quaternion)
+    node.quaternion.copy(quaternion)
     node.rotateY(-0.55 + Math.sin(drift.current * 0.6) * 0.05)
     node.rotateX(0.3)
     node.rotateZ(Math.sin(drift.current * 0.45) * 0.03)

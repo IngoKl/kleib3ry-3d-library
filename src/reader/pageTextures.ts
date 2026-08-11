@@ -1,6 +1,5 @@
 import * as THREE from 'three'
-import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { renderPage } from './pdf'
+import type { PageSource } from './source'
 
 /**
  * Rasterised pages held as textures, so a spread that has already been through
@@ -36,7 +35,7 @@ export type PageTextures = {
 }
 
 export function makePageTextures(
-  doc: PDFDocumentProxy,
+  source: PageSource,
   targetPx: number,
   gl: THREE.WebGLRenderer,
 ): PageTextures {
@@ -64,9 +63,9 @@ export function makePageTextures(
     if (existing) return existing
 
     const job = (async () => {
-      const canvas = await renderPage(doc, page, targetPx, maxTexture)
+      const canvas = await source.render(page, targetPx, maxTexture)
       inflight.delete(page)
-      // Past the last page `renderPage` answers null; cache that too, so the
+      // Past the last page the source answers null; cache that too, so the
       // final spread commits instead of waiting forever on a page that is not
       // coming.
       if (disposed) return null

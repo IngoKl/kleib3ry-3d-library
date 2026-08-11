@@ -15,7 +15,8 @@
  */
 export const DEFAULT_WORLD_TEXT = `{
   // A cabin in the woods, with a lake through the north window — and a way out
-  // of the porch, down onto the grass and round the water.
+  // of the porch, down onto the grass, round the water, and along the trail to
+  // the little house at the far end of it.
   //
   // Edit this file and the room reloads as you save it. If an edit is wrong the
   // room you are standing in keeps running and the problem is reported in the
@@ -23,6 +24,10 @@ export const DEFAULT_WORLD_TEXT = `{
   // app does is ever written back over this file — where you shove the boxes,
   // which lamps you switch off, what you write on a shelf label, all of that
   // lives in books.json and lights.json beside it.
+  //
+  // Nothing here carries a "label". A bookcase is bare until you write on it
+  // with L, which is the point: the labels are yours, and a room that arrives
+  // pre-sorted into somebody else's categories is a room you have to undo.
   //
   // A full guide to building your own is in docs/custom-maps.md.
   "schemaVersion": 2,
@@ -80,14 +85,12 @@ export const DEFAULT_WORLD_TEXT = `{
       // Bookcases. The "id" is what your book layout is keyed by: move a shelf
       // and its books move with it, but rename or delete one and its books are
       // packed into the boxes on the floor rather than being reshuffled.
-      // "label" is a starting label for the card on its top edge — you can
-      // change it in the app, and that overrides what is written here.
       //
       // A case is 1.0 m wide; these stand 1.2 m apart, so a run of them reads
       // as furniture standing along a wall rather than as built-in shelving
       // crammed edge to edge.
       "shelves": [
-        { "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" },
+        { "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5 },
         { "id": "west-1", "at": [-4.825, -2.0], "facing": 90, "rows": 5 },
         { "id": "west-2", "at": [-4.825, -0.8], "facing": 90, "rows": 5 },
 
@@ -95,7 +98,7 @@ export const DEFAULT_WORLD_TEXT = `{
 
         { "id": "east-0", "at": [4.825, 3.4], "facing": 270, "rows": 5 },
 
-        { "id": "south-0", "at": [-4.0, 3.825], "facing": 180, "rows": 6, "label": "Reference" },
+        { "id": "south-0", "at": [-4.0, 3.825], "facing": 180, "rows": 6 },
         { "id": "south-1", "at": [-2.8, 3.825], "facing": 180, "rows": 5 },
         { "id": "south-2", "at": [-1.6, 3.825], "facing": 180, "rows": 5 }
       ],
@@ -189,7 +192,7 @@ export const DEFAULT_WORLD_TEXT = `{
       ],
 
       "shelves": [
-        { "id": "loft-0", "at": [-3.6, -2.525], "facing": 0, "rows": 5, "label": "Poetry" },
+        { "id": "loft-0", "at": [-3.6, -2.525], "facing": 0, "rows": 5 },
         { "id": "loft-1", "at": [-2.4, -2.525], "facing": 0, "rows": 5 },
         { "id": "loft-2", "at": [-1.2, -2.525], "facing": 0, "rows": 5 },
         { "id": "loft-3", "at": [-4.825, 0.0], "facing": 90, "rows": 4 }
@@ -255,7 +258,11 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "rug", "kind": "rug", "at": [0.9, 1.4], "facing": 0, "size": [3.0, 2.4] },
         { "id": "chair", "kind": "armchair", "at": [1.6, 1.5], "facing": 265 },
         { "id": "stool", "kind": "footstool", "at": [0.75, 1.65], "facing": 265 },
-        { "id": "table", "kind": "sidetable", "at": [2.1, 1.05], "facing": 0 },
+        // Beside the chair rather than through it. An armchair turned 265° is
+        // 0.9 m across in X, so a table at x = 2.1 stood 16 cm inside its arm —
+        // which reads as a table growing out of the upholstery. 2.45 clears it,
+        // and is still far enough back from the door line at z = 0.
+        { "id": "table", "kind": "sidetable", "at": [2.45, 1.5], "facing": 0 },
         { "id": "lamp", "kind": "floorlamp", "at": [2.25, 2.1], "facing": 0 },
         { "id": "reading-plant", "kind": "plant", "at": [2.3, -2.05], "facing": 0 },
         { "id": "picture-3", "kind": "picture", "at": [0.9, 2.44], "facing": 180, "y": 1.6, "size": [0.8, 0.6] },
@@ -291,7 +298,7 @@ export const DEFAULT_WORLD_TEXT = `{
       ],
 
       "shelves": [
-        { "id": "bedroom-s0", "at": [-0.35, 2.325], "facing": 180, "rows": 4, "label": "Bedside" },
+        { "id": "bedroom-s0", "at": [-0.35, 2.325], "facing": 180, "rows": 4 },
         { "id": "bedroom-s1", "at": [0.85, 2.325], "facing": 180, "rows": 4 }
       ],
 
@@ -322,8 +329,8 @@ export const DEFAULT_WORLD_TEXT = `{
         { "wall": "west", "at": 0.7, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "east", "at": 0, "width": 1.6, "height": 1.2, "sill": 1.05, "kind": "window" },
         { "wall": "north", "at": 0.8, "width": 1.0, "height": 1.1, "sill": 1.15, "kind": "window" },
-        // Through to the office. It sits at the east end of the wall because the
-        // west end of it is the run of counter.
+        // Through to the office, at world x = 8.44. It sits at the east end of
+        // the wall because the west end of it is the run of counter.
         { "wall": "south", "at": 1.2, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" }
       ],
 
@@ -350,40 +357,58 @@ export const DEFAULT_WORLD_TEXT = `{
       "id": "office",
       "name": "Office",
       // South of the kitchen: 3.1 (the kitchen's edge) + 0.24 (two wall
-      // thicknesses) + 2 (half of 4) = 5.34.
-      "origin": [7.24, 5.34],
-      "size": [4, 4],
+      // thicknesses) + 2.6 (half of 5.2) = 5.94. It is offset a little east of
+      // the kitchen so its roof overhang clears the porch's — the two are
+      // otherwise near enough to abut in the air without abutting on the ground,
+      // which is the one case the overhang rule cannot work out for itself.
+      "origin": [8.0, 5.94],
+      "size": [4.8, 5.2],
       // A little taller than the kitchen, so the two roofs step rather than
       // meeting in a valley at exactly the same height.
       "height": 2.8,
 
       "openings": [
         // World x = 8.44, matching the kitchen's south door.
-        { "wall": "north", "at": 1.2, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" },
+        { "wall": "north", "at": 0.44, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" },
         { "wall": "west", "at": 0, "width": 1.4, "height": 1.2, "sill": 0.95, "kind": "window" },
-        { "wall": "east", "at": -0.6, "width": 1.2, "height": 1.2, "sill": 0.95, "kind": "window" }
+        // At the *south* end of the east wall, because the bookcases have the
+        // north end of it. A case standing across a window is a window you have
+        // walled up from the inside — and it was, until the room grew.
+        { "wall": "east", "at": 1.8, "width": 1.2, "height": 1.2, "sill": 0.95, "kind": "window" }
       ],
 
-      // Along the east wall, clear of the lane you walk in on — which runs from
-      // the door at local x = 1.2 straight south.
+      // Along the east wall, north of the window and clear of the lane you walk
+      // in on — which runs from the door at local x = 0.44 straight south.
       "shelves": [
-        { "id": "office-0", "at": [1.825, -0.7], "facing": 270, "rows": 5, "label": "Notes" },
-        { "id": "office-1", "at": [1.825, 0.5], "facing": 270, "rows": 5 }
+        { "id": "office-0", "at": [2.225, -1.8], "facing": 270, "rows": 5 },
+        { "id": "office-1", "at": [2.225, -0.7], "facing": 270, "rows": 5 },
+        { "id": "office-2", "at": [2.225, 0.4], "facing": 270, "rows": 5 }
       ],
 
       "furniture": [
-        // The whiteboard, filling the south wall, with the desk facing it. Press
-        // P while reading to tear a copy of the page you are on out of the book
-        // — the book keeps its page — and E to pin what you are holding to this
-        // board, or to any wall in the library. T writes a note instead.
-        { "id": "board", "kind": "whiteboard", "at": [0, 1.94], "facing": 180, "y": 1.5, "size": [2.4, 1.2] },
-        { "id": "desk", "kind": "desk", "at": [0, 0.35], "facing": 0, "size": [1.6, 0.75] },
-        { "id": "desk-chair", "kind": "diningchair", "at": [0, -0.4], "facing": 0 },
-        { "id": "office-rug", "kind": "rug", "at": [0, -0.1], "facing": 0, "size": [2.6, 2.0] },
-        { "id": "office-lamp", "kind": "floorlamp", "at": [-1.5, 1.4], "facing": 0 },
-        { "id": "office-plant", "kind": "plant", "at": [-1.6, -1.5], "facing": 0, "height": 0.8 },
-        { "id": "picture-5", "kind": "picture", "at": [-1.0, -1.94], "facing": 0, "y": 1.6, "size": [0.7, 0.5] },
-        { "id": "office-pendant", "kind": "pendant", "at": [0, -0.1], "facing": 0 }
+        // The whiteboard, filling the south wall. It is 3.6 m of board on a
+        // 4.8 m wall — the room was grown from four metres square precisely so
+        // that there would be somewhere to put a morning's reading. Press P
+        // while reading to tear a copy of the page you are on out of the book —
+        // the book keeps its page — and E to pin what you are holding to this
+        // board, or to any wall in the library. T writes a note, and there is a
+        // pad of them on the desk.
+        { "id": "board", "kind": "whiteboard", "at": [0, 2.54], "facing": 180, "y": 1.55, "size": [3.6, 1.4] },
+
+        // The desk faces the board, at the west end so the doorway lane is
+        // clear. The terminal on it is the library's index: E on it searches
+        // every book, record, tape and picture the library knows about and says
+        // where the thing actually is.
+        { "id": "desk", "kind": "desk", "at": [-1.2, 1.6], "facing": 0, "size": [1.6, 0.75] },
+        { "id": "desk-chair", "kind": "diningchair", "at": [-1.2, 0.75], "facing": 0 },
+        { "id": "catalogue", "kind": "computer", "at": [-0.75, 1.62], "facing": 0, "y": 0.75 },
+        { "id": "notepad", "kind": "postits", "at": [-1.75, 1.42], "facing": 12, "y": 0.75 },
+
+        { "id": "office-rug", "kind": "rug", "at": [-0.4, 0.6], "facing": 0, "size": [3.0, 2.2] },
+        { "id": "office-lamp", "kind": "floorlamp", "at": [-1.9, 2.1], "facing": 0 },
+        { "id": "office-plant", "kind": "plant", "at": [-1.9, -1.9], "facing": 0, "height": 0.8 },
+        { "id": "picture-5", "kind": "picture", "at": [-1.3, -2.54], "facing": 0, "y": 1.6, "size": [0.7, 0.5] },
+        { "id": "office-pendant", "kind": "pendant", "at": [0, 0.2], "facing": 0 }
       ]
     },
 
@@ -394,8 +419,14 @@ export const DEFAULT_WORLD_TEXT = `{
       // it, so the decking meets the floorboards and there is nothing to trip
       // over on the way out. "outdoor" gives it decking and no room lights;
       // with no north wall of its own, the cabin's is what you step through.
-      "origin": [1.3, 5.5],
-      "size": [6.2, 3],
+      //
+      // Grown from 6.2 x 3 and its steps moved: the way out used to be at the
+      // *west* end while the way in from the cabin was at the east, so leaving
+      // meant threading between the table and the bench. The steps are now
+      // straight ahead of the cabin's south door — you walk out of one and down
+      // the other — and the seating has the whole west end to itself.
+      "origin": [0.8, 5.9],
+      "size": [7.2, 3.8],
       "height": 2.7,
       "outdoor": true,
       "walls": ["south", "east", "west"],
@@ -411,34 +442,117 @@ export const DEFAULT_WORLD_TEXT = `{
         // glass in it, which is also why it stops you: only a door you could
         // walk through is subtracted from the collision.
         //
-        // Which is what the gap at the west end is. The railing and the door
-        // tile the wall exactly between them — 4.3 centred at 0.55 covers local
-        // -1.6 to 2.7, and 1.1 centred at -2.15 covers -2.7 to -1.6 — because
-        // two openings that overlap would cut each other's panels to ribbons.
-        { "wall": "south", "at": 0.55, "width": 4.3, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
-        { "wall": "south", "at": -2.15, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
-        { "wall": "east", "at": 0, "width": 2.4, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
-        { "wall": "west", "at": 0, "width": 2.4, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false }
+        // The three south openings tile the wall exactly between them — the
+        // door at world x = 2.6 covers local 1.25 to 2.35, and a railing takes
+        // everything either side of it — because two openings that overlap
+        // would cut each other's panels to ribbons.
+        { "wall": "south", "at": -1.175, "width": 4.85, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
+        { "wall": "south", "at": 1.8, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
+        { "wall": "south", "at": 2.975, "width": 1.25, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
+        { "wall": "east", "at": 0, "width": 3.0, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
+        { "wall": "west", "at": 0, "width": 3.0, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false }
       ],
 
       "shelves": [],
 
-      // The cabin's south door is at world x = 2.6, and you step straight out
-      // of it onto the decking — so the table and chairs sit west of it rather
-      // than in front of it.
+      // The cabin's south door is at world x = 2.6 and the steps are directly
+      // below it, so the whole of that lane is kept bare. The table, the chairs
+      // and the bench live west of it, where nobody has to walk.
       "furniture": [
-        { "id": "porch-table", "kind": "table", "at": [-0.3, 0.2], "facing": 0, "size": [1.0, 0.8] },
-        { "id": "porch-chair-1", "kind": "diningchair", "at": [-0.3, 1.0], "facing": 180 },
-        { "id": "porch-chair-2", "kind": "diningchair", "at": [-0.3, -0.6], "facing": 0 },
-        { "id": "porch-bench", "kind": "bench", "at": [-2.1, 0.2], "facing": 90 },
-        { "id": "porch-plant", "kind": "plant", "at": [2.6, -0.9], "facing": 0, "height": 0.7 },
-        { "id": "porch-lamp", "kind": "pendant", "at": [-0.3, 0.2], "facing": 0, "y": 2.2, "on": false },
+        { "id": "porch-table", "kind": "table", "at": [-1.0, 0.1], "facing": 0, "size": [1.1, 0.8] },
+        { "id": "porch-chair-1", "kind": "diningchair", "at": [-1.0, 0.95], "facing": 180 },
+        { "id": "porch-chair-2", "kind": "diningchair", "at": [-1.0, -0.75], "facing": 0 },
+        { "id": "porch-bench", "kind": "bench", "at": [-3.0, 0.1], "facing": 90 },
+        { "id": "porch-plant", "kind": "plant", "at": [3.1, -1.4], "facing": 0, "height": 0.7 },
+        { "id": "porch-lamp", "kind": "pendant", "at": [-1.0, 0.1], "facing": 0, "y": 2.2, "on": false },
 
-        // Down onto the grass. The treads are decoration: the drop from the
-        // decking to the ground is 24 cm, which is inside the step the walk
-        // controller will take unaided, so the steps are what makes it look
-        // like somewhere to walk down rather than somewhere to fall off.
-        { "id": "porch-step", "kind": "step", "at": [-2.15, 1.81], "facing": 0 }
+        // Down onto the grass, straight out of the cabin's south door. The
+        // treads are decoration: the drop from the decking to the ground is
+        // 24 cm, which is inside the step the walk controller will take
+        // unaided, so the steps are what makes it look like somewhere to walk
+        // down rather than somewhere to fall off.
+        { "id": "porch-step", "kind": "step", "at": [1.8, 2.21], "facing": 0 }
+      ]
+    },
+
+    {
+      "id": "lakehouse",
+      "name": "The lake house",
+      // The second building. Nothing in the format ever said there had to be
+      // one house: a library folder can describe as many as it likes, and the
+      // trail between them is drawn from world/terrain.ts — the *route* between
+      // two buildings is a fact about the valley rather than about either one.
+      //
+      // Sited on the rise above the south-west shore, clear of the walk round
+      // the water: near enough that the lake fills the north window, far enough
+      // that the path passes it rather than going through it.
+      "origin": [-22, -4.6],
+      "size": [5.0, 4.4],
+      "height": 2.9,
+      "roof": { "kind": "gable", "pitch": 32, "overhang": 0.5, "fall": "south" },
+
+      "openings": [
+        // North, onto the deck and the water: a door at one end and the window
+        // that the whole building is an excuse for at the other.
+        { "wall": "north", "at": -1.4, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" },
+        { "wall": "north", "at": 1.0, "width": 2.2, "height": 1.5, "sill": 0.85, "kind": "window" },
+        // The way in, off the trail.
+        { "wall": "south", "at": 1.4, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" },
+        { "wall": "west", "at": -0.6, "width": 1.2, "height": 1.2, "sill": 0.95, "kind": "window" },
+        { "wall": "east", "at": 1.5, "width": 1.2, "height": 1.2, "sill": 0.95, "kind": "window" }
+      ],
+
+      "shelves": [
+        { "id": "lake-0", "at": [2.325, -1.0], "facing": 270, "rows": 5 },
+        { "id": "lake-1", "at": [2.325, 0.2], "facing": 270, "rows": 5 }
+      ],
+
+      "furniture": [
+        // A stove at the west end of the south wall, well clear of the door.
+        { "id": "lake-stove", "kind": "fireplace", "at": [-1.2, 1.95], "facing": 180, "size": [0.9, 0.5], "height": 1.3 },
+        { "id": "lake-rug", "kind": "rug", "at": [-0.4, 0.3], "facing": 0, "size": [2.4, 2.0] },
+        { "id": "lake-chair", "kind": "armchair", "at": [-0.5, 0.5], "facing": 175 },
+        { "id": "lake-stool", "kind": "footstool", "at": [-0.5, -0.4], "facing": 175 },
+        { "id": "lake-table", "kind": "sidetable", "at": [0.7, 0.7], "facing": 0 },
+        { "id": "lake-lamp", "kind": "floorlamp", "at": [-1.8, 0.9], "facing": 0 },
+        { "id": "lake-plant", "kind": "plant", "at": [1.7, -1.7], "facing": 0, "height": 0.7 },
+        { "id": "picture-6", "kind": "picture", "at": [-2.44, 1.2], "facing": 90, "y": 1.5, "size": [0.6, 0.8] },
+        { "id": "lake-pendant", "kind": "pendant", "at": [0, 0], "facing": 0, "y": 2.15 }
+      ]
+    },
+
+    {
+      "id": "lakedeck",
+      "name": "The lake deck",
+      // Flush against the lake house's north wall, the way the porch is flush
+      // against the cabin's south one. Its railing is the same trick: an
+      // unglazed window with a waist-high sill.
+      //
+      // It is low and its roof is shallow deliberately. A lean-to climbs the
+      // whole of its span to the high side, so at the porch's 18 degrees this
+      // one would peak at 3.3 m — a third of a metre *through* the wall of a
+      // 2.9 m house. Ten degrees over 2.4 m of deck tucks under it instead.
+      "origin": [-22, -8.0],
+      "size": [5.0, 2.4],
+      "height": 2.3,
+      "outdoor": true,
+      "walls": ["north", "east", "west"],
+      "roof": { "kind": "shed", "pitch": 10, "fall": "north" },
+
+      "openings": [
+        { "wall": "north", "at": 0, "width": 4.2, "height": 1.5, "sill": 0.95, "kind": "window", "glazed": false },
+        { "wall": "east", "at": 0, "width": 1.8, "height": 1.5, "sill": 0.95, "kind": "window", "glazed": false },
+        { "wall": "west", "at": 0, "width": 1.8, "height": 1.5, "sill": 0.95, "kind": "window", "glazed": false }
+      ],
+
+      "shelves": [],
+
+      "furniture": [
+        { "id": "deck-bench", "kind": "bench", "at": [-1.5, 0.1], "facing": 0 },
+        { "id": "deck-table", "kind": "table", "at": [0.9, 0.0], "facing": 0, "size": [0.9, 0.7], "height": 0.7 },
+        { "id": "deck-chair", "kind": "diningchair", "at": [0.9, 0.8], "facing": 180 },
+        { "id": "deck-plant", "kind": "plant", "at": [2.0, -0.7], "facing": 0, "height": 0.6 },
+        { "id": "deck-lamp", "kind": "pendant", "at": [0, 0], "facing": 0, "y": 1.95, "on": false }
       ]
     }
   ]

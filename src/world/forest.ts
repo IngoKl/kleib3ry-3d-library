@@ -1,6 +1,6 @@
 import { between, mulberry32 } from '../lib/rng'
 import type { Bounds, Solid } from './derive'
-import { GROUND_Y, LAKE, PATH, lakeRadius } from './terrain'
+import { GROUND_Y, LAKE, PATH, TRAIL_WIDTH, lakeRadius, onTrail } from './terrain'
 
 /**
  * The forest, as data.
@@ -45,17 +45,22 @@ export const PROPORTIONS: Record<Species, { trunk: number; canopyFrom: number; g
 }
 
 /**
- * True where a tree would be standing in the lake, on the shore path, in the
- * view from the north windows, or in the kitchen.
+ * True where a tree would be standing in the lake, on the shore path, on the
+ * trail between the buildings, in the view from the north windows, or in the
+ * kitchen.
  *
- * The path is the new one. A walk round the water is only a walk if the trees
- * leave room for it: grown without this, the ring of ground just above the
- * beach is exactly where the tree line is densest, and "walk around the pond"
- * becomes a hundred metres of squeezing between trunks.
+ * The two paths are the reason this is a function rather than a rectangle test.
+ * A walk round the water is only a walk if the trees leave room for it: grown
+ * without this, the ring of ground just above the beach is exactly where the
+ * tree line is densest, and "walk around the pond" becomes a hundred metres of
+ * squeezing between trunks. The trail to the lake house is the same argument
+ * over a straighter line — and it is cleared a little wider than it is drawn,
+ * so the walk has shoulders rather than trunks at the verge.
  */
 export function occupied(x: number, z: number, keepOut: readonly Bounds[]): boolean {
   const r = lakeRadius(x, z)
   if (r < PATH.to) return true
+  if (onTrail(x, z, TRAIL_WIDTH)) return true
   // The sight-line from the north windows down to the water.
   if (z < LAKE.viewFrom && Math.abs(x - LAKE.x) < LAKE.viewX) return true
   for (const box of keepOut) {

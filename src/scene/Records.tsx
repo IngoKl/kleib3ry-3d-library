@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
+import { approach } from '../lib/ease'
 import { hashId } from '../data/dimensions'
 import {
   ASSIGNABLE_SLOTS,
@@ -225,7 +226,7 @@ export function Records() {
     const mesh = meshRef.current
     if (!mesh || filed.length === 0) return
     const focused = useAppStore.getState().focusedRecord
-    const rate = Math.min(1, delta * 10)
+    const rate = approach(10, delta)
     let dirty = false
 
     for (let i = 0; i < filed.length; i++) {

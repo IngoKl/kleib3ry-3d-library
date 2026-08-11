@@ -69,6 +69,13 @@ export const FURNITURE_SIZE: Record<
   // is, and solid because it stands on the floor on its own stand.
   crt: { width: 0.6, depth: 0.56, height: 0.52, solid: true, surface: false },
   coffeemaker: { width: 0.24, depth: 0.28, height: 0.36, solid: false, surface: false },
+  // The catalogue terminal: a monitor on a box, with a keyboard in front of it.
+  // Not solid — it stands on a desk, and a collider on a desk is a collider you
+  // walk into standing beside the desk.
+  computer: { width: 0.46, depth: 0.44, height: 0.44, solid: false, surface: false },
+  // A pad of notes. Small enough that its footprint is only ever used to work
+  // out where the crosshair has to be pointing.
+  postits: { width: 0.13, depth: 0.13, height: 0.035, solid: false, surface: false },
   fireplace: { width: 1.2, depth: 0.5, height: 1.5, solid: true, surface: false },
   floorlamp: { width: 0.36, depth: 0.36, height: 1.66, solid: true, surface: false },
   pendant: { width: 0.3, depth: 0.3, height: 0.3, solid: false, surface: false },
@@ -100,7 +107,13 @@ export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair
 export const LAMPS = new Set<FurnitureKind>(['floorlamp', 'pendant', 'fireplace'])
 
 /** Furniture you operate rather than sit on or fill: press E and something happens. */
-export const APPLIANCES = new Set<FurnitureKind>(['recordplayer', 'crt', 'coffeemaker'])
+export const APPLIANCES = new Set<FurnitureKind>([
+  'recordplayer',
+  'crt',
+  'coffeemaker',
+  'computer',
+  'postits',
+])
 
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number }
 

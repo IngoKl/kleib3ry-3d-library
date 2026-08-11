@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { makeHand } from './hand'
 import { useAppStore } from '../state/store'
 import { useMediaStore } from '../state/media'
 import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
@@ -29,9 +30,7 @@ export function HeldRecord() {
   useEffect(() => () => cover?.dispose(), [cover])
 
   const drift = useRef(0)
-  const forward = useRef(new THREE.Vector3())
-  const right = useRef(new THREE.Vector3())
-  const up = useRef(new THREE.Vector3())
+  const hand = useMemo(makeHand, [])
 
   useFrame((_, delta) => {
     const node = group.current
@@ -39,17 +38,16 @@ export function HeldRecord() {
 
     drift.current += delta
 
-    camera.getWorldDirection(forward.current)
-    right.current.crossVectors(forward.current, camera.up).normalize()
-    up.current.crossVectors(right.current, forward.current).normalize()
+    // The hand lags the head, so a turn swings it out a little. See `hand.ts`.
+    const { quaternion, forward, right, up } = hand.follow(camera, delta)
 
     node.position
       .copy(camera.position)
-      .addScaledVector(forward.current, 0.5)
-      .addScaledVector(right.current, 0.24)
-      .addScaledVector(up.current, -0.22)
+      .addScaledVector(forward, 0.5)
+      .addScaledVector(right, 0.24)
+      .addScaledVector(up, -0.22)
 
-    node.quaternion.copy(camera.quaternion)
+    node.quaternion.copy(quaternion)
     node.rotateY(-0.5 + Math.sin(drift.current * 0.6) * 0.04)
     node.rotateX(0.12 + Math.sin(drift.current * 0.45) * 0.02)
   })

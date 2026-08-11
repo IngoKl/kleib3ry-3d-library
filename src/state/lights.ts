@@ -29,12 +29,20 @@ type LightsState = {
    * should bring the daylight back along with every lamp.
    */
   night: boolean
+  /**
+   * Whether it is raining. The same kind of fact as `night` — how the world is
+   * right now rather than how the app is configured — so it is saved in the
+   * same small file and comes back with it.
+   */
+  rain: boolean
   loaded: boolean
   load: () => Promise<void>
   /** Flip one lamp. Returns whether it is now lit. */
   toggle: (id: string, defaultOn: boolean) => boolean
   /** Day to night and back. Returns whether it is now night. */
   toggleNight: () => boolean
+  /** Rain on and off. Returns whether it is now raining. */
+  toggleRain: () => boolean
   /** Turn everything in the library off, or back on. */
   setAll: (ids: readonly string[], on: boolean) => void
   isOn: (id: string, defaultOn: boolean) => boolean
@@ -49,6 +57,7 @@ export const useLightStore = create<LightsState>((set, get) => {
       schemaVersion: LIGHT_SCHEMA_VERSION,
       on: get().on,
       night: get().night,
+      rain: get().rain,
     }
     // A light that will not save is not worth interrupting anybody over; the
     // room is still lit the way they asked for this session.
@@ -67,12 +76,18 @@ export const useLightStore = create<LightsState>((set, get) => {
   return {
     on: {},
     night: false,
+    rain: false,
     loaded: false,
 
     load: async () => {
       try {
         const saved = await library.loadLights()
-        set({ on: saved?.on ?? {}, night: saved?.night ?? false, loaded: true })
+        set({
+          on: saved?.on ?? {},
+          night: saved?.night ?? false,
+          rain: saved?.rain ?? false,
+          loaded: true,
+        })
       } catch {
         set({ loaded: true })
       }
@@ -83,6 +98,13 @@ export const useLightStore = create<LightsState>((set, get) => {
     toggleNight: () => {
       const next = !get().night
       set({ night: next })
+      scheduleSave()
+      return next
+    },
+
+    toggleRain: () => {
+      const next = !get().rain
+      set({ rain: next })
       scheduleSave()
       return next
     },

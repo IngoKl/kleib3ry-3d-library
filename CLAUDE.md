@@ -125,6 +125,16 @@ FLAC Vorbis comments only, in [core/src/probe/audio.rs](core/src/probe/audio.rs)
 to keep the shipped licence surface where it is. A tape is not probed at all: its
 filename is its title and its folder is its series.
 
+**Both formats open.** Everything above [src/reader/source.ts](src/reader/source.ts)
+is written against "a thing with pages you can rasterise" rather than against
+pdf.js, so the drag, the turn, bookmarks, `J` and `P` are identical for a PDF and
+an EPUB. An EPUB is unzipped by [src/reader/zip.ts](src/reader/zip.ts) with the
+platform's own `DecompressionStream` (no dependency), reduced to headings and
+paragraphs by [epub.ts](src/reader/epub.ts), and set in type by
+[epubPages.ts](src/reader/epubPages.ts). Pagination happens *once, in abstract
+units, at open time* — not at the texture's pixel size — so page 200 is page 200
+on any monitor and a bookmark keeps meaning something.
+
 **Book appearance is a pure function of index data.** [src/data/dimensions.ts](src/data/dimensions.ts)
 derives thickness from page count (estimated from file size for EPUBs, which have
 none), and height/depth/colour from a hash of the book id — arbitrary but stable, so
@@ -151,24 +161,39 @@ nowhere useful.
 
 **The ground is walkable, and the outdoors is world data.**
 [src/world/terrain.ts](src/world/terrain.ts) owns the site — ground height, the lake
-as an ellipse, the beach, the path round it, the radius the world ends at — and both
-`Outside.tsx` and `floorAt` read it, because a shoreline you can see in one place and
-stand in in another is the bug that arrangement prevents.
-[src/world/forest.ts](src/world/forest.ts) does the same for the trees: grown once in
-`deriveWorld`, then both drawn and collided with from that one list. Only trunks are
-solid.
+as an ellipse, the beach, the path round it, the trail between the buildings, the
+radius the world ends at — and both `Outside.tsx` and `floorAt` read it, because a
+shoreline you can see in one place and stand in in another is the bug that
+arrangement prevents. [src/world/forest.ts](src/world/forest.ts) does the same for
+the trees: grown once in `deriveWorld`, then both drawn and collided with from that
+one list. Only trunks are solid. A library folder may describe **more than one
+building** — the default map has the cabin and the lake house — which needs nothing
+in the format, because a building is rooms somewhere else.
 
 **Book identity is content-based, not path-based.** `book_id` in
 [core/src/index.rs](core/src/index.rs) hashes file length plus the first
 64 KiB, so moving or renaming a file keeps its shelf position and progress.
 
 **State is split by lifetime.** `state/store.ts` holds session/UI state (mode, crosshair
-focus, held book, held tape, held sheet, driver). `state/library.ts` holds the catalogue,
-shelving and pins, reconciles a saved layout against the latest scan on load, and
-debounces layout saves (600 ms). `state/lights.ts`, `state/media.ts` and
-`state/video.ts` own the smaller save files, the record player and the television.
-`state/player.ts` and `state/metrics.ts` are plain mutable objects deliberately
-outside zustand — they change every frame and must not trigger React renders.
+focus, held book, held tape, held sheet, driver, whether you have gone in yet).
+`state/library.ts` holds the catalogue, shelving and pins, reconciles a saved layout
+against the latest scan on load, and debounces layout saves (600 ms).
+`state/lights.ts`, `state/media.ts` and `state/video.ts` own the smaller save files,
+the record player and the television. `state/player.ts`, `state/cat.ts` and
+`state/metrics.ts` are plain mutable objects deliberately outside zustand — they
+change every frame and must not trigger React renders.
+
+**A room fact goes in the library folder; a machine fact does not.** Which lamps
+are on, whether it is night and whether it is raining live in `lights.json` and
+travel with the library. Low performance mode, the body, the volume and the mouse
+sensitivity live in `state/settings.ts`, backed by `localStorage` — a folder you
+sync to another computer must not carry an assertion about that computer's GPU.
+
+**The HUD is what is under the crosshair and what is going wrong; everything else
+is behind a key.** The main menu (`src/ui/MainMenu.tsx`) chooses a library while
+the room loads *behind* it, and settings (`F2`) hold the switches. Nothing reaches
+the room until you have gone in — `roomHasKeyboard()` in `state/store.ts` is the
+one place that decides, and every key handler asks it.
 
 Anything that re-derives the world (`setPlacements`) re-reconciles the whole library, so
 it belongs on an *edit* and never in a frame loop: carrying a moving box renders a

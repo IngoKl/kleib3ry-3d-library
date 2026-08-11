@@ -4,6 +4,7 @@ import { FurnitureLights } from './Furniture'
 import { roomBounds } from '../world/derive'
 import type { RoomSpec } from '../world/schema'
 import { useLightStore } from '../state/lights'
+import { useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 
 /**
@@ -27,7 +28,20 @@ import { useWorldStore } from '../state/world'
  * is a stage set rather than an afternoon.
  */
 
-function RoomFill({ room, unlit, night }: { room: RoomSpec; unlit: boolean; night: boolean }) {
+function RoomFill({
+  room,
+  unlit,
+  night,
+  rain,
+  reveals,
+}: {
+  room: RoomSpec
+  unlit: boolean
+  night: boolean
+  rain: boolean
+  /** False in low performance mode: see `Lighting` for what that is buying. */
+  reveals: boolean
+}) {
   const [cx, cz] = room.origin
   const bounds = roomBounds(room)
 
@@ -46,7 +60,7 @@ function RoomFill({ room, unlit, night }: { room: RoomSpec; unlit: boolean; nigh
           unglazed opening — a balustrade, a porch railing — is not a window and
           does not light anything. At night the same wash goes cold and faint:
           moonlight on the reveal rather than sky. */}
-      {room.openings
+      {(reveals ? room.openings : [])
         .filter((opening) => opening.kind === 'window' && opening.glazed)
         .map((opening, i) => {
           const y = room.elevation + opening.sill + opening.height / 2
@@ -63,9 +77,9 @@ function RoomFill({ room, unlit, night }: { room: RoomSpec; unlit: boolean; nigh
             <pointLight
               key={`win-${i}`}
               position={position}
-              intensity={night ? 1.0 : 2.8}
+              intensity={night ? 1.0 : rain ? 1.7 : 2.8}
               distance={night ? 7 : 9}
-              color={night ? '#5c6478' : '#dceaf6'}
+              color={night ? '#5c6478' : rain ? '#b6c2c9' : '#dceaf6'}
             />
           )
         })}
@@ -76,6 +90,17 @@ function RoomFill({ room, unlit, night }: { room: RoomSpec; unlit: boolean; nigh
 export function Lighting() {
   const world = useWorldStore((s) => s.world)
   const night = useLightStore((s) => s.night)
+  const rain = useLightStore((s) => s.rain)
+  /**
+   * Low performance mode drops the window reveals and the shadow map.
+   *
+   * The reveals are the expensive half and the surprising one: they are a point
+   * light per glazed opening, and the default cabin has fourteen of them, all
+   * of which every lit fragment in the building has to be shaded against. The
+   * ambient floor is raised to make up for them, so a room is dimmer and
+   * flatter rather than dark.
+   */
+  const low = useSettings((s) => s.lowPerformance)
 
   /** One shadow camera wide enough to cover every room in the document. */
   const extent = useMemo(() => {
@@ -127,9 +152,18 @@ export function Lighting() {
       {/* The daytime fill is warm and a notch lower than it used to be: even
           white light at office levels is what made the cabin read as a meeting
           room. The sun below carries more of the day instead. */}
-      <ambientLight intensity={night ? 0.34 : 0.38} color={night ? '#a8967e' : '#fdf2e0'} />
+      <ambientLight
+        intensity={(night ? 0.34 : rain ? 0.42 : 0.38) + (low ? 0.16 : 0)}
+        color={night ? '#a8967e' : rain ? '#e2e6e6' : '#fdf2e0'}
+      />
       <hemisphereLight
-        args={night ? ['#41465c', '#33291e', 0.45] : ['#cfdff0', '#8a6f4c', 0.5]}
+        args={
+          night
+            ? ['#41465c', '#33291e', 0.45]
+            : rain
+              ? ['#9fabb2', '#6c6350', 0.55]
+              : ['#cfdff0', '#8a6f4c', 0.5]
+        }
       />
 
       {/* Low and to the north-west, which is where the lake is: afternoon
@@ -139,9 +173,12 @@ export function Lighting() {
       <directionalLight
         position={[midX - spanX * 0.5, extent.height + radius * 0.55, extent.minZ - radius * 0.7]}
         target={sunTarget}
-        intensity={night ? 0.35 : 1.9}
-        color={night ? '#b4c4e2' : '#ffe6c2'}
-        castShadow
+        // Under cloud the sun is not dimmer so much as *diffuse*: most of the
+        // day arrives through the hemisphere above rather than as a beam, which
+        // is why the direct light drops much further than the room does.
+        intensity={night ? 0.35 : rain ? 0.55 : 1.9}
+        color={night ? '#b4c4e2' : rain ? '#cdd4d6' : '#ffe6c2'}
+        castShadow={!low}
         shadow-mapSize={[2048, 2048]}
         // Square and generous. The frustum is in the *light's* view space, so a
         // box sized to the building's plan does not cover the building once the
@@ -158,7 +195,14 @@ export function Lighting() {
       />
 
       {world?.rooms.map((room) => (
-        <RoomFill key={room.id} room={room} unlit={unlit.has(room.id)} night={night} />
+        <RoomFill
+          key={room.id}
+          room={room}
+          unlit={unlit.has(room.id)}
+          night={night}
+          rain={rain}
+          reveals={!low}
+        />
       ))}
       <FurnitureLights />
     </>

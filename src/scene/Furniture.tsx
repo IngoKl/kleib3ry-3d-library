@@ -53,6 +53,10 @@ const CASING_DARK = '#8e887a'
 const TUBE_OFF = '#2b322e'
 const BOARD_WHITE = '#eef0ee'
 const ALUMINIUM = '#a9aeb0'
+// The colour every office machine was between about 1984 and 1997, and the
+// shadow side of it.
+const PUTTY = '#c9c2ad'
+const PUTTY_DARK = '#a29a86'
 
 /** Warm bulb colour, shared by everything that lights the room. */
 const BULB = '#ffd9a0'
@@ -1072,6 +1076,80 @@ function Crt({
 }
 
 /**
+ * The catalogue terminal: a monitor on a box, with a keyboard in front of it.
+ *
+ * Deliberately the oldest computer in the building. A library's index used to be
+ * a cabinet of cards and then, for about fifteen years, exactly this — a green
+ * screen on a counter that told you where a thing was and nothing else. What it
+ * actually does lives in the HUD, because a search you type is a search you have
+ * to be able to read; this is the thing you walk up to.
+ */
+function Computer({ width, depth, height, awake }: { width: number; depth: number; height: number; awake: boolean }) {
+  const screenW = width * 0.62
+  const screenH = height * 0.5
+
+  return (
+    <group>
+      {/* The case, tipped back a little on its own feet the way they were. */}
+      <mesh position={[0, height * 0.42, -depth * 0.14]} rotation-x={-0.07} castShadow receiveShadow>
+        <boxGeometry args={[width * 0.78, height * 0.7, depth * 0.62]} />
+        <meshStandardMaterial color={PUTTY} roughness={0.78} />
+      </mesh>
+      <mesh position={[0, height * 0.06, -depth * 0.14]} castShadow>
+        <boxGeometry args={[width * 0.64, height * 0.12, depth * 0.5]} />
+        <meshStandardMaterial color={PUTTY_DARK} roughness={0.85} />
+      </mesh>
+      {/* The glass, and the phosphor behind it. Not a texture: what is on this
+          screen is a DOM overlay, and a fake page of type under a real one is
+          two different searches in one room. */}
+      <mesh position={[0, height * 0.46, -depth * 0.14 + depth * 0.31 * Math.cos(0.07)]} rotation-x={-0.07}>
+        <planeGeometry args={[screenW, screenH]} />
+        <meshStandardMaterial
+          color={awake ? '#1b3324' : '#16211b'}
+          emissive={awake ? '#5ce08a' : '#20402c'}
+          emissiveIntensity={awake ? 0.9 : 0.22}
+          roughness={0.2}
+        />
+      </mesh>
+      {/* The keyboard, at the front where a hand would be. */}
+      <mesh position={[0, 0.016, depth * 0.3]} rotation-x={-0.06} castShadow receiveShadow>
+        <boxGeometry args={[width * 0.86, 0.03, depth * 0.3]} />
+        <meshStandardMaterial color={PUTTY_DARK} roughness={0.85} />
+      </mesh>
+    </group>
+  )
+}
+
+/**
+ * A pad of notes, on a desk.
+ *
+ * Sheets rather than a block: the top one is a hair proud of the rest and every
+ * sheet under it is offset by a fraction of a millimetre, because a pad you can
+ * see the leaves of is the difference between "a stack of paper" and "a yellow
+ * cube". Taking one is `E`, which opens the field you write on it.
+ */
+function PostIts({ width, depth }: { width: number; depth: number }) {
+  const leaves = 9
+  const leaf = 0.0035
+  return (
+    <group>
+      {Array.from({ length: leaves }, (_, i) => (
+        <mesh
+          key={i}
+          position={[((i % 3) - 1) * 0.0009, leaf * (i + 0.5), ((i % 2) - 0.5) * 0.0012]}
+          rotation-y={((i * 37) % 11) / 11 - 0.5 > 0 ? 0.012 : -0.014}
+          castShadow={i === leaves - 1}
+          receiveShadow
+        >
+          <boxGeometry args={[width, leaf, depth]} />
+          <meshStandardMaterial color={i === leaves - 1 ? '#f4e276' : '#e8d76a'} roughness={0.95} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/**
  * Two treads hanging off the edge of a deck.
  *
  * Not solid, and not a `stairs`: the drop from the decking to the ground is 24 cm,
@@ -1105,6 +1183,9 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
   const paused = useMediaStore((s) => s.paused)
   const tape = useVideoStore((s) => (item.kind === 'crt' ? s.playing : null))
   const brewing = useAppStore((s) => s.brewing === item.id)
+  // The terminal's screen lights when its search is open, so the thing you are
+  // typing into is visibly the thing in front of you.
+  const searching = useAppStore((s) => (item.kind === 'computer' ? s.searching : false))
 
   const body = (() => {
     switch (item.kind) {
@@ -1140,6 +1221,12 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <KitchenCounter width={item.width} depth={item.depth} height={item.height} />
       case 'coffeemaker':
         return <CoffeeMaker brewing={brewing} />
+      case 'computer':
+        return (
+          <Computer width={item.width} depth={item.depth} height={item.height} awake={searching} />
+        )
+      case 'postits':
+        return <PostIts width={item.width} depth={item.depth} />
       case 'recordshelf':
         return <RecordShelf width={item.width} depth={item.depth} height={item.height} />
       case 'recordplayer':

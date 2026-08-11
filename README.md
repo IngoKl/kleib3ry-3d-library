@@ -13,12 +13,12 @@ indexed in [docs/](docs/README.md).
 **Status: you can walk it, live in it, and read in it.** The default library is a
 cabin in the woods: a great room with a hearth, a loft up a flight of stairs, a
 reading corner with a bedroom above it looking over the lake, a kitchen, an office
-with a whiteboard, and a porch looking into the forest. Eighteen bookcases and
+with a whiteboard, and a porch looking into the forest. Twenty bookcases and
 ~1,700 books, first-person movement with collisions and stairs, a crosshair that
 finds a book and takes it off the shelf, and page-by-page reading on a curved
-mesh. There is a lake through the north window — and out through the gap in the
-porch railing there is grass, a forest you can walk into, and a path round the
-water.
+mesh — **PDF or EPUB**. There is a lake through the north window; out past the
+porch steps there is grass, a forest you can walk into, a path round the water,
+and a trail to a second building, the lake house on the far shore.
 
 **The room is furnished as well as shelved.** A record player wired to your
 `music/` folder, a television and a crate of tapes wired to your `video/` folder,
@@ -28,7 +28,16 @@ and a floor you can simply drop one onto.
 
 **And it is somewhere you can leave things.** Tear a copy of a page out of a book
 — the book keeps its own — and pin it to the office whiteboard, or to any wall in
-the house. Type a note and stick that up too.
+the house. Type a note and stick that up too, or take one off the pad on the desk.
+Sheets have a body: an edge, a shadow, and a corner lifting off the plaster.
+
+**There is an index, and there is weather, and there is a cat.** The terminal on
+the office desk searches every book, record, tape and picture the library knows
+about and tells you which case, which shelf and which room — and then you walk
+there, because a library that teleports you is a library with no rooms in it.
+Rain falls outside and beads on the windows. The cat roams, sleeps, comes when
+you call it more often than not, purrs when you make a fuss of it, and will go and
+fetch you a book off a shelf if you ask.
 
 **A library arrives in boxes.** A freshly indexed collection is stacked in the
 four moving boxes on the floor, and the shelves start empty: unpacking is yours
@@ -47,8 +56,8 @@ for the record player, `artwork/` for the walls, `video/` for the television. Th
 Rust indexer is wired: `choose folder…` then `scan` in the desktop app indexes the
 PDFs and EPUBs in `books/` and leaves the other three alone. In the browser build
 there is no filesystem, so the boxes are filled from a **placeholder catalogue**
-plus one real generated PDF (`sample-book.pdf`) so read mode can be tested
-headlessly.
+plus two real generated books — `sample-book.pdf` and `sample-book.epub` — so both
+halves of read mode can be tested headlessly.
 
 ## About the Name
 
@@ -89,22 +98,26 @@ the same shelves, read in a browser — see [docs/docker.md](docs/docker.md).
 | `shift` | run |
 | `ctrl` | kneel, to read the bottom shelf — held, not toggled |
 | `Z` | zoom in — held, like kneeling. The right mouse button does the same |
-| `E` | take the book, record or tape under the crosshair; put it on the shelf, in the box, on the table, on the deck or in the television you are looking at; pin the sheet in your hand to a wall, or take one down; sit down — with a book in hand, if reading is the plan; switch a lamp; put the coffee on |
+| `E` | take the book, record or tape under the crosshair; put it on the shelf, in the box, on the table, on the deck or in the television you are looking at; pin the sheet in your hand to a wall, or take one down; sit down — with a book in hand, if reading is the plan; switch a lamp; put the coffee on; search the catalogue; take a note off the pad; make a fuss of the cat |
 | `Q` | drop the book you are holding — it falls, tumbles and stays where it lands; a record or a tape files itself back where it came from; a sheet of paper is thrown away |
 | `O` | put it down open, at the page you were on |
 | `G` | empty the box you are looking at onto the shelves |
 | `X` | pick up the moving box you are looking at and carry it; `X` again sets it down |
 | `L` | write a label on the bookcase you are aiming at |
 | `T` | write a note to pin up — then `E` at whatever wall you want it on |
-| `F` | draw the book under the crosshair out to look at its cover |
-| `R` | read the book in your hand |
+| `F` | draw the book under the crosshair out to look at its cover — or, aimed at the cat, ask it to fetch you one |
+| `R` | read the book in your hand — PDF or EPUB |
+| `V` | call the cat |
 | drag | while reading, drag a page across to turn it — let go early and it falls back |
 | `←` `→` | turn pages without dragging; `Esc` closes the book |
 | `B` | put a bookmark in the page you are on, or take it out again |
 | `P` | while reading, tear out a copy of the page — the book keeps its own |
 | `J` | while reading, go to a page by number |
+| `N` | day to night and back |
+| `K` | rain on and off |
 | `H` | hide the interface, and bring it back |
 | `F1` | the controls card, in the room |
+| `F2` | settings |
 
 Bookmarks are slips standing out of the top of the book, placed along its width
 by how far in they are, and each one is a different colour with a stitched edge
@@ -116,6 +129,23 @@ and picking it up again and pressing `R` puts you back on that page.
 
 There are no modes to choose. You are walking, or you are reading a book you
 opened — and `Esc` gets you out of the second.
+
+## The menu, and settings
+
+The app opens on a main menu: which library folder, and then **go in**. The room
+loads *behind* it, so choosing is a decision rather than a wait, and nothing you
+press reaches the room until you have gone in.
+
+Settings are `F2`, and they are the things that are about your machine rather
+than about your library — **low performance mode** (no shadows, no window light,
+one pixel per pixel, for an older GPU), whether you can see your own body, the
+volume, whether sound is placed in the room, and the mouse sensitivity. They are
+kept in browser storage keyed by the app, so a library folder you copy to another
+computer does not carry an opinion about that computer.
+
+What *is* about the library — which lamps are on, whether it is night, whether it
+is raining — stays in the library folder, in `lights.json`, and comes back with
+it.
 
 ## Verify
 

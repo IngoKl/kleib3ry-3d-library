@@ -221,6 +221,10 @@ far a staircase climbs), and `on` (whether a lamp starts lit).
 | `table` `sidetable` `footstool` `kitchencounter` | solid, and you can put a book down on it |
 | `floorlamp` `pendant` `fireplace` | light. `E` switches it; the state goes to `lights.json` |
 | `recordplayer` `coffeemaker` | `E` works it. Give it a `y` so it stands on something |
+| `crt` `tapecrate` | a television and a crate that fills itself from your `video/` folder |
+| `computer` | the catalogue terminal: `E` searches the whole library and says where a thing is |
+| `postits` | a pad of notes; `E` peels one off to write on |
+| `whiteboard` | hung like a picture; `E` pins a page or a note to it |
 | `recordshelf` | a crate that fills itself from your `music/` folder |
 | `picture` | a framed image from `artwork/`; `y` is the centre of the frame |
 | `plant` | solid; `height` varies it |
@@ -319,19 +323,32 @@ the id.
 On load, a page whose book the index has lost is dropped — it is a page of
 nothing. A note is nobody's but yours and always stays.
 
-## `lights.json` — which lamps are on
+## `lights.json` — which lamps are on, and what the weather is doing
 
 Also written by the app, and deliberately tiny:
 
 ```json
-{ "schemaVersion": 1, "on": { "porch-lamp": true, "kitchen-pendant": false } }
+{
+  "schemaVersion": 1,
+  "on": { "porch-lamp": true, "kitchen-pendant": false },
+  "night": false,
+  "rain": true
+}
 ```
 
-Keyed by the `id` of a piece of furniture that gives light. A lamp missing from
-here is however `library.json` said it should start. **Delete the file and every
-light in the library comes back on** — which is a repair anybody can perform
-without knowing what a schema is, and the reason it is its own file rather than
-four more lines in `books.json`.
+`on` is keyed by the `id` of a piece of furniture that gives light. A lamp
+missing from here is however `library.json` said it should start. **Delete the
+file and every light in the library comes back on** — which is a repair anybody
+can perform without knowing what a schema is, and the reason it is its own file
+rather than four more lines in `books.json`.
+
+`night` and `rain` are here for the same reason the lamps are: they are facts
+about the room *right now* rather than settings about the app, so they belong to
+the library and travel with it. Deleting the file brings back the daylight and
+the dry weather along with every lamp. Everything that is about your *machine* —
+low performance mode, whether you can see your own body, how loud things are —
+is deliberately not here; it is in browser storage, keyed by the app, so it does
+not follow a library folder onto somebody else's computer.
 
 ## What happens to your books when you change the room
 

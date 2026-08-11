@@ -60,7 +60,10 @@ function worldWith(edit: (doc: WorldDocument) => void) {
 test.describe('world document', () => {
   test('the default the app writes for you actually parses', () => {
     // The cabin: a great room, the loft inside its volume, a reading corner
-    // with the bedroom on top of it, a kitchen and a porch.
+    // with the bedroom on top of it, a kitchen, an office and a porch — and
+    // then, a trail away across the site, the lake house and its deck. Two
+    // buildings in one document, which the format always allowed and nothing
+    // had ever done.
     expect(WORLD.rooms.map((r) => r.id)).toEqual([
       'main',
       'loft',
@@ -69,6 +72,8 @@ test.describe('world document', () => {
       'kitchen',
       'office',
       'porch',
+      'lakehouse',
+      'lakedeck',
     ])
     expect(WORLD.shelves.length).toBeGreaterThan(10)
     expect(WORLD.furniture.some((f) => f.kind === 'box')).toBe(true)
@@ -308,7 +313,7 @@ test.describe('the roof', () => {
     expect(roofOf('loft')).toBeUndefined()
     expect(roofOf('reading')).toBeUndefined()
 
-    for (const id of ['main', 'bedroom', 'kitchen', 'office', 'porch']) {
+    for (const id of ['main', 'bedroom', 'kitchen', 'office', 'porch', 'lakehouse', 'lakedeck']) {
       expect(roofOf(id), `${id} has no roof`).toBeDefined()
     }
   })
@@ -379,9 +384,12 @@ test.describe('outside', () => {
   })
 
   test('you can walk out of the porch and down onto the grass', () => {
-    // Out through the gap in the south railing at world x = -0.85. The drop from
-    // the decking is 24 cm, which is a step rather than a fall.
-    let stance: Stance = { x: -0.85, z: 5.6, floor: 0 }
+    // Straight out of the cabin's south door at world x = 2.6, across the
+    // decking and down the steps, which are now directly below it — the gap in
+    // the railing used to be at the far end, so leaving meant threading between
+    // the porch furniture. The drop from the decking is 24 cm, which is a step
+    // rather than a fall.
+    let stance: Stance = { x: 2.6, z: 5.6, floor: 0 }
     for (let i = 0; i < 60; i++) {
       stance = stepPlayer(WORLD, solids, stance, { x: stance.x, z: stance.z + 0.05 }, 0.28)
     }

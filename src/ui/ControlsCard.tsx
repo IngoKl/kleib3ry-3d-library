@@ -23,16 +23,24 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
   {
     title: 'hands',
     rows: [
-      [['E'], 'take or place a book, record or tape; pin a sheet to a wall; sit down; work a lamp, the deck, the television, the coffee maker'],
+      [['E'], 'take or place a book, record or tape; pin a sheet to a wall; sit down; work a lamp, the deck, the television, the coffee maker, the catalogue'],
       [['Q'], 'drop the book in your hand — or put a held record or tape back'],
       [['O'], 'put a book down open, at the page you were on'],
       [['F'], 'draw the book under the crosshair out to see its cover'],
-      [['R'], 'read the book in your hand'],
+      [['R'], 'read the book in your hand — PDF or EPUB'],
       [['G'], 'empty the box you are looking at onto the shelves'],
       [[',', '.'], 'browse the pile in a box (the wheel works too)'],
       [['X'], 'pick up a moving box and carry it; again to set it down'],
       [['L'], 'write a label on the bookcase you are aiming at'],
       [['T'], 'write a note to pin up; E sticks it to whatever wall you look at'],
+    ],
+  },
+  {
+    title: 'the cat',
+    rows: [
+      [['V'], 'call it — it comes if it feels like it'],
+      [['E'], 'give it a fuss, when it is under the crosshair'],
+      [['F'], 'ask it for a book; it picks one off a shelf and brings it to you'],
     ],
   },
   {
@@ -50,8 +58,11 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     title: 'the room',
     rows: [
       [['N'], 'day to night and back'],
+      [['K'], 'rain on and off'],
+      [['E'], 'at the office terminal, search the whole library for anything'],
       [['H'], 'hide the interface (and bring it back)'],
       [['F1'], 'this card'],
+      [['F2'], 'settings'],
     ],
   },
 ]

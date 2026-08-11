@@ -77,6 +77,21 @@ second one no wall on the shared side. That is what the porch does: its north
 edge is the cabin's south edge, so the decking meets the floorboards with
 nothing to step over, and the cabin's own south wall is what you walk through.
 
+**A second building** is just rooms somewhere else. Nothing in the format ever
+said there had to be one house — put a room a hundred metres away and it is a
+separate building, with its own roof, its own light and its own bookcases. The
+default document does exactly this: the lake house and its deck sit on the rise
+above the south-west shore, a walk away from the cabin. Two things are worth
+knowing before you site one:
+
+- **the forest is grown around every room's footprint**, plus a few metres of
+  clearing, so a building anywhere gets somewhere to stand;
+- **the walk round the lake and the trail between the buildings are cleared
+  ground**, and putting a room on top of one means walking through your own
+  building to get past. Both live in `src/world/terrain.ts`, which is also
+  where the trail is drawn — the *route* between two buildings is a fact about
+  the valley rather than about either of them, so it is not in this file.
+
 ### Openings
 
 ```jsonc
@@ -186,7 +201,7 @@ is the right rule.
 ## Shelves
 
 ```jsonc
-{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" }
+{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5 }
 ```
 
 `rows` is how many compartments the case has; the compartments divide the same
@@ -198,10 +213,12 @@ A case is 1.0 m wide and 0.32 m deep, so `1.05` apart is the tightest a run can
 stand. The default map uses `1.2`, which leaves a hand's width between cases and
 reads as furniture rather than as built-in shelving.
 
-`label` is a *starting* label for the card on its top edge. You can relabel a
-case in the app with `L`, and that overrides what is written here — the app's
-labels live in `books.json` so that a hand edit and an in-app edit never fight
-over the same file.
+`label` is an optional *starting* label for the card on its top edge, and the
+default map deliberately uses it nowhere: a bookcase arrives bare, and you write
+on it with `L` once you have decided what is in it. A room that arrives
+pre-sorted into somebody else's categories is a room you have to undo first.
+An in-app label overrides whatever is written here — the app's labels live in
+`books.json` so that a hand edit and an in-app edit never fight over one file.
 
 **The `id` is load-bearing.** It is what `books.json` is keyed by. Move a case
 and its books move with it; rename or delete one and its books go into the
@@ -250,6 +267,8 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 | `recordplayer` | no | play (`E`) | put it on a `y` so it stands on something |
 | `crt` | yes | play a tape (`E`) | a television. `E` with a tape in hand puts it in; `E` empty-handed pauses |
 | `coffeemaker` | no | brew (`E`) | ditto |
+| `computer` | no | search (`E`) | the catalogue terminal. Searches every book, record, tape and picture the library knows about and says where each one is. Stand it on a desk with a `y` |
+| `postits` | no | take one (`E`) | a pad of notes. `E` peels one off and opens the field you write on it — the same note `T` writes |
 | `fireplace` | yes | switch (`E`) | lights the room it is in |
 | `floorlamp` | yes | switch (`E`) | |
 | `pendant` | no | switch (`E`) | hangs from `y`; do not hang one under a loft floor |

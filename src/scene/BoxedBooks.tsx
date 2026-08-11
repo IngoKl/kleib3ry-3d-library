@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
+import { approach } from '../lib/ease'
 import { makeBookGeometry, makeBookMaterial } from './bookMaterial'
 import { ASSIGNABLE_SLOTS, FIRST_ASSIGNABLE, makeBookAtlas } from './spineAtlas'
 import { packBoxes } from '../world/boxes'
@@ -209,7 +210,7 @@ export function BoxedBooks() {
     const mesh = meshRef.current
     if (!mesh || placed.length === 0) return
     const focused = useAppStore.getState().focusedBook
-    const rate = Math.min(1, delta * 10)
+    const rate = approach(10, delta)
     let dirty = false
 
     for (let i = 0; i < placed.length; i++) {

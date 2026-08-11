@@ -44,9 +44,23 @@ function audio(): HTMLAudioElement {
   if (!element) {
     element = new Audio()
     element.preload = 'none'
+    // Web Audio draws frames of a media element through a graph, and an element
+    // fetched cross-origin without this taints it — which fails silently, as
+    // silence. The same reason the `<video>` element sets it.
+    element.crossOrigin = 'anonymous'
   }
   return element
 }
+
+/**
+ * The one element the deck plays through, for the scene to place in the room.
+ *
+ * Exported alongside `setVolume` rather than instead of it: the store owns *what*
+ * is playing, and the scene owns *where you are standing relative to it*. Handing
+ * the scene the element is what lets it do the second without the store having to
+ * know that rooms exist.
+ */
+export const musicElement = audio
 
 export const useMediaStore = create<MediaState>((set, get) => ({
   tracks: [],

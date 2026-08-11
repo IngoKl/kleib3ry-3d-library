@@ -120,6 +120,17 @@ type AppState = {
   focusedPin: string | null
   /** True while the note field is open, so movement keys stay typed. */
   noting: boolean
+  /**
+   * True while the catalogue terminal's search is open.
+   *
+   * Session state, and deliberately not a mode: you are still standing in the
+   * office with the room behind the panel, exactly as you are while typing a
+   * label. It takes the keyboard for the same reason and gives it back the same
+   * way.
+   */
+  searching: boolean
+  /** True while the cat is under the crosshair, near enough to reach. */
+  focusedCat: boolean
   /** Coffee maker that is currently brewing. It stops on its own. */
   brewing: string | null
   /**
@@ -142,6 +153,17 @@ type AppState = {
   hudHidden: boolean
   /** True while the controls card is open. */
   controlsOpen: boolean
+  /** True while the settings panel is open. Settings are not HUD. */
+  settingsOpen: boolean
+  /**
+   * False until you have chosen a library and pressed enter on the main menu.
+   *
+   * The room loads *behind* the menu rather than after it, so that choosing a
+   * library is a decision rather than a wait — but nothing you do reaches the
+   * room until you have gone in, which is what keeps a keystroke aimed at the
+   * menu from also being a step forward.
+   */
+  started: boolean
 
   setMode: (mode: Mode) => void
   setSeat: (id: string | null) => void
@@ -174,7 +196,12 @@ type AppState = {
   setPinTarget: (target: PinTarget | null) => void
   setFocusedPin: (id: string | null) => void
   setNoting: (open: boolean) => void
+  setSearching: (open: boolean) => void
+  setFocusedCat: (near: boolean) => void
   setJumping: (open: boolean) => void
+  setSettingsOpen: (open: boolean) => void
+  /** Leave the main menu and go in. One way: there is no menu to go back to. */
+  start: () => void
   /** Ask the reader to open at `spread`. Cleared by the reader once it has. */
   requestJump: (spread: number | null) => void
   /** Start a brew. It runs for a while and then stops itself. */
@@ -281,6 +308,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusedShelf: null,
   hudHidden: false,
   controlsOpen: false,
+  settingsOpen: false,
+  started: false,
+  searching: false,
+  focusedCat: false,
   surfaceTarget: null,
   carriedBox: null,
   labelling: null,
@@ -357,7 +388,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().focusedPin !== focusedPin) set({ focusedPin })
   },
   setNoting: (noting) => set({ noting }),
+  setSearching: (searching) => set({ searching }),
+  // Written off the per-frame raycast, so it guards against no-op writes.
+  setFocusedCat: (focusedCat) => {
+    if (get().focusedCat !== focusedCat) set({ focusedCat })
+  },
   setJumping: (jumping) => set({ jumping }),
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  start: () => set({ started: true, settingsOpen: false }),
   requestJump: (jumpTo) => set({ jumpTo, jumping: false }),
 
   brew: (id) => {
@@ -429,3 +467,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (picked) set({ libraryRoot: picked })
   },
 }))
+
+/**
+ * Whether a keystroke is meant for the room.
+ *
+ * There are now four things that take the keyboard away from it — a shelf
+ * label, a note, the catalogue search, and the settings panel — plus the main
+ * menu, which the room is behind rather than in. Each of the three key handlers
+ * used to carry its own list of them, and each list was a different length; the
+ * one that had not heard about the search let `W` be both a letter and a step.
+ */
+export function roomHasKeyboard(): boolean {
+  const state = useAppStore.getState()
+  return (
+    state.started &&
+    !state.settingsOpen &&
+    state.labelling === null &&
+    !state.noting &&
+    !state.searching
+  )
+}

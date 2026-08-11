@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { supportAt } from '../world/derive'
 import { launchBody, throwFrom } from './drop'
-import { useAppStore } from '../state/store'
+import { roomHasKeyboard, useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
 import { player } from '../state/player'
@@ -40,7 +40,9 @@ export function Handling() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const app = useAppStore.getState()
-      if (app.labelling !== null || app.mode !== 'walk') return
+      // Auto-repeat is not an instruction — see the note in `Player.tsx`.
+      // Everything in here is a one-shot verb, so all of them are exempt.
+      if (e.repeat || !roomHasKeyboard() || app.mode !== 'walk') return
       const shelf = useLibraryStore.getState()
       const live = useWorldStore.getState().world
 

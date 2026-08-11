@@ -90,6 +90,59 @@ export const onPath = (x: number, z: number): boolean => {
 }
 
 /**
+ * The one made path on the site: from the cabin's porch steps, round the back of
+ * the reading corner and west along the slope to the lake house.
+ *
+ * A polyline rather than anything derived, for the same reason the lake is an
+ * ellipse rather than a field in `library.json`: a second building is something
+ * the document can describe, but the *route* between two of them is a fact about
+ * this valley — which side of the reading corner you go round, where the ground
+ * is walkable — and there is no decision in it anybody wants to restate.
+ *
+ * Read twice, like everything else out here: `Outside` draws it, and the forest
+ * is grown around it. A trail with trees standing in it is a clearing you have
+ * to weave through, which is not a trail.
+ */
+export const TRAIL: readonly (readonly [number, number])[] = [
+  [2.6, 8.9],
+  [-1.5, 8.6],
+  [-7.0, 6.5],
+  [-12.5, 4.0],
+  [-16.5, 0.5],
+  [-19.5, -1.5],
+  [-20.6, -2.2],
+]
+
+/** How wide the trodden ground is. Two abreast, which is what a path is. */
+export const TRAIL_WIDTH = 1.6
+
+/** Distance from a point to a segment, in plan. */
+function toSegment(
+  x: number,
+  z: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax
+  const dz = bz - az
+  const length = dx * dx + dz * dz
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / length))
+  return Math.hypot(x - (ax + dx * t), z - (az + dz * t))
+}
+
+/** True on the trodden ground, within `margin` of the centre line. */
+export function onTrail(x: number, z: number, margin = TRAIL_WIDTH / 2): boolean {
+  for (let i = 1; i < TRAIL.length; i++) {
+    const [ax, az] = TRAIL[i - 1]!
+    const [bx, bz] = TRAIL[i]!
+    if (toSegment(x, z, ax, az, bx, bz) <= margin) return true
+  }
+  return false
+}
+
+/**
  * The height of the ground under a point, or null where there is no ground to
  * stand on — in the water, or past the edge of the world.
  *

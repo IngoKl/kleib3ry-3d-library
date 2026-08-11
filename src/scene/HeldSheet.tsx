@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { makeHand } from './hand'
 import { NOTE, NOTE_COLOURS, SHEET, noteTexture, pageTextureFor, peekPage } from './pinArt'
 import { useAppStore } from '../state/store'
 
@@ -41,9 +42,7 @@ export function HeldSheet() {
   }, [heldPin])
 
   const drift = useRef(0)
-  const forward = useRef(new THREE.Vector3())
-  const right = useRef(new THREE.Vector3())
-  const up = useRef(new THREE.Vector3())
+  const hand = useMemo(makeHand, [])
 
   useFrame((_, delta) => {
     const node = group.current
@@ -51,17 +50,16 @@ export function HeldSheet() {
 
     drift.current += delta
 
-    camera.getWorldDirection(forward.current)
-    right.current.crossVectors(forward.current, camera.up).normalize()
-    up.current.crossVectors(right.current, forward.current).normalize()
+    // The hand lags the head, so a turn swings it out a little. See `hand.ts`.
+    const { quaternion, forward, right, up } = hand.follow(camera, delta)
 
     node.position
       .copy(camera.position)
-      .addScaledVector(forward.current, 0.46)
-      .addScaledVector(right.current, -0.26)
-      .addScaledVector(up.current, -0.2)
+      .addScaledVector(forward, 0.46)
+      .addScaledVector(right, -0.26)
+      .addScaledVector(up, -0.2)
 
-    node.quaternion.copy(camera.quaternion)
+    node.quaternion.copy(quaternion)
     node.rotateY(0.42 + Math.sin(drift.current * 0.6) * 0.03)
     node.rotateX(-0.24 + Math.sin(drift.current * 0.5) * 0.02)
   })
@@ -72,19 +70,24 @@ export function HeldSheet() {
   const height = heldPin.kind === 'note' ? NOTE : SHEET.height
   const art = heldPin.kind === 'note' ? note : page
 
+  const paper =
+    heldPin.kind === 'note' ? NOTE_COLOURS[heldPin.colour % NOTE_COLOURS.length]! : '#f1ece0'
+  // A note is a small pad of leaves and a page is one sheet. Both have a body,
+  // for the same reason the ones on the wall do: a plane seen edge-on is a line.
+  const body = heldPin.kind === 'note' ? 0.0035 : 0.0009
+
   return (
     <group ref={group}>
       <mesh castShadow>
+        <boxGeometry args={[width, height, body]} />
+        <meshStandardMaterial color={paper} roughness={0.95} />
+      </mesh>
+      <mesh position={[0, 0, body / 2 + 0.0002]}>
         <planeGeometry args={[width, height]} />
         {art ? (
-          <meshStandardMaterial key="art" map={art} roughness={0.9} side={THREE.DoubleSide} />
+          <meshStandardMaterial key="art" map={art} roughness={0.9} />
         ) : (
-          <meshStandardMaterial
-            key="blank"
-            color={heldPin.kind === 'note' ? NOTE_COLOURS[heldPin.colour % NOTE_COLOURS.length] : '#f1ece0'}
-            roughness={0.95}
-            side={THREE.DoubleSide}
-          />
+          <meshStandardMaterial key="blank" color={paper} roughness={0.95} />
         )}
       </mesh>
     </group>

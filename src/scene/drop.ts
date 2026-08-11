@@ -67,7 +67,25 @@ export const supportFrom = (world: DerivedWorld): Support => (x, z, from) =>
   supportAt(world, x, z, from)
 
 /**
- * One step of falling.
+ * The simulation's own clock.
+ *
+ * Falling used to advance by one clamped frame per frame, which quietly made
+ * gravity a function of the frame rate: at sixty frames a second a dropped book
+ * landed at once, and on the software rasteriser the tests run on — a frame or
+ * two a second — the same book took most of a minute to come down, because each
+ * frame bought it a thirtieth of a second of falling.
+ *
+ * So the step is fixed and a slow frame runs several of them. The catch-up is
+ * capped rather than unbounded: after a long stall (a tab in the background, a
+ * shader compiling) it is better for a book to fall a fifth of a second's worth
+ * and carry on next frame than to teleport through a table because one step
+ * covered two metres.
+ */
+const FIXED_STEP = 1 / 90
+const MAX_CATCH_UP = 0.2
+
+/**
+ * One frame of falling, however long that frame was.
  *
  * `thickness` is how far the book's centre sits above whatever it is lying on.
  * A resting body is returned unchanged and untouched, which is what keeps a
@@ -76,7 +94,17 @@ export const supportFrom = (world: DerivedWorld): Support => (x, z, from) =>
 export function stepBody(body: Body, thickness: number, dt: number, support: Support): Body {
   if (body.resting) return body
 
-  const step = Math.min(dt, 1 / 30)
+  const elapsed = Math.min(Math.max(dt, 0), MAX_CATCH_UP)
+  const count = Math.max(1, Math.ceil(elapsed / FIXED_STEP))
+  const step = elapsed / count
+
+  let out = body
+  for (let i = 0; i < count && !out.resting; i++) out = advance(out, thickness, step, support)
+  return out
+}
+
+/** One fixed step. Everything about the physics lives here; `stepBody` is the clock. */
+function advance(body: Body, thickness: number, step: number, support: Support): Body {
   const next: Body = { ...body }
 
   next.vy -= GRAVITY * step

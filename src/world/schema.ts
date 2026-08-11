@@ -86,6 +86,8 @@ export type FurnitureKind =
   | 'crt'
   | 'coffeemaker'
   | 'fireplace'
+  | 'computer'
+  | 'postits'
   // light
   | 'floorlamp'
   | 'pendant'
@@ -348,6 +350,8 @@ export const FURNITURE_KINDS = [
   'crt',
   'coffeemaker',
   'fireplace',
+  'computer',
+  'postits',
   'floorlamp',
   'pendant',
   'rug',

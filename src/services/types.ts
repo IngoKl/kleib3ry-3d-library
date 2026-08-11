@@ -160,6 +160,12 @@ export type LightState = {
   on: Record<string, boolean>
   /** Whether it is night outside. Absent means day. */
   night?: boolean
+  /**
+   * Whether it is raining. Here rather than in the app's own settings for the
+   * same reason `night` is: it is a fact about the room right now, and deleting
+   * `lights.json` should bring back the daylight *and* the dry weather.
+   */
+  rain?: boolean
 }
 
 /**

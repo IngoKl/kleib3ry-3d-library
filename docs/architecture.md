@@ -14,9 +14,9 @@ two shape everything else.
    you edit  ──────────► │  <library>/.library/          │
                          │    library.json   the rooms   │
                          │    books.json     the layout  │ ◄──── the app writes
-                         │    lights.json    the lamps   │
+                         │    lights.json    lamps, sky  │
                          │    index.sqlite   the scan    │
-                         │    covers/        artwork      │
+                         │    covers/        artwork     │
                          └───────────────────────────────┘
                                         ▲
                      ┌──────────────────┴──────────────────┐
@@ -38,7 +38,7 @@ two shape everything else.
                      │
             ┌────────┴──────────────────────────────────────────────┐
             │  src/world/   the document → geometry, floors, trees  │
-            │  src/state/   zustand stores + two mutable objects    │
+            │  src/state/   zustand stores + three mutable objects  │
             │  src/scene/   R3F scene graph, instancing, raycast    │
             │  src/reader/  read mode: page cache, mesh, the turn   │
             │  src/ui/      DOM overlay                             │
@@ -195,11 +195,42 @@ deliberately, which also keeps `wasm-unsafe-eval` out of the desktop CSP.
 
 The ground is walkable. [src/world/terrain.ts](../src/world/terrain.ts) owns the
 site — the ground height, the lake as an ellipse, the beach, the path round the
-water, and the radius at which the world runs out — and both the renderer and the
-walk controller read it. That shared ownership is the point: a shoreline you can
-*see* in one place and *stand in* in another is the bug the module exists to
-prevent. `terrainAt` returns `null` in the water and past the edge of the world,
-which is the same answer a stairwell gives and refuses a step for the same reason.
+water, the trail between the buildings, and the radius at which the world runs
+out — and both the renderer and the walk controller read it. That shared
+ownership is the point: a shoreline you can *see* in one place and *stand in* in
+another is the bug the module exists to prevent. `terrainAt` returns `null` in
+the water and past the edge of the world, which is the same answer a stairwell
+gives and refuses a step for the same reason.
+
+**A library folder can describe more than one building**, and the default one
+does: the cabin, and the lake house on the rise above the south-west shore. That
+needed nothing new in the format — a building is rooms somewhere else — but it
+did need a route, and a route is a fact about the valley rather than about
+either building. So `TRAIL` is a polyline here, drawn by `Outside` and kept
+clear of trees by `forest.ts`, for the same reason the lake is an ellipse here
+rather than four radii in `library.json`.
+
+## Weather
+
+Rain is a switch, saved beside the lamps, because "is it raining" is a fact
+about the room in exactly the way "is it night" is. It has two halves and they
+are separate on purpose: what falls is instanced and follows you, since rain a
+hundred metres off is fog's problem; what runs down the glass is a texture on
+the panes `windowPanes` already derives, so a window somebody adds to their own
+map is wet without anybody having said so. One canvas serves every pane in the
+building and is repainted fifteen times a second — water on glass moves slowly,
+and the upload is the cost, not the drawing.
+
+## Sound
+
+The deck and the television are furniture with positions, and you have a
+position, so volume and direction fall out of the two.
+[src/scene/audioRig.ts](../src/scene/audioRig.ts) routes the element through a
+`PannerNode` when a context can be had and attenuates `element.volume` by
+distance when one cannot. The fallback is the load-bearing part: every failure
+mode of Web Audio lands on "distance but no direction", which is most of the
+effect and is never silence. The elements themselves are still plain `<audio>`
+and `<video>` for all the reasons `state/media.ts` gives.
 
 The forest moved to [src/world/forest.ts](../src/world/forest.ts) for the same
 reason. Trees are grown once in `deriveWorld` and both drawn and collided with
@@ -216,15 +247,24 @@ through branches is what walking in a forest is.
 | `state/store.ts` | session and UI: mode, crosshair focus, what is in your hands | zustand |
 | `state/library.ts` | the catalogue, the shelving, bookmarks, progress, pins | zustand; debounces layout saves by 600 ms |
 | `state/world.ts` | the parsed document and the derived world | zustand |
-| `state/lights.ts` | which lamps are on, and whether it is night | zustand |
+| `state/lights.ts` | which lamps are on, whether it is night, whether it is raining | zustand |
+| `state/settings.ts` | what is about *this machine*, not this library | zustand + `localStorage` |
 | `state/media.ts` | `music/` and `artwork/`, and the record on the deck | zustand |
 | `state/video.ts` | `video/`, and the tape in the machine | zustand |
 | `state/covers.ts` | cover images, two queues, one rate limit | plain module |
 | `state/player.ts` | position, yaw, pitch, crouch, zoom | **plain mutable object** |
+| `state/cat.ts` | where the cat is and what it is doing | **plain mutable object** |
 | `state/metrics.ts` | draw calls, triangles, frames | **plain mutable object** |
 
-The last two are deliberately outside zustand: they change every frame and must
-not trigger a React render.
+The last three are deliberately outside zustand: they change every frame and
+must not trigger a React render.
+
+**The split between `lights.ts` and `settings.ts` is the one worth stating.**
+Night and rain are facts about the *room* and live in the library folder, so
+they travel with it and `rm lights.json` undoes them. Low performance mode, the
+body, the volume and the mouse sensitivity are facts about the *machine*, so
+they live in browser storage keyed by the app — a folder you sync to another
+computer must not carry an assertion about that computer's GPU.
 
 `setPlacements` re-derives the world and therefore re-reconciles the whole
 library, so it belongs on an *edit* and never in a frame loop. Carrying a moving
@@ -298,6 +338,31 @@ Opening a book docks the camera onto a page mesh; there is no mode to choose and
 no way to be in read mode without a book. The findings that shaped it —
 why the reader is a camera dock, and its DPI budget — are in
 [reading-spike.md](reading-spike.md).
+
+**Both formats open, and read mode does not know which it has.** Everything
+above [src/reader/source.ts](../src/reader/source.ts) is written against "a
+thing with pages you can rasterise" rather than against pdf.js, which is what
+lets the drag, the turn, the bookmarks, `J` and `P` all work identically for an
+EPUB. Below it there are two implementations:
+
+- a **PDF** is pdf.js, as before;
+- an **EPUB** is opened as a zip by [zip.ts](../src/reader/zip.ts) — the
+  platform's own `DecompressionStream('deflate-raw')`, no dependency — reduced
+  to headings and paragraphs by [epub.ts](../src/reader/epub.ts), and set in
+  type by [epubPages.ts](../src/reader/epubPages.ts).
+
+The honest limits are written at the top of `epub.ts`. An EPUB is a website in a
+zip file and rendering one *properly* means a CSS engine; what is kept is the
+sequence of headings and paragraphs, which is the book, and what is lost is the
+author's stylesheet, the images and the navigation.
+
+The one decision in the type setting worth knowing is that **pagination happens
+once, in abstract units, at open time** rather than at whatever pixel size the
+texture wants. Canvas metrics are linear in font size, so measuring at one size
+and drawing at another is exact — and it buys the property that matters: page
+200 is page 200 on any monitor, in any window, next session. Laying out per
+texture size would make a bookmark a number that meant something different every
+time, which is not a bookmark.
 
 Pages are held as textures with a tiny cache: the spread in hand plus one either
 side, which is what makes a turn in either direction instant. Nothing rasterises

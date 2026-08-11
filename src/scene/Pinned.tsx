@@ -20,6 +20,17 @@ import type { PinnedSheet } from '../services/types'
 /** How far off the wall a sheet sits, so it never z-fights the plaster. */
 const STANDOFF = 0.004
 
+/**
+ * How thick the paper is.
+ *
+ * A sheet used to be a single plane, which is right up until you stand beside
+ * one: a note seen from the side was a coloured line, and a board of them at a
+ * glancing angle disappeared entirely. Paper has a body. A note is a small pad
+ * of them stuck down, so it gets rather more than a page does.
+ */
+const PAGE_BODY = 0.0009
+const NOTE_BODY = 0.0035
+
 /** One sheet: a page, or a note, with a tack through the top of it. */
 function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(() =>
@@ -53,9 +64,12 @@ function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
     }
   }, [sheet.kind, sheet.bookId, sheet.page])
 
-  const width = sheet.kind === 'note' ? NOTE : SHEET.width
-  const height = sheet.kind === 'note' ? NOTE : SHEET.height
-  const art = sheet.kind === 'note' ? note : texture
+  const isNote = sheet.kind === 'note'
+  const width = isNote ? NOTE : SHEET.width
+  const height = isNote ? NOTE : SHEET.height
+  const art = isNote ? note : texture
+  const paper = isNote ? NOTE_COLOURS[(sheet.colour ?? 0) % NOTE_COLOURS.length]! : '#f1ece0'
+  const body = isNote ? NOTE_BODY : PAGE_BODY
 
   return (
     <group
@@ -66,9 +80,18 @@ function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
       userData={{ pinId: sheet.id }}
     >
       <group rotation-z={sheet.tilt}>
-        {/* The paper. A page is white card until its raster arrives, which is
-            what a page looks like anyway — so there is nothing to hide. */}
-        <mesh position={[0, 0, STANDOFF]} castShadow receiveShadow>
+        {/* The body of the paper: a slab, so the sheet has an edge to catch the
+            light and a shadow to sit in. This is what carries `castShadow` —
+            a plane's shadow is a line. */}
+        <mesh position={[0, 0, STANDOFF + body / 2]} castShadow receiveShadow>
+          <boxGeometry args={[width, height, body]} />
+          <meshStandardMaterial color={paper} roughness={0.95} />
+        </mesh>
+
+        {/* The printed face, a hair proud of the body. A page is white card
+            until its raster arrives, which is what a page looks like anyway —
+            so there is nothing to hide. */}
+        <mesh position={[0, 0, STANDOFF + body + 0.0002]} receiveShadow>
           <planeGeometry args={[width, height]} />
           {/* Keyed so the raster arriving mounts a *new* material: swapping a
               map into a live one reuses its map-less shader and draws black,
@@ -85,17 +108,33 @@ function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
           ) : (
             <meshStandardMaterial
               key="blank"
-              color={sheet.kind === 'note' ? NOTE_COLOURS[sheet.colour ?? 0] : '#f1ece0'}
+              color={paper}
               roughness={0.95}
               emissive={focused ? '#3a3323' : '#000000'}
             />
           )}
         </mesh>
 
+        {/* The bottom corner, lifting. Only a note gets one: a note is stuck
+            down by a gummed strip along its top and curls away from the wall
+            from the bottom up, which is the single detail that stops a coloured
+            square reading as a sticker printed on the plaster. */}
+        {isNote && (
+          <mesh
+            position={[width * 0.28, -height * 0.4, STANDOFF + body + 0.004]}
+            rotation-x={0.55}
+            rotation-z={-0.22}
+            castShadow
+          >
+            <planeGeometry args={[width * 0.44, height * 0.3]} />
+            <meshStandardMaterial color={paper} roughness={0.95} side={THREE.DoubleSide} />
+          </mesh>
+        )}
+
         {/* A drawing pin, at the top. A note is stuck down rather than pinned,
             so it does not get one. */}
-        {sheet.kind === 'page' && (
-          <mesh position={[0, height / 2 - 0.014, STANDOFF + 0.006]} castShadow>
+        {!isNote && (
+          <mesh position={[0, height / 2 - 0.014, STANDOFF + body + 0.006]} castShadow>
             <sphereGeometry args={[0.008, 8, 6]} />
             <meshStandardMaterial color="#b4443c" roughness={0.4} metalness={0.2} />
           </mesh>

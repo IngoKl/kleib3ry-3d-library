@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { applyBow, applyGutterCurl, gutterRise, makeSheet, type Sheet } from './pageMesh'
 import { makePageTextures, spreadWindow } from './pageTextures'
-import { closeDocument, openDocument } from './pdf'
+import { openSource, type PageSource } from './source'
 import { readerStatus, resetReaderStatus } from './status'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import { player } from '../state/player'
+import { approach } from '../lib/ease'
 
 /**
  * Read mode, ported from the reading spike (see docs/reading-spike.md).
@@ -104,7 +104,7 @@ export function Reader() {
   const size = useThree((s) => s.size)
   const gl = useThree((s) => s.gl)
 
-  const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
+  const [doc, setDoc] = useState<PageSource | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const [spread, setSpread] = useState(0)
 
@@ -160,23 +160,22 @@ export function Reader() {
     setSpread(useLibraryStore.getState().readProgress[reading] ?? 0)
 
     resetReaderStatus(reading)
-    if (book.format !== 'pdf') {
-      const why = 'EPUB reading is not built yet — only PDFs open for now.'
-      setFailure(why)
-      readerStatus.failure = why
-      return
-    }
 
-    void openDocument(reading)
-      .then(async (opened) => {
-        if (cancelled) return
-        const page = await opened.getPage(1)
-        const view = page.getViewport({ scale: 1 })
-        if (cancelled) return
-        setAspect(view.width / view.height)
-        readerStatus.pages = opened.numPages
+    // A PDF is rasterised by pdf.js and an EPUB is set in type here; which of
+    // the two this is, is the last thing in read mode that knows.
+    let live: PageSource | null = null
+
+    void openSource(book)
+      .then((opened) => {
+        if (cancelled) {
+          opened.close()
+          return
+        }
+        live = opened
+        setAspect(opened.aspect)
+        readerStatus.pages = opened.pages
         // A saved position can outrun the file if it changed on disk.
-        setSpread((s) => Math.max(0, Math.min(s, Math.floor(opened.numPages / 2))))
+        setSpread((s) => Math.max(0, Math.min(s, Math.floor(opened.pages / 2))))
         setDoc(opened)
       })
       .catch((e) => {
@@ -188,10 +187,10 @@ export function Reader() {
 
     return () => {
       cancelled = true
-      // Release the reader's hold; the document is destroyed once no cover or
-      // page render still shares it. Without this every book ever opened
-      // stayed resident in the pdf.js worker for the life of the app.
-      closeDocument(reading)
+      // Release the reader's hold; a PDF is destroyed once no cover or page
+      // render still shares it. Without this every book ever opened stayed
+      // resident in the pdf.js worker for the life of the app.
+      live?.close()
     }
   }, [reading, book])
 
@@ -271,7 +270,7 @@ export function Reader() {
   // Spread s shows pages 2s and 2s+1, so the last page lives on spread
   // floor(N/2) — `ceil(N/2)` undercounted by one for even page counts, which
   // made the final page unreachable by "go to page".
-  const spreadCount = doc ? Math.floor(doc.numPages / 2) + 1 : 0
+  const spreadCount = doc ? Math.floor(doc.pages / 2) + 1 : 0
 
   /**
    * Remember the page, so putting the book down open puts it down *here*.
@@ -320,7 +319,7 @@ export function Reader() {
     const lift = (dir: 1 | -1, held: boolean) => {
       if (!doc || !pages || turnRef.current) return
       const s = spreadRef.current
-      if (dir === 1 && rightPage(s) >= doc.numPages) return
+      if (dir === 1 && rightPage(s) >= doc.pages) return
       if (dir === -1 && s <= 0) return
 
       const front = dir === 1 ? 2 * s + 1 : 2 * s - 1
@@ -349,8 +348,14 @@ export function Reader() {
     }
 
     const onKey = (e: KeyboardEvent) => {
-      // While the page field is open, every key is a keystroke in it.
-      if (useAppStore.getState().jumping) return
+      // While the page field or the settings panel is open, every key is a
+      // keystroke in it.
+      const app = useAppStore.getState()
+      if (app.jumping || app.settingsOpen) return
+      // Held, an arrow key would queue a turn per repeat and `B` would put a
+      // bookmark in and take it out again thirty times a second. A page turn is
+      // a press. (See the note in `Player.tsx`.)
+      if (e.repeat) return
 
       if (e.code === 'KeyJ') {
         e.preventDefault()
@@ -374,8 +379,8 @@ export function Reader() {
         // up would throw work away, and the HUD says what to do about it.
         if (app.heldPin || !doc) return
         const s = spreadRef.current
-        const page = rightPage(s) <= doc.numPages ? rightPage(s) : leftPage(s)
-        if (page < 1 || page > doc.numPages) return
+        const page = rightPage(s) <= doc.pages ? rightPage(s) : leftPage(s)
+        if (page < 1 || page > doc.pages) return
         app.setHeldPin({ kind: 'page', bookId: reading, page })
         return
       }
@@ -578,7 +583,7 @@ export function Reader() {
     )
     const want = pose.position.clone().addScaledVector(normal, distance)
 
-    camera.position.lerp(want, Math.min(1, delta * 6))
+    camera.position.lerp(want, approach(6, delta))
     camera.lookAt(pose.position)
     if ((camera as THREE.PerspectiveCamera).fov !== FOV) {
       ;(camera as THREE.PerspectiveCamera).fov = FOV

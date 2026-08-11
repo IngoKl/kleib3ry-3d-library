@@ -95,8 +95,23 @@ declare global {
         id: string,
         placement: { x: number; y: number; z: number; yaw: number; open: boolean; spread: number },
       ) => void
+      shelveForTest: (id: string, shelfId: string, row: number, index?: number) => boolean
       night: () => boolean
       toggleNightForTest: () => boolean
+      raining: () => boolean
+      toggleRainForTest: () => boolean
+      cat: () => {
+        x: number
+        z: number
+        floor: number
+        mood: string
+        purr: number
+        carrying: string | null
+      }
+      startForTest: () => void
+      callCatForTest: () => boolean
+      petCatForTest: () => void
+      fetchBookForTest: () => boolean
       furniture: () => { id: string; kind: string; room: string; x: number; y: number; z: number }[]
       packEverythingForTest: () => number
       labelOf: (shelfId: string) => string | null
@@ -135,9 +150,26 @@ declare global {
   }
 }
 
+/**
+ * Load the app and go in.
+ *
+ * The room now loads *behind* a main menu rather than in front of nothing, so
+ * every test starts by pressing the button somebody would press. Nothing
+ * reaches the room until it has been — that is the whole point of the gate —
+ * so a test that skipped this would find every key dead.
+ */
 async function boot(page: Page) {
   await page.goto('/')
   await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+  await page.getByTestId('enter-library').click()
+  await expect(page.getByTestId('main-menu')).toHaveCount(0)
+}
+
+/** The same, after a reload: the menu comes back with the page. */
+async function reboot(page: Page) {
+  await page.reload()
+  await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+  await page.getByTestId('enter-library').click()
 }
 
 /**
@@ -311,8 +343,14 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
  * property, and the failure now means "walking does not work" rather than "this
  * machine was busy" — which is the distinction `settled()` above draws for the
  * crosshair, for exactly the same reason.
+ *
+ * The budgets are minutes, not seconds, and were raised again when the building
+ * grew a second storey's worth of rooms. Distance covered is bounded by frames
+ * rendered; frames rendered is bounded by how much room there is to draw and how
+ * busy the host is. A generous budget still catches a stopped walk controller —
+ * which is the only thing it is for — while a tight one just reports the weather.
  */
-async function walkUntil(page: Page, reached: (z: number) => boolean, budgetMs = 20_000) {
+async function walkUntil(page: Page, reached: (z: number) => boolean, budgetMs = 60_000) {
   await page.keyboard.down('KeyW')
   const deadline = Date.now() + budgetMs
   try {
@@ -342,7 +380,7 @@ test('walking moves the player and walls stop them', async ({ page }) => {
 
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
 
-  const moved = await walkUntil(page, (z) => z > start.z + 0.3, 20_000)
+  const moved = await walkUntil(page, (z) => z > start.z + 0.3, 60_000)
   const after = await page.evaluate(() => window.__app.player())
   expect(moved, `walking got nowhere: z went ${start.z} -> ${after.z}`).toBe(true)
   expect(after.z).toBeGreaterThan(start.z + 0.3)
@@ -351,7 +389,7 @@ test('walking moves the player and walls stop them', async ({ page }) => {
   // the room ahead — the moving boxes, then the south wall — refuses the step,
   // so this waits for a *failure* to move and asserts where it happened.
   const wall = await page.evaluate(() => window.__app.player().z)
-  await walkUntil(page, (z) => z > 3, 8_000)
+  await walkUntil(page, (z) => z > 3, 30_000)
   const stopped = await page.evaluate(() => window.__app.player().z)
   expect(stopped, 'never even reached the far side of the room').toBeGreaterThanOrEqual(wall)
   expect(stopped, 'walked through something solid').toBeLessThan(3)
@@ -421,8 +459,7 @@ test('a placement survives a reload', async ({ page }) => {
   // The layout save is debounced; give it time to land.
   await page.waitForTimeout(1200)
 
-  await page.reload()
-  await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+  await reboot(page)
 
   const row = await page.evaluate(
     ([shelfId, index]) => window.__app.rowsOf(shelfId as string, index as number),
@@ -465,9 +502,15 @@ test('reading a book drops the crosshair, and there is no mode to get stuck in',
 
 test('indexing controls are disabled without the desktop shell', async ({ page }) => {
   await boot(page)
+  // The library folder and the scan moved into settings when the HUD was cut
+  // back to what is under the crosshair and what is going wrong. The count
+  // stayed out here, because a library still in its boxes is the second.
+  await expect(page.getByTestId('book-count')).toContainText('books')
+
+  await page.getByTestId('open-settings').click()
+  await expect(page.getByTestId('settings-card')).toBeVisible()
   await expect(page.getByRole('button', { name: /choose folder/i })).toBeDisabled()
   await expect(page.getByRole('button', { name: /^scan$/i })).toBeDisabled()
-  await expect(page.getByTestId('book-count')).toContainText('books')
 })
 
 test('a page turn never exposes the spread it turned away from', async ({ page }) => {
@@ -540,8 +583,9 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
 
   const stats = await page.evaluate(() => window.__app.stats())
   // The great room, the loft inside it, the reading corner, the bedroom over
-  // that, the kitchen, the office off the kitchen, and the porch.
-  expect(stats.rooms).toBe(7)
+  // that, the kitchen, the office off the kitchen, the porch — and the lake
+  // house and its deck, a trail away across the site.
+  expect(stats.rooms).toBe(9)
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 
@@ -553,7 +597,7 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
   await page.keyboard.down('KeyW')
   try {
-    await page.waitForFunction(() => window.__app.room() === 'reading', null, { timeout: 25_000 })
+    await page.waitForFunction(() => window.__app.room() === 'reading', null, { timeout: 90_000 })
   } finally {
     await page.keyboard.up('KeyW')
   }
@@ -573,9 +617,9 @@ test('the loft is a room you climb to, and cannot fall off', async ({ page }) =>
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
   await page.keyboard.down('KeyW')
   try {
-    await page.waitForFunction(() => window.__app.room() === 'loft', null, { timeout: 25_000 })
+    await page.waitForFunction(() => window.__app.room() === 'loft', null, { timeout: 90_000 })
     // …and all the way to the top, rather than stopping part-way up it.
-    await page.waitForFunction(() => window.__app.player().floor > 2.3, null, { timeout: 25_000 })
+    await page.waitForFunction(() => window.__app.player().floor > 2.3, null, { timeout: 90_000 })
   } finally {
     await page.keyboard.up('KeyW')
   }
@@ -602,14 +646,34 @@ test('a book put down in mid-air falls to the floor instead of hanging there', a
   // A placement written at chest height — which is what a save file caught
   // mid-throw looks like, and what a drop hands over before the physics has
   // had a frame. Either way it must come down.
-  const rest = await page.evaluate(async () => {
+  const dropped = await page.evaluate(() => {
     const id = window.__app.boxedBooks()[0]!
     window.__app.putDownForTest(id, { x: 0.6, y: 1.3, z: -0.8, yaw: 0.2, open: false, spread: 0 })
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-    return window.__app.looseBooks()[id]!
+    ;(window as unknown as { __falling: string }).__falling = id
+    return id
   })
 
+  /**
+   * Waited for, not slept through.
+   *
+   * Falling is simulated per *frame* with the step clamped at 1/20 s, so how far
+   * a book has fallen after three seconds is a fact about the host's spare
+   * capacity — on the software rasteriser these tests run on that can be three
+   * frames. The same argument every other wait in this file makes.
+   */
+  const landed = await settled(
+    page,
+    () => {
+      const id = (window as unknown as { __falling: string }).__falling
+      const at = window.__app.looseBooks()[id]
+      return at !== undefined && at.y < 0.1
+    },
+    60_000,
+  )
+
   // Resting on the boards: a book's half-thickness off the floor, not a metre.
+  const rest = await page.evaluate((id) => window.__app.looseBooks()[id as string]!, dropped)
+  expect(landed, `it hung in the air at ${rest.y.toFixed(2)} m`).toBe(true)
   expect(rest.y).toBeLessThan(0.1)
 })
 
@@ -617,8 +681,42 @@ test('night falls when asked, and is remembered as a light choice', async ({ pag
   await boot(page)
   expect(await page.evaluate(() => window.__app.night())).toBe(false)
   expect(await page.evaluate(() => window.__app.toggleNightForTest())).toBe(true)
-  await expect(page.getByTestId('toggle-night')).toContainText('make it day')
-  expect(await page.evaluate(() => window.__app.toggleNightForTest())).toBe(false)
+
+  // The switch lives in settings now, and reflects what the room actually did
+  // rather than being the only way to do it — `N` is still the way in the room.
+  await page.getByTestId('open-settings').click()
+  await expect(page.getByTestId('toggle-night')).toHaveAttribute('aria-pressed', 'true')
+  await page.getByTestId('toggle-night').click()
+  expect(await page.evaluate(() => window.__app.night())).toBe(false)
+})
+
+test('it rains when asked, and the weather is saved with the lamps', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text())
+  })
+
+  await boot(page)
+  expect(await page.evaluate(() => window.__app.raining())).toBe(false)
+
+  await page.keyboard.press('KeyK')
+  expect(await settled(page, () => window.__app.raining() === true, 5000)).toBe(true)
+
+  // Rain is seven hundred instanced streaks and a wet plane on every glazed
+  // opening the document derives, so a map with an unusual window is the way
+  // this breaks — and it would break as a console error, not as a wrong number.
+  await page.waitForTimeout(1500)
+  expect(errors, `console errors while raining: ${errors.join(' | ')}`).toEqual([])
+
+  // Rain is a fact about the room, not a setting about the app, so it is saved
+  // beside the lamps and comes back with them.
+  await page.waitForTimeout(800)
+  await reboot(page)
+  expect(await page.evaluate(() => window.__app.raining())).toBe(true)
+
+  await page.keyboard.press('KeyK')
+  expect(await settled(page, () => window.__app.raining() === false, 5000)).toBe(true)
 })
 
 test('saving a broken library.json keeps the room you are standing in', async ({ page }) => {
@@ -647,16 +745,39 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
   const shelvesBefore = await page.evaluate(() => window.__app.stats().shelves)
 
   const shelf = 'west-0'
-  const before = await page.evaluate(
-    (id) => window.__app.rowsOf(id as string, 0),
-    shelf,
-  )
+  /**
+   * Make sure the case under test actually has books on it.
+   *
+   * Unpacking fills *empty* rows in a shuffled order and stops when the boxes
+   * run out, so with more shelves in the building than there are books to fill
+   * them, whether any particular row is stocked is not something to assume — and
+   * a test that assumed it fails the day somebody adds a bookcase.
+   */
+  const before = await page.evaluate((id) => {
+    const app = window.__app
+    const want = id as string
+    if (app.rowsOf(want, 0).length === 0) {
+      // Off another case rather than out of a box: unpacking fills rows to
+      // capacity one at a time, so with more shelf than library the boxes come
+      // out *empty* and about half the rows never get anything.
+      const spare: string[] = []
+      for (const unit of app.places().shelves) {
+        if (unit.id === want) continue
+        for (let row = 0; row < unit.rows && spare.length < 4; row++) {
+          spare.push(...app.rowsOf(unit.id, row).slice(0, 4 - spare.length))
+        }
+        if (spare.length >= 4) break
+      }
+      for (const book of spare) app.shelveForTest(book, want, 0)
+    }
+    return app.rowsOf(want, 0)
+  }, shelf)
   expect(before.length).toBeGreaterThan(0)
 
   // Take the whole bookcase out of the document, exactly as a hand edit would.
   const removed = await editWorld(
     page,
-    '{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" },',
+    '{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5 },',
     '',
   )
   expect(removed).toBeNull()
@@ -680,7 +801,7 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
   await editWorld(
     page,
     '{ "id": "west-1",',
-    '{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" }, { "id": "west-1",',
+    '{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5 }, { "id": "west-1",',
   )
   await page.waitForTimeout(400)
 
@@ -842,8 +963,7 @@ test('a book goes back into the box you drop it into, and stays there', async ({
 
   // Which box it went into is written down, so it is still that box next time.
   await page.waitForTimeout(1200)
-  await page.reload()
-  await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+  await reboot(page)
   expect(await page.evaluate((id) => window.__app.boxContents(id as string), boxId!)).toContain(
     held!.id,
   )
@@ -916,13 +1036,20 @@ test('you can kneel down to the bottom shelf and stand back up', async ({ page }
     )
     window.__app.look(s.rotationY, -0.4)
   })
-  await page.waitForTimeout(300)
-  const standing = await page.evaluate(() => window.__app.player().eye)
-  expect(standing).toBeCloseTo(1.68, 2)
+  /**
+   * Eye height is *eased*, so how close it is to standing after a fixed sleep is
+   * a fact about the frame rate rather than about the controller. Waited for,
+   * like everything else here.
+   */
+  await page.waitForFunction(() => Math.abs(window.__app.player().eye - 1.68) < 0.004, null, {
+    timeout: 20_000,
+  })
 
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
   await page.keyboard.down('ControlLeft')
-  await page.waitForFunction(() => window.__app.player().crouch > 0.99, null, { timeout: 10_000 })
+  await page.waitForFunction(() => window.__app.player().crouch > 0.99, null, { timeout: 20_000 })
+  // The crouch reaching 1 is the *input* arriving; the eye follows it down.
+  await page.waitForFunction(() => window.__app.player().eye < 1.0, null, { timeout: 20_000 })
 
   const kneeling = await page.evaluate(() => window.__app.player())
   expect(kneeling.eye).toBeLessThan(1.0)
@@ -930,8 +1057,10 @@ test('you can kneel down to the bottom shelf and stand back up', async ({ page }
   expect(kneeling.eye).toBeGreaterThan(0.5)
 
   await page.keyboard.up('ControlLeft')
-  await page.waitForFunction(() => window.__app.player().crouch < 0.01, null, { timeout: 10_000 })
-  expect(await page.evaluate(() => window.__app.player().eye)).toBeCloseTo(1.68, 2)
+  await page.waitForFunction(() => window.__app.player().crouch < 0.01, null, { timeout: 20_000 })
+  await page.waitForFunction(() => Math.abs(window.__app.player().eye - 1.68) < 0.004, null, {
+    timeout: 20_000,
+  })
 })
 
 test('you can sit in the armchair, read from it, and get up again', async ({ page }) => {
@@ -976,6 +1105,23 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   await expect(page.getByTestId('seated-card')).toContainText('stand up')
 
   // Seated: lower than standing, at the chair, and walking does not move you.
+  // Sitting down *eases* you into the chair, so the reading is taken once that
+  // has finished rather than at a fixed moment part-way through it — otherwise
+  // what the walk is measured against is a position still on its way.
+  await page.waitForFunction(() => window.__app.player().eye < 1.3, null, { timeout: 20_000 })
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as { __seat?: string }
+      const p = window.__app.player()
+      const now = `${p.x.toFixed(4)}:${p.z.toFixed(4)}`
+      const still = w.__seat === now
+      w.__seat = now
+      return still
+    },
+    null,
+    { timeout: 20_000, polling: 400 },
+  )
+
   const seated = await page.evaluate(() => window.__app.player())
   expect(seated.eye).toBeLessThan(1.3)
   expect(Math.hypot(seated.x - chair!.x, seated.z - chair!.z)).toBeLessThan(0.4)
@@ -1094,8 +1240,7 @@ test('a bookmark is set, survives a reload, and takes you back to its page', asy
   // The layout save is debounced; give it time to land before reloading.
   await page.waitForTimeout(1200)
 
-  await page.reload()
-  await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+  await reboot(page)
   expect(await page.evaluate(() => window.__app.bookmarksOf('sample-book'))).toEqual([1])
 
   // Open the book again: it starts at the front, and the ribbon gets you back.
@@ -1394,4 +1539,196 @@ test('a note is written, stuck up, and is still there after a reload', async ({ 
   expect(after.length, 'the note was not saved').toBe(1)
   expect(after[0]!.text).toBe('ask about the 1963 edition')
   expect(after[0]!.kind).toBe('note')
+})
+
+/**
+ * The EPUB half of read mode.
+ *
+ * Everything above `reader/source.ts` is format-blind, which is the whole point
+ * of that file — so what this proves is that a book with no pages until it is
+ * set in type arrives in the same reader, with the same turn, and answers the
+ * same questions about itself.
+ */
+test('an EPUB opens, is set in type, and turns like any other book', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await boot(page)
+
+  const opened = await page.evaluate(() => window.__app.readForTest('sample-epub'))
+  expect(opened.failure, 'the EPUB refused to open').toBeNull()
+  expect(opened.rendered).toBe(true)
+  // Pagination is the reader's, not the file's: four chapters of prose is a
+  // good many pages of type, and how many is a fact about the layout.
+  expect(opened.pages, 'the EPUB laid out to nothing').toBeGreaterThan(6)
+  expect(opened.showing).toEqual([0, 1])
+
+  await page.keyboard.press('ArrowRight')
+  await page.waitForFunction(() => window.__app.reader().spread === 1, null, { timeout: 20_000 })
+  expect(await page.evaluate(() => window.__app.reader().showing)).toEqual([2, 3])
+
+  // And it is the same book on the next open: pagination happens once, in
+  // abstract units, so a page number means the same thing every session.
+  const again = await page.evaluate(async () => {
+    window.__app.setModeForTest('walk')
+    return window.__app.readForTest('sample-epub')
+  })
+  expect(again.pages).toBe(opened.pages)
+  expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
+test('the catalogue finds a book and says where it is', async ({ page }) => {
+  await boot(page)
+  await unpackEverything(page)
+
+  // The terminal is furniture, so where it is comes from the world rather than
+  // from a coordinate written down here. Approached from the *north*, because
+  // the desk it stands on is against the south end of the office and the poses
+  // south of it are through a wall.
+  const terminal = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.kind === 'computer',
+  )
+  expect(terminal, 'this world has no catalogue terminal').toBeDefined()
+
+  let found = false
+  // North of it looking south (yaw = PI), then the other three bearings, so the
+  // test survives somebody turning the desk round.
+  outer: for (const bearing of [Math.PI, 0, Math.PI / 2, -Math.PI / 2]) {
+    for (const back of [0.72, 0.95, 1.2]) {
+      for (const pitch of [-0.6, -0.75, -0.45, -0.9]) {
+        await page.evaluate(
+          ([x, z, yaw, away]) => {
+            // Stand `away` from it on this bearing, i.e. behind where you are
+            // about to look.
+            window.__app.teleport(x! + Math.sin(yaw!) * away!, z! + Math.cos(yaw!) * away!, yaw!, 0)
+          },
+          [terminal!.x, terminal!.z, bearing, back],
+        )
+        await page.evaluate(
+          ([yaw, pitch]) => window.__app.look(yaw!, pitch!),
+          [bearing, pitch],
+        )
+        found = await settled(page, () => window.__app.stats().focusedFixture !== null, 2500)
+        if (found) break outer
+      }
+    }
+  }
+  expect(found, 'never found the catalogue terminal in the office').toBe(true)
+
+  await page.keyboard.press('KeyE')
+  await expect(page.getByTestId('catalogue')).toBeVisible()
+
+  // While it is open the keyboard is the terminal's: W is a letter.
+  const before = await page.evaluate(() => window.__app.player())
+  await page.getByTestId('catalogue').locator('input').fill('shelf as argument')
+  await expect(page.getByTestId('catalogue-results')).toContainText('The Shelf as Argument')
+  // It says where the thing is, which is the whole of what an index does.
+  await expect(page.getByTestId('catalogue-results')).toContainText(/shelf|box|left out/i)
+  const after = await page.evaluate(() => window.__app.player())
+  expect(Math.hypot(after.x - before.x, after.z - before.z), 'typing moved you').toBeLessThan(0.05)
+
+  // A search with no answer says so rather than showing everything.
+  await page.getByTestId('catalogue').locator('input').fill('zzzzz not in this library')
+  await expect(page.getByTestId('catalogue-empty')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('catalogue')).toHaveCount(0)
+})
+
+test('the cat comes when called, and can be asked for a book', async ({ page }) => {
+  test.slow()
+  await boot(page)
+  await unpackEverything(page)
+
+  const start = await page.evaluate(() => window.__app.cat())
+  expect(start.mood, 'the cat never got put anywhere').toBeTruthy()
+
+  // Called. It is deliberately allowed to refuse if it was asleep — which is
+  // the whole of what makes it read as an animal rather than a button — so this
+  // asks until it is on its way rather than asserting on one call.
+  const coming = await settled(
+    page,
+    () => {
+      window.__app.callCatForTest()
+      return window.__app.cat().mood === 'come'
+    },
+    10_000,
+  )
+  expect(coming, 'the cat ignored every call').toBe(true)
+
+  // And it actually crosses the room to you rather than only intending to.
+  const before = await page.evaluate(() => window.__app.cat())
+  const you = await page.evaluate(() => window.__app.player())
+  const away = Math.hypot(before.x - you.x, before.z - you.z)
+  const nearer = await settled(
+    page,
+    () => {
+      const cat = window.__app.cat()
+      const me = window.__app.player()
+      return Math.hypot(cat.x - me.x, cat.z - me.z) < 1.2
+    },
+    60_000,
+  )
+  expect(nearer, `the cat set off from ${away.toFixed(1)} m away and never arrived`).toBe(true)
+
+  // Asked for a book: it goes to a case that has one, takes it down and brings
+  // it back. What matters is that the book genuinely leaves the shelf — a cat
+  // that conjured books would quietly double the library.
+  const shelvedBefore = await page.evaluate(() => window.__app.stats().shelved)
+  expect(await page.evaluate(() => window.__app.fetchBookForTest())).toBe(true)
+
+  // It ends with the book on the floor at your feet, where it becomes an
+  // ordinary loose book you can pick up. Waited for as one condition rather than
+  // two, because the fetch and the delivery are a single errand and catching it
+  // mid-carry is a race with a walking animal.
+  const delivered = await settled(
+    page,
+    () => Object.keys(window.__app.looseBooks()).length > 0,
+    120_000,
+  )
+  expect(delivered, 'the cat never brought a book back').toBe(true)
+
+  // And the book genuinely left the shelf rather than being conjured.
+  expect(await page.evaluate(() => window.__app.stats().shelved)).toBe(shelvedBefore - 1)
+  expect(await page.evaluate(() => window.__app.cat().carrying)).toBeNull()
+})
+
+test('the main menu holds the room until you go in', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+
+  // The room loads behind the menu — which is why `ready()` is already true —
+  // but nothing reaches it: a movement key here must not be a step.
+  await expect(page.getByTestId('main-menu')).toBeVisible()
+  await expect(page.getByTestId('status')).toHaveCount(0)
+  const before = await page.evaluate(() => window.__app.player())
+  await page.keyboard.down('KeyW')
+  await page.waitForTimeout(700)
+  await page.keyboard.up('KeyW')
+  const after = await page.evaluate(() => window.__app.player())
+  expect(Math.hypot(after.x - before.x, after.z - before.z), 'walked from the menu').toBeLessThan(
+    0.05,
+  )
+
+  await page.getByTestId('enter-library').click()
+  await expect(page.getByTestId('main-menu')).toHaveCount(0)
+  await expect(page.getByTestId('status')).toBeVisible()
+})
+
+test('low performance mode is a switch, and the room survives it', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await boot(page)
+
+  await page.getByTestId('open-settings').click()
+  await page.getByTestId('low-performance').click()
+  await expect(page.getByTestId('low-performance')).toHaveAttribute('aria-pressed', 'true')
+
+  // The canvas is remounted, because antialiasing and the shadow map are fixed
+  // when the context is created. Everything that matters is in the stores, so
+  // the room has to come back rather than come back empty.
+  await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
+  const stats = await page.evaluate(() => window.__app.stats())
+  expect(stats.rooms).toBe(9)
+  expect(stats.books).toBeGreaterThan(100)
+  expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([])
 })

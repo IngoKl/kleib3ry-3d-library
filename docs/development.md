@@ -100,11 +100,16 @@ Three files, three jobs:
 
 The browser tests reach the app through `window.__app` in
 [../src/App.tsx](../src/App.tsx) — teleport, look, stats, `readForTest`, the
-pins, the tapes. It is a deliberate verification surface and it exists because
-pointer lock is unavailable headlessly. **Extend it when a new behaviour needs
-covering**; do not reach into the stores from a test.
+pins, the tapes, the cat. It is a deliberate verification surface and it exists
+because pointer lock is unavailable headlessly. **Extend it when a new behaviour
+needs covering**; do not reach into the stores from a test.
 
-Two things about the smoke tests worth knowing before you debug one:
+Three things about the smoke tests worth knowing before you debug one:
+
+- **Every test goes in through the main menu.** The room loads behind it and
+  `ready()` is true while it is still up, but nothing reaches the room until the
+  button is pressed — so `boot()` presses it, and a test that skipped that would
+  find every key dead. `reboot()` does the same after a `page.reload()`.
 
 - **They run on SwiftShader**, a software rasteriser, at a few frames a second.
   Anything the crosshair reports is written by a raycast that runs every other
@@ -130,7 +135,12 @@ clicks began timing out. If you change cell size or cell count in
 where it is, and run the whole smoke suite rather than one test.
 
 The same applies to anything that adds a shadow caster covering a lot of screen,
-or a second atlas. `window.__app.stats()` reports draw calls, triangles and
+or a second atlas — and to anything drawn *near the camera*, which is what put
+the player's body a hand's width behind the eyes rather than around them: a
+surface 10 cm from the near plane fills half the screen with fragments nobody
+sees. Assemblies of more than a handful of boxes are merged into one geometry
+per material (the plants, the staircases, the cat, the body) for the same
+reason a draw call is worth counting at all here. `window.__app.stats()` reports draw calls, triangles and
 frames; `window.__app.spines()` reports how many cells are printed and how many
 have changed hands.
 
@@ -138,6 +148,15 @@ have changed hands.
 
 - **Comments explain why, not what.** The interesting content of this codebase is
   the reasoning; match the density of what is around you.
+- **Ease with `approach`, not with `min(1, delta * k)`.**
+  [../src/lib/ease.ts](../src/lib/ease.ts) is the exponential form; the naive one
+  is a fraction *per frame*, so the same code settles at a different speed on
+  every machine and clamps to a hard snap on the software rasteriser the tests
+  run on. Anything that asymptotes should also *arrive* — snap to the target
+  inside a millimetre or two, or a thing that has stopped keeps creeping.
+- **Auto-repeat moves you; it does not act for you.** Any key handler that does
+  something once takes `if (e.repeat) return`. Held, `N` used to strobe the room
+  between day and night.
 - TypeScript is strict, with `noUncheckedIndexedAccess`, `noUnusedLocals` and
   `noUnusedParameters`. `tsconfig.json` covers `src`, `tests`, `scripts` and the
   config files, so a test or a script that does not type-check fails the build.
@@ -160,10 +179,18 @@ light, `LAMPS`. Then document it in the table in
 **A key.** `E` lives in `Player.tsx` because it is the same reach that takes a
 book off a shelf. Everything else you do with your hands lives in
 `Handling.tsx`. Reading keys live in `Reader.tsx`. Anything that opens a typed
-field has to make the walk controller and the reader bail out — see how
-`labelling` and `noting` are checked — because `W` has to be a letter while
-somebody is typing a word. Add it to `ControlsCard.tsx` and to the table in the
-README.
+field has to be added to **`roomHasKeyboard()`** in
+[../src/state/store.ts](../src/state/store.ts) — one predicate, asked by every
+key handler, because `W` has to be a letter while somebody is typing a word and
+three handlers each carrying their own list of exceptions is three lists of
+different lengths. Add it to `ControlsCard.tsx` and to the table in the README.
+
+**A setting.** If it is about the *machine* — the renderer, the mouse, the
+volume — it goes in [../src/state/settings.ts](../src/state/settings.ts) and is
+read where it applies. If it is about the *room* — the lamps, night, weather — it
+goes in `lights.ts` and is saved into the library folder. Getting that the wrong
+way round means a library folder that carries an assertion about somebody else's
+GPU, or a graphics setting that vanishes when you delete `lights.json`.
 
 **A field in the world document.** Parse it in `schema.ts` with a default, so no
 existing document has to mention it, and make the failure message name the path

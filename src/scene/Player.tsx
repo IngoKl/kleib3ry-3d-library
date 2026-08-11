@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import type * as THREE from 'three'
+import * as THREE from 'three'
 import { groundAt, stepPlayer } from './walk'
+import { askCatForBook, callCat, petCat } from './Cat'
 import { floorAt } from '../world/derive'
 import { shelfColliders } from '../world/shelf'
 import { EYE_HEIGHT, KNEEL_HEIGHT, PLAYER_RADIUS, SEATED_EYE, player } from '../state/player'
-import { useAppStore } from '../state/store'
+import { roomHasKeyboard, useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
+import { useSettings } from '../state/settings'
+import { approach } from '../lib/ease'
 import { LAMPS } from '../world/derive'
 
 const WALK_FOV = 72
@@ -35,23 +38,62 @@ const KNEEL_SPEED = 0.7
 const CROUCH_RATE = 4.5
 
 const KNEEL_KEYS = new Set(['ControlLeft', 'ControlRight', 'KeyC'])
+
 /** How quickly velocity reaches the target. Low enough to feel like a body. */
 const ACCELERATION = 12
+/**
+ * …and how quickly it comes back down, which is deliberately quicker.
+ *
+ * Accelerating like a body and stopping like one are different problems: a
+ * slow build-up reads as weight, and a slow stop reads as ice. Letting go of
+ * `W` a pace short of a bookcase should put you a pace short of it.
+ */
+const BRAKING = 20
 const MOUSE = 0.0022
 const PITCH_LIMIT = Math.PI / 2 - 0.08
 
 /**
- * Pointer lock is not a clean source of deltas. The event that engages it
- * carries the movement since the pointer was last seen — often most of the
- * screen — and WebView2 emits the occasional screen-scale delta after a focus
- * change. Both land as the view snapping.
+ * Pointer lock is not a clean source of deltas, and this is what "the view
+ * sometimes jumps" turned out to be.
  *
- * So: swallow the first move after a lock, and drop any single event past this
- * many pixels. At MOUSE sensitivity that cap is a ~50° turn between two frames,
- * which no wrist produces; losing one event off a genuinely violent flick costs
- * a few degrees of turn, which is the cheaper failure.
+ * The event that engages a lock carries the movement since the pointer was last
+ * seen — often most of the screen. WebView2 emits screen-scale deltas after a
+ * focus change, sometimes several frames running. And a browser that has just
+ * re-locked after an alt-tab can deliver a burst before it settles.
+ *
+ * Swallowing exactly one event was not enough, because the burst is more than
+ * one event; a fixed pixel cap was not enough either, because a genuine fast
+ * flick and a spurious jump are the same size. So there are three guards, and
+ * each catches what the others cannot:
+ *
+ *   - **a settling window** after a lock or a focus change, during which no
+ *     delta is believed at all. 180 ms is long enough to cover the burst and
+ *     short enough that nobody notices their first flick was eaten;
+ *   - **a hard ceiling**, which no wrist reaches between two frames;
+ *   - **a relative ceiling**, against a running average of how fast the hand is
+ *     actually moving — which is what catches a 300-pixel spike in the middle
+ *     of a slow, careful pan along a shelf, where the hard cap never fires.
+ *
+ * Losing one event off a genuinely violent flick costs a few degrees of turn.
+ * That is much the cheaper failure.
  */
 const MAX_STEP_PX = 400
+const SETTLE_MS = 180
+/** How many times the recent average a single event may be before it is a spike. */
+const SPIKE_RATIO = 8
+/** …but never below this, or ordinary acceleration off a standstill reads as one. */
+const SPIKE_FLOOR = 120
+
+/**
+ * How fast the camera comes back to your own eyes after a book closes.
+ *
+ * Read mode docks the camera onto the page; walking puts it back at head height.
+ * Assigning it was a hard cut from the page to the room every single time a book
+ * was closed — which is the other half of "the view sometimes jumps", and the
+ * half that happens on purpose.
+ */
+const HANDOFF_SECONDS = 0.32
+const HANDOFF_RATE = 9
 
 const FORWARD_KEYS = new Set(['KeyW', 'ArrowUp'])
 const BACK_KEYS = new Set(['KeyS', 'ArrowDown'])
@@ -75,9 +117,15 @@ export function Player() {
   )
   const keys = useRef(new Set<string>())
   const velocity = useRef({ x: 0, z: 0 })
+  /** Bob phase, advanced by distance, and how much of it is applied. */
   const bob = useRef(0)
-  /** True between a lock being granted and the first mouse delta being discarded. */
-  const settling = useRef(false)
+  const bobWeight = useRef(0)
+  /** `performance.now()` before which no mouse delta is believed. See MAX_STEP_PX. */
+  const settleUntil = useRef(0)
+  /** Running average of how far the hand actually moves per event, in pixels. */
+  const handSpeed = useRef(0)
+  /** Seconds left of easing the camera back off a closed book. */
+  const handoff = useRef(0)
   /** The right button, which zooms the same as `Z` — whichever hand is free. */
   const rightDown = useRef(false)
   /**
@@ -208,6 +256,12 @@ export function Player() {
       }
 
       if (held === null) {
+        // A fuss. Before everything else in this branch because the crosshair
+        // only ever offers the cat when it is offering nothing else.
+        if (state.focusedCat) {
+          petCat()
+          return
+        }
         // Taking a record out of the crate is the same gesture as taking a book
         // down, and it is offered only when no book is nearer — see `Interaction`.
         if (focusedRecord) {
@@ -291,26 +345,70 @@ export function Player() {
         if (video.playing) video.play(video.playing)
         return
       }
-      if (item.kind === 'coffeemaker') useAppStore.getState().brew(id)
+      if (item.kind === 'coffeemaker') {
+        useAppStore.getState().brew(id)
+        return
+      }
+      // The catalogue terminal. A search is typed, so it takes the keyboard the
+      // way a shelf label does and gives it back the same way.
+      if (item.kind === 'computer') {
+        useAppStore.getState().setSearching(true)
+        return
+      }
+      // A pad of notes: peel one off and write on it. The same field `T` opens,
+      // because it is the same note — this is only the other way to reach it,
+      // and the one you find by walking into the office rather than by reading
+      // a key legend.
+      if (item.kind === 'postits') {
+        const app = useAppStore.getState()
+        if (app.heldPin) return
+        app.setNoting(true)
+      }
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      // Typing a shelf label or a note is typing: W is a letter, not a step.
-      const app = useAppStore.getState()
-      if (app.labelling !== null || app.noting) return
+      // Typing a label, a note or a search is typing: W is a letter, not a step
+      // — and behind the main menu or the settings panel there is no room to
+      // walk in yet.
+      if (!roomHasKeyboard()) return
       keys.current.add(e.code)
       if (useAppStore.getState().mode !== 'walk') return
+
+      /**
+       * Auto-repeat moves you; it does not act for you.
+       *
+       * Holding a key fires `keydown` thirty times a second once the operating
+       * system's repeat kicks in, and every verb below is a thing you meant to do
+       * once. Holding `N` strobed the room between day and night, holding `E`
+       * took a book off a shelf and put it back over and over, and holding `X`
+       * did the same to a moving box. The movement keys are exempt because they
+       * are read from the *set*, which a repeat cannot change.
+       */
+      if (e.repeat) return
 
       if (e.code === 'KeyE') {
         e.preventDefault()
         takeOrPlace()
       } else if (e.code === 'KeyF') {
         e.preventDefault()
+        // Aimed at the cat, F asks it for a book — there is no book under the
+        // crosshair to draw out when a cat is standing in front of it, so the
+        // two never compete.
+        const { focusedBook, focusedCat, drawn, setDrawn } = useAppStore.getState()
+        if (focusedCat) {
+          askCatForBook()
+          return
+        }
         // Draw the book under the crosshair out of the shelf to look at its
         // cover, or push it back. Nothing turns on its own.
-        const { focusedBook, drawn, setDrawn } = useAppStore.getState()
         if (drawn !== null) setDrawn(null)
         else if (focusedBook) setDrawn(focusedBook)
+      } else if (e.code === 'KeyV') {
+        e.preventDefault()
+        // Call the cat. `C` would have been the obvious key and is already the
+        // other way to kneel, which is a thing you do at a bottom shelf far more
+        // often than you call an animal.
+        callCat()
       } else if (
         e.code === 'Comma' ||
         e.code === 'Period' ||
@@ -354,15 +452,18 @@ export function Player() {
         // Day to night and back. On the keyboard rather than only in the panel
         // because it is something you do *in* the room, like switching a lamp.
         useLightStore.getState().toggleNight()
+      } else if (e.code === 'KeyK') {
+        e.preventDefault()
+        // Rain on and off, next to night for the same reason: it is weather,
+        // not a setting, and it is saved beside the lamps.
+        useLightStore.getState().toggleRain()
       } else if (e.code === 'KeyR') {
         e.preventDefault()
         const { held, setReading, setMode } = useAppStore.getState()
+        // Both formats open now: a PDF is rasterised and an EPUB is set in type
+        // — see `reader/source.ts`. The format check that used to live here was
+        // the last thing standing between an EPUB and being a book.
         if (held) {
-          // Only PDFs open; the reader has no text to explain itself with, so
-          // docking onto a blank page block for an EPUB is a dead end. The HUD
-          // already withholds the R hint for these.
-          const book = useLibraryStore.getState().byId.get(held)
-          if (book?.format !== 'pdf') return
           setReading(held)
           setMode('read')
         }
@@ -387,24 +488,35 @@ export function Player() {
     const canvas = gl.domElement
 
     const onClick = () => {
+      // Not from behind the main menu or a panel: grabbing the pointer out from
+      // under a button somebody is aiming at is the worst kind of surprise.
+      if (!roomHasKeyboard()) return
       if (useAppStore.getState().mode === 'walk' && !document.pointerLockElement) {
         void canvas.requestPointerLock()
       }
     }
+    const settle = () => {
+      settleUntil.current = performance.now() + SETTLE_MS
+      handSpeed.current = 0
+    }
     const onLockChange = () => {
       const locked = document.pointerLockElement === canvas
-      if (locked) settling.current = true
+      if (locked) settle()
       setPointerLocked(locked)
     }
     const onMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return
-      if (settling.current) {
-        settling.current = false
-        return
-      }
+      if (performance.now() < settleUntil.current) return
       if (Math.abs(e.movementX) > MAX_STEP_PX || Math.abs(e.movementY) > MAX_STEP_PX) return
 
-      const sensitivity = MOUSE * turnScale.current
+      const step = Math.hypot(e.movementX, e.movementY)
+      const ceiling = Math.max(SPIKE_FLOOR, handSpeed.current * SPIKE_RATIO)
+      if (step > ceiling) return
+      // Only believed events move the average, or one spike raises the bar for
+      // the next one and a burst walks itself through the guard.
+      handSpeed.current += (step - handSpeed.current) * 0.2
+
+      const sensitivity = MOUSE * turnScale.current * useSettings.getState().sensitivity
       player.yaw -= e.movementX * sensitivity
       player.pitch = Math.max(
         -PITCH_LIMIT,
@@ -429,10 +541,14 @@ export function Player() {
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 2) rightDown.current = false
     }
-    // Losing the window with the button down would otherwise leave it stuck.
+    // Losing the window with the button down would otherwise leave it stuck —
+    // and coming *back* is the other moment a screen-scale delta arrives, so
+    // both edges re-settle.
     const onBlur = () => {
       rightDown.current = false
+      settle()
     }
+    const onFocus = () => settle()
     const onContextMenu = (e: Event) => e.preventDefault()
 
     canvas.addEventListener('click', onClick)
@@ -443,6 +559,8 @@ export function Player() {
     document.addEventListener('mousedown', onMouseDown)
     document.addEventListener('mouseup', onMouseUp)
     window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
     return () => {
       canvas.removeEventListener('click', onClick)
       canvas.removeEventListener('wheel', onWheel)
@@ -452,18 +570,62 @@ export function Player() {
       document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('mouseup', onMouseUp)
       window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
     }
   }, [gl, setPointerLocked])
 
-  // Release the pointer when leaving walk mode.
+  // Release the pointer when leaving walk mode, and — coming the other way —
+  // ease the camera off the page rather than cutting to head height.
+  const wasReading = useRef(false)
   useEffect(() => {
-    if (mode !== 'walk' && document.pointerLockElement) document.exitPointerLock()
+    if (mode !== 'walk') {
+      wasReading.current = true
+      if (document.pointerLockElement) document.exitPointerLock()
+      return
+    }
+    if (wasReading.current) {
+      wasReading.current = false
+      handoff.current = HANDOFF_SECONDS
+    }
   }, [mode])
 
   // --- movement --------------------------------------------------------
+
+  /**
+   * Put the camera where the player is.
+   *
+   * One place rather than three assignments in three branches, because the
+   * hand-off off a closed book has to apply to all of them — including the
+   * seated one, which returns early.
+   */
+  const eye = useMemo(() => new THREE.Vector3(), [])
+  const aim = useMemo(() => new THREE.Euler(0, 0, 0, 'YXZ'), [])
+  const want = useMemo(() => new THREE.Quaternion(), [])
+  const place = (x: number, y: number, z: number, delta: number) => {
+    eye.set(x, y, z)
+    aim.set(player.pitch, player.yaw, 0)
+    want.setFromEuler(aim)
+
+    if (handoff.current > 0) {
+      handoff.current = Math.max(0, handoff.current - delta)
+      const ease = approach(HANDOFF_RATE, delta)
+      camera.position.lerp(eye, ease)
+      camera.quaternion.slerp(want, ease)
+      return
+    }
+    camera.position.copy(eye)
+    camera.quaternion.copy(want)
+  }
+
   useFrame((_, rawDelta) => {
     if (mode !== 'walk') return
     const delta = Math.min(rawDelta, 1 / 20)
+
+    // A panel opening while a key is *held* would otherwise leave you walking
+    // through it: the key handler stops taking new presses, but the one already
+    // in the set is what the movement below reads.
+    if (!roomHasKeyboard()) keys.current.clear()
 
     // Zoom, and — because the same line does the job — taking the field of view
     // back from the reader, which narrows it to dock on a page. It used to be
@@ -511,15 +673,26 @@ export function Player() {
       // to hard-cut the camera to the chair.
       const forwardX = Math.sin(seat.rotationY)
       const forwardZ = Math.cos(seat.rotationY)
-      const settle = Math.min(1, delta * 8)
-      player.x += (seat.x + forwardX * 0.06 - player.x) * settle
-      player.z += (seat.z + forwardZ * 0.06 - player.z) * settle
+      const settle = approach(8, delta)
+      const restX = seat.x + forwardX * 0.06
+      const restZ = seat.z + forwardZ * 0.06
+      player.x += (restX - player.x) * settle
+      player.z += (restZ - player.z) * settle
+      // An exponential ease approaches forever and arrives never, which for
+      // somebody sitting perfectly still is a position that keeps creeping by a
+      // millimetre a second. Close enough is sat down.
+      if (Math.hypot(restX - player.x, restZ - player.z) < 0.002) {
+        player.x = restX
+        player.z = restZ
+      }
       player.crouch = 0
       player.floor = seat.y
       player.eye += (seat.y + SEATED_EYE - player.eye) * settle
+      // The bob's *weight* is what carries it out, so sitting down from a
+      // stride winds the head down rather than stopping it mid-step.
+      bobWeight.current += (0 - bobWeight.current) * approach(6, delta)
 
-      camera.position.set(player.x, player.eye, player.z)
-      camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ')
+      place(player.x, player.eye, player.z, delta)
       return
     }
 
@@ -557,9 +730,16 @@ export function Player() {
     const wantX = (-sin * forward + cos * strafe) * top
     const wantZ = (-cos * forward - sin * strafe) * top
 
-    const ease = Math.min(1, delta * ACCELERATION)
+    const ease = approach(magnitude > 0 ? ACCELERATION : BRAKING, delta)
     velocity.current.x += (wantX - velocity.current.x) * ease
     velocity.current.z += (wantZ - velocity.current.z) * ease
+    // Below a crawl there is nothing left to ease towards, and a velocity that
+    // decays forever is a player who never quite stops — which shows up as the
+    // crosshair drifting off a spine you had lined up.
+    if (magnitude === 0 && Math.hypot(velocity.current.x, velocity.current.z) < 0.02) {
+      velocity.current.x = 0
+      velocity.current.z = 0
+    }
 
     // A live reload can pull the floor out from under you — a room deleted, a
     // loft moved — and a teleport does not say which storey it meant. Either
@@ -588,24 +768,43 @@ export function Player() {
     player.z = next.z
     // Ease onto a new floor rather than snapping: a staircase is a ramp, and
     // stepping over a threshold should read as a step rather than a jolt.
-    player.floor += (next.floor - player.floor) * Math.min(1, delta * 14)
+    player.floor += (next.floor - player.floor) * approach(14, delta)
     if (Math.abs(next.floor - player.floor) < 0.005) player.floor = next.floor
 
     // Eased rather than assigned so standing up from a chair rises instead of
     // snapping; crouch and floor changes carry their own easing already, so
     // this settles to the exact height within a few frames.
     const wantEye = player.floor + EYE_HEIGHT + (KNEEL_HEIGHT - EYE_HEIGHT) * player.crouch
-    player.eye += (wantEye - player.eye) * Math.min(1, delta * 10)
+    player.eye += (wantEye - player.eye) * approach(10, delta)
     if (Math.abs(wantEye - player.eye) < 0.002) player.eye = wantEye
 
     player.speed = Math.hypot(velocity.current.x, velocity.current.z)
 
-    // Head bob, scaled by how fast we are actually going.
+    /**
+     * Head bob, advanced by *distance walked* rather than by time, so it never
+     * runs on while you stand still and never skates while you are blocked
+     * against a wall — `player.speed` is what actually moved, not what was asked
+     * for. Its weight eases in and out separately, so starting and stopping do
+     * not begin and end mid-step.
+     *
+     * Two components, because a walk is not a pogo stick: the vertical one is at
+     * twice the stride (one dip per foot) and the sideways one is at the stride
+     * itself (a sway onto each leg in turn). Both are small enough to be felt
+     * rather than seen.
+     */
     bob.current += delta * player.speed * 7.5
-    const bobAmount = Math.sin(bob.current * 2) * 0.018 * Math.min(1, player.speed / WALK)
+    const want = Math.min(1, player.speed / WALK)
+    bobWeight.current += (want - bobWeight.current) * approach(6, delta)
+    const weight = bobWeight.current
+    const rise = Math.sin(bob.current * 2) * 0.018 * weight
+    const sway = Math.sin(bob.current) * 0.012 * weight
 
-    camera.position.set(player.x, player.eye + bobAmount, player.z)
-    camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ')
+    place(
+      player.x + Math.cos(player.yaw) * sway,
+      player.eye + rise,
+      player.z - Math.sin(player.yaw) * sway,
+      delta,
+    )
   })
 
   return null

@@ -59,13 +59,19 @@ holds far more than the pile on top can show.
 
 ## Finding your way round
 
+The app opens on a menu: which library folder, and then **go in**. The room is
+already loading behind it, so pressing the button is instant. **`F2`** is
+settings, from the menu or from the room — that is where **low performance mode**
+lives if the room is stuttering.
+
 You start in the great room, looking north at the lake. Click to capture the
 mouse; `Esc` releases it. **`F1`** brings up every key, in the room.
 
 The building is a cabin: a great room with a hearth and a loft up a flight of
 stairs, a reading corner with a bedroom above it, a kitchen, an office off the
-kitchen with a whiteboard, and a porch. Out through the gap in the porch railing
-is grass, and a path round the pond.
+kitchen with a whiteboard, and a porch. Straight out of the porch door and down
+the steps there is grass, a path round the pond, and a trail west to the lake
+house on the far shore.
 
 Things worth trying early:
 
@@ -82,6 +88,9 @@ Things worth trying early:
 | **`P`** while reading | tears out a copy of the page — the book keeps its own |
 | **`T`** | writes a note; **`E`** at a wall pins either one up |
 | **`N`** | night, and back |
+| **`K`** | rain, and back |
+| **`E`** at the office terminal | searches the whole library and says where a thing is |
+| **`V`** | calls the cat; **`E`** makes a fuss of it, **`F`** asks it for a book |
 | **`H`** | hides the interface |
 
 ## The room is a file

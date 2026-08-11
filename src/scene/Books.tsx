@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
+import { approach } from '../lib/ease'
 import { useShelfTransforms } from './transforms'
 import { ASSIGNABLE_SLOTS, FIRST_ASSIGNABLE, makeBookAtlas } from './spineAtlas'
 import { makeBookGeometry, makeBookMaterial } from './bookMaterial'
@@ -329,8 +330,8 @@ export function Books() {
     if (frame.current % REPRINT_EVERY === 0) reprint()
 
     const { focusedBook: focused, drawn } = useAppStore.getState()
-    const rate = Math.min(1, delta * 10)
-    const showRate = Math.min(1, delta * 5)
+    const rate = approach(10, delta)
+    const showRate = approach(5, delta)
     let dirty = false
 
     for (let i = 0; i < resolved.length; i++) {

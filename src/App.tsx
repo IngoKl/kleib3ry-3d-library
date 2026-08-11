@@ -22,6 +22,10 @@ import { HeldTape } from './scene/HeldTape'
 import { HeldSheet } from './scene/HeldSheet'
 import { Pinned } from './scene/Pinned'
 import { Tapes } from './scene/Tapes'
+import { Weather } from './scene/Weather'
+import { Cat } from './scene/Cat'
+import { Body } from './scene/Body'
+import { Sound } from './scene/Sound'
 import { Probe } from './scene/Probe'
 import { Reader } from './reader/Reader'
 import { readerStatus, resetReaderStatus } from './reader/status'
@@ -34,6 +38,9 @@ import { useLightStore } from './state/lights'
 import { useMediaStore } from './state/media'
 import { useVideoStore } from './state/video'
 import { useWorldStore } from './state/world'
+import { useSettings } from './state/settings'
+import { cat } from './state/cat'
+import { askCatForBook, callCat, petCat } from './scene/Cat'
 import { warmCovers } from './state/covers'
 import { library } from './services'
 import type { LoosePlacement } from './services/types'
@@ -81,6 +88,34 @@ export default function App() {
   }, [loadWorld, loadRoot, loadLibrary, loadLights, loadMedia, loadVideo])
 
   useEffect(() => watchWorld(), [watchWorld])
+
+  /**
+   * `F2` opens and closes the settings panel, and `Esc` closes it.
+   *
+   * Here rather than in the walk controller because the walk controller ignores
+   * every key while the panel is open — which is what stops `W` walking you
+   * through a wall while you drag a slider, and would also make the key that
+   * opened the panel the one key that could not close it.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.tagName === 'INPUT'
+      if (e.code === 'F2' && !typing) {
+        e.preventDefault()
+        const app = useAppStore.getState()
+        app.setSettingsOpen(!app.settingsOpen)
+      } else if (e.code === 'Escape' && !typing) {
+        // The panels that take the keyboard each close themselves from their own
+        // field; this is the way out when the focus has wandered off it — which
+        // is one stray click away and used to leave `Esc` doing nothing at all.
+        const app = useAppStore.getState()
+        if (app.settingsOpen) app.setSettingsOpen(false)
+        else if (app.searching) app.setSearching(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   // Stand where the document says to, once. A live reload must not pick you up
   // and put you back at the door mid-browse.
@@ -194,6 +229,17 @@ export default function App() {
        */
       putDownForTest: (id: string, placement: LoosePlacement) =>
         useLibraryStore.getState().putDown(id, placement),
+      /**
+       * Put a book on a particular shelf, as aiming and pressing E does.
+       *
+       * Exists because "which rows happen to be stocked" is not something a test
+       * may assume: unpacking fills empty rows in a shuffled order and stops when
+       * the boxes run out, so with more shelves than books there are always rows
+       * with nothing on them. A test about what happens to the books *on* a
+       * bookcase has to be able to put some there.
+       */
+      shelveForTest: (id: string, shelfId: string, row: number, index = 0) =>
+        useLibraryStore.getState().shelve(id, shelfId, row, index),
       /** Every piece of furniture, where it actually is — boxes get shoved. */
       furniture: () =>
         (useWorldStore.getState().world?.furniture ?? []).map((item) => ({
@@ -225,6 +271,28 @@ export default function App() {
       /** Whether it is night outside, and the switch the N key presses. */
       night: () => useLightStore.getState().night,
       toggleNightForTest: () => useLightStore.getState().toggleNight(),
+      /** Whether it is raining, and the switch the K key presses. */
+      raining: () => useLightStore.getState().rain,
+      toggleRainForTest: () => useLightStore.getState().toggleRain(),
+      /**
+       * The cat: where it is and what it is up to.
+       *
+       * It moves every frame and lives outside React for that reason, so this
+       * is a snapshot rather than a handle.
+       */
+      cat: () => ({ ...cat }),
+      /**
+       * Call it, fuss it, ask it for a book — as `V`, `E` and `F` do.
+       *
+       * Aiming at a *moving animal* from a headless driver is a pose hunt with a
+       * moving target, and what these tests are about is what the cat then does.
+       * The same argument `emptyBoxForTest` makes about a box.
+       */
+      callCatForTest: () => callCat(),
+      petCatForTest: () => petCat(),
+      fetchBookForTest: () => askCatForBook(),
+      /** Go in, as pressing the button on the main menu does. */
+      startForTest: () => useAppStore.getState().start(),
       /** The records the music folder produced, and what is on the deck. */
       records: () => useMediaStore.getState().tracks.map((track) => track.id),
       nowPlaying: () => useMediaStore.getState().playing,
@@ -299,14 +367,27 @@ export default function App() {
     ;(window as unknown as { __app: typeof app }).__app = app
   }, [rootLoaded, libraryLoaded, worldLoaded])
 
+  /**
+   * Low performance mode, at the one place it cannot be applied per frame.
+   *
+   * Antialiasing and the shadow map are decided when the WebGL context is
+   * created, so changing them means a new canvas — hence the `key`. Remounting
+   * the scene mid-session is jarring and is the right trade for a switch you
+   * throw once: everything that matters is in the stores, so the room comes back
+   * exactly as you left it, and the alternative is a setting that only takes
+   * effect on the next launch.
+   */
+  const lowPerformance = useSettings((s) => s.lowPerformance)
+
   return (
     <div className="app">
       <Canvas
-        shadows
-        dpr={[1, 2]}
+        key={lowPerformance ? 'low' : 'full'}
+        shadows={!lowPerformance}
+        dpr={lowPerformance ? 1 : [1, 2]}
         gl={{
-          antialias: true,
-          powerPreference: 'high-performance',
+          antialias: !lowPerformance,
+          powerPreference: lowPerformance ? 'default' : 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
         }}
@@ -329,10 +410,14 @@ export default function App() {
         <Records />
         <Tapes />
         <Pinned />
+        <Cat />
+        <Weather />
         <PlacementGhost />
         <Interaction />
         <Handling />
         <Player />
+        <Body />
+        <Sound />
         <HeldBook />
         <HeldRecord />
         <HeldTape />
