@@ -5,11 +5,13 @@ import { readerStatus } from '../reader/status'
 import { useLibraryStore } from '../state/library'
 import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
+import { useVideoStore } from '../state/video'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 import { LAMPS, floorAt, supportAt } from '../world/derive'
 import { ShelfLabelField } from './ShelfLabelField'
 import { JumpToPageField } from './JumpToPageField'
+import { NoteField } from './NoteField'
 import { ControlsCard } from './ControlsCard'
 
 export function Hud() {
@@ -31,6 +33,13 @@ export function Hud() {
   const focusedRecord = useAppStore((s) => s.focusedRecord)
   const heldRecord = useAppStore((s) => s.heldRecord)
   const crateTarget = useAppStore((s) => s.crateTarget)
+  const focusedTape = useAppStore((s) => s.focusedTape)
+  const heldPin = useAppStore((s) => s.heldPin)
+  const pinTarget = useAppStore((s) => s.pinTarget)
+  const focusedPin = useAppStore((s) => s.focusedPin)
+  const pins = useLibraryStore((s) => s.pins)
+  const heldTape = useAppStore((s) => s.heldTape)
+  const tapeCrateTarget = useAppStore((s) => s.tapeCrateTarget)
   const focusedShelf = useAppStore((s) => s.focusedShelf)
   const hudHidden = useAppStore((s) => s.hudHidden)
   const controlsOpen = useAppStore((s) => s.controlsOpen)
@@ -65,6 +74,10 @@ export function Hud() {
   const nowPlaying = useMediaStore((s) => s.playing)
   const paused = useMediaStore((s) => s.paused)
   const musicError = useMediaStore((s) => s.error)
+  const tapes = useVideoStore((s) => s.tapes)
+  const watching = useVideoStore((s) => s.playing)
+  const watchPaused = useVideoStore((s) => s.paused)
+  const videoError = useVideoStore((s) => s.error)
   const lightsOn = useLightStore((s) => s.on)
   const night = useLightStore((s) => s.night)
   const toggleNight = useLightStore((s) => s.toggleNight)
@@ -108,6 +121,8 @@ export function Hud() {
 
   const record = focusedRecord ? tracks.find((track) => track.id === focusedRecord) : undefined
   const heldRecordTrack = heldRecord ? tracks.find((track) => track.id === heldRecord) : undefined
+  const tape = focusedTape ? tapes.find((t) => t.id === focusedTape) : undefined
+  const heldTapeItem = heldTape ? tapes.find((t) => t.id === heldTape) : undefined
   const fixture = focusedFixture
     ? world?.furniture.find((item) => item.id === focusedFixture)
     : undefined
@@ -115,13 +130,15 @@ export function Hud() {
   const fixtureName =
     fixture?.kind === 'recordplayer'
       ? 'record player'
-      : fixture?.kind === 'coffeemaker'
-        ? 'coffee maker'
-        : fixture?.kind === 'fireplace'
-          ? 'the fire'
-          : fixture?.kind === 'pendant'
-            ? 'ceiling light'
-            : 'lamp'
+      : fixture?.kind === 'crt'
+        ? 'television'
+        : fixture?.kind === 'coffeemaker'
+          ? 'coffee maker'
+          : fixture?.kind === 'fireplace'
+            ? 'the fire'
+            : fixture?.kind === 'pendant'
+              ? 'ceiling light'
+              : 'lamp'
   const fixtureVerb =
     fixture && LAMPS.has(fixture.kind)
       ? fixtureLit
@@ -131,9 +148,17 @@ export function Hud() {
         ? nowPlaying && !paused
           ? 'pause'
           : 'play'
-        : brewing === fixture?.id
-          ? 'brewing…'
-          : 'put the coffee on'
+        : fixture?.kind === 'crt'
+          ? // An empty set says so rather than helping itself to a tape: putting
+            // one in is a thing you do with your hands.
+            watching === null
+            ? 'no tape in it'
+            : watchPaused
+              ? 'play'
+              : 'pause'
+          : brewing === fixture?.id
+            ? 'brewing…'
+            : 'put the coffee on'
 
   return (
     <>
@@ -150,6 +175,10 @@ export function Hud() {
             focusedFixture ||
             focusedRecord ||
             crateTarget ||
+            focusedTape ||
+            tapeCrateTarget ||
+            pinTarget ||
+            focusedPin ||
             surfaceTarget
               ? 'crosshair-active'
               : ''
@@ -161,7 +190,7 @@ export function Hud() {
         </div>
       )}
 
-      {walking && focused && !held && (
+      {walking && focused && !held && !focusedPin && !heldPin && (
         <div className="focus-card" data-testid="focus-card">
           <p className="focus-title">{focused.title}</p>
           <p className="focus-author">
@@ -205,6 +234,8 @@ export function Hud() {
         !focusedSeat &&
         !focusedRecord &&
         !focusedFixture &&
+        !focusedPin &&
+        !heldPin &&
         !held &&
         !heldRecord &&
         !seat && (
@@ -258,7 +289,91 @@ export function Hud() {
         </div>
       )}
 
-      {walking && focusedFixture && !held && !focusedRecord && (
+      {/* A sheet in hand. Its own card rather than a line on the book card,
+          because you can be holding both — a page torn out of the book still in
+          your other hand is the whole point of the gesture. */}
+      {walking && heldPin && (
+        <div className="held-card" data-testid="held-sheet-card">
+          <p className="held-label">
+            {heldPin.kind === 'page' ? 'holding a page' : 'holding a note'}
+          </p>
+          <p className="focus-title">
+            {heldPin.kind === 'page'
+              ? (byId.get(heldPin.bookId)?.title ?? 'a page')
+              : heldPin.text}
+          </p>
+          {heldPin.kind === 'page' && (
+            <p className="focus-author">page {heldPin.page} · the book keeps its own</p>
+          )}
+          <p className="focus-key">
+            {pinTarget ? (
+              <>
+                <kbd>E</kbd> pin it up
+              </>
+            ) : (
+              <span className="warn">aim at a wall, or at the whiteboard</span>
+            )}
+            {!held && (
+              <>
+                {' · '}
+                <kbd>Q</kbd> throw it away
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {walking && focusedPin && !heldPin && (
+        <div className="focus-card" data-testid="pin-card">
+          <p className="focus-title">
+            {(() => {
+              const sheet = pins.find((item) => item.id === focusedPin)
+              if (!sheet) return 'a sheet of paper'
+              return sheet.kind === 'note'
+                ? (sheet.text ?? 'a note')
+                : (byId.get(sheet.bookId ?? '')?.title ?? 'a page')
+            })()}
+          </p>
+          <p className="focus-key">
+            <kbd>E</kbd> take it down
+          </p>
+        </div>
+      )}
+
+      {walking && focusedTape && !held && (
+        <div className="focus-card" data-testid="tape-card">
+          <p className="focus-title">{tape?.title ?? 'a tape'}</p>
+          <p className="focus-author">{tape?.series ?? 'unlabelled'}</p>
+          <p className="focus-key">
+            <kbd>E</kbd> take it out
+          </p>
+        </div>
+      )}
+
+      {walking && heldTape && (
+        <div className="held-card" data-testid="held-tape-card">
+          <p className="held-label">holding a tape</p>
+          <p className="focus-title">{heldTapeItem?.title ?? 'a tape'}</p>
+          <p className="focus-author">{heldTapeItem?.series ?? 'unlabelled'}</p>
+          <p className="focus-key">
+            {focusedFixture ? (
+              <>
+                <kbd>E</kbd> put it in
+              </>
+            ) : tapeCrateTarget ? (
+              <>
+                <kbd>E</kbd> put it back
+              </>
+            ) : (
+              <span className="warn">aim at the television, or at the crate</span>
+            )}
+            {' · '}
+            <kbd>Q</kbd> put it back
+          </p>
+        </div>
+      )}
+
+      {walking && focusedFixture && !held && !focusedRecord && !focusedTape && (
         <div className="focus-card" data-testid="fixture-card">
           <p className="focus-title">{fixtureName}</p>
           <p className="focus-key">
@@ -486,6 +601,20 @@ export function Hud() {
           {musicError && <p className="note warn">{musicError}</p>}
         </div>
 
+        {/* And the tapes, which fail more interestingly than records do: a
+            container the WebView cannot decode is a tape that goes in the
+            machine and refuses to start, so the reason has to be somewhere. */}
+        <div className="row">
+          <span className="row-label">tapes</span>
+          <p className="note" data-testid="tape-count">
+            {tapes.length === 0
+              ? 'nothing in video/ yet'
+              : `${tapes.length.toLocaleString()} in the crate`}
+            {watching && ` · ${watchPaused ? 'paused' : 'playing'}`}
+          </p>
+          {videoError && <p className="note warn">{videoError}</p>}
+        </div>
+
         <div className="row">
           <span className="row-label">outside</span>
           <div className="row-controls">
@@ -535,6 +664,7 @@ export function Hud() {
           bring it back. */}
       <ShelfLabelField />
       <JumpToPageField />
+      <NoteField />
       <ControlsCard />
     </>
   )

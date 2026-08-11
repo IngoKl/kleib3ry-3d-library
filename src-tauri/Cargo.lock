@@ -1881,6 +1881,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "kleib3ry"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "kleib3ry_core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kleib3ry_core"
+version = "0.1.0"
+dependencies = [
+ "lopdf",
+ "quick-xml 0.39.4",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1953,25 +1982,6 @@ dependencies = [
  "cc",
  "libc",
  "pkg-config",
-]
-
-[[package]]
-name = "library3d"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "lopdf",
- "quick-xml 0.39.4",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "thiserror 2.0.20",
- "walkdir",
- "zip",
 ]
 
 [[package]]

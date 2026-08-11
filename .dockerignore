@@ -1,0 +1,33 @@
+# Everything the build does not need, which is most of the repo.
+#
+# The Rust target directories matter most: a local `cargo build` leaves gigabytes
+# in them, and sending that to the daemon as build context is a minute of nothing
+# happening before the first stage even starts.
+node_modules
+dist
+core/target
+server/target
+src-tauri/target
+src-tauri/gen
+
+# Generated at build time inside the image, so a stale local copy would only
+# shadow the fresh one.
+public/standard_fonts
+public/cmaps
+public/sample-book.pdf
+
+test-results
+playwright-report
+blob-report
+tests/screenshots
+
+.git
+.github
+.vscode
+.idea
+docs
+assets
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore

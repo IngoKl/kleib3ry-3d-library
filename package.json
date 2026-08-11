@@ -1,7 +1,7 @@
 {
-  "name": "library3d",
+  "name": "kleib3ry",
   "version": "0.1.0",
-  "description": "A 3D personal library: read your own PDFs and EPUBs in a room you design.",
+  "description": "kleib3ry — a 3D personal library: read your own PDFs and EPUBs in a room you design.",
   "main": "index.js",
   "scripts": {
     "test": "playwright test",
@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:rust": "cargo test --manifest-path core/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path server/Cargo.toml",
     "scan": "cargo run --release --manifest-path src-tauri/Cargo.toml --bin scan --",
     "verify": "npm run typecheck && npm run build && npm run test && npm run test:rust",
     "tauri": "tauri",
@@ -17,7 +17,11 @@
     "tauri:build": "tauri build",
     "icon": "node scripts/make-icon.mjs && tauri icon assets/icon-source.png",
     "test:desktop": "node scripts/probe-desktop.mjs",
-    "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/make-sample-book.mjs"
+    "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/make-sample-book.mjs",
+    "build:http": "tsc --noEmit && vite build --mode http",
+    "dev:http": "vite --mode http",
+    "serve": "cargo run --release --manifest-path server/Cargo.toml --bin kleib3ry-server --",
+    "docker:build": "docker build -t kleib3ry ."
   },
   "keywords": [],
   "author": "",

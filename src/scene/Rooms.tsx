@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { sceneRefs } from './refs'
 import { MATERIALS, makeFloorTexture } from './materials'
 import {
   FLOOR_SLAB,
@@ -68,17 +69,20 @@ function Shell({
   panels,
   color,
   roughness = 0.95,
+  userData,
 }: {
   panels: readonly Panel[]
   color: string
   roughness?: number
+  /** Marks a shell as something the crosshair may treat as a wall. */
+  userData?: Record<string, unknown>
 }) {
   const geometry = useMemo(() => merge(panels), [panels])
   useEffect(() => () => geometry?.dispose(), [geometry])
   if (!geometry) return null
 
   return (
-    <mesh geometry={geometry} castShadow receiveShadow>
+    <mesh geometry={geometry} userData={userData} castShadow receiveShadow>
       <meshStandardMaterial color={color} roughness={roughness} metalness={0} />
     </mesh>
   )
@@ -222,7 +226,10 @@ function Room({ room }: { room: RoomSpec }) {
           <meshStandardMaterial map={ceilingTexture} roughness={0.92} />
         </mesh>
       )}
-      <Shell panels={panels} color={MATERIALS.wall} />
+      {/* Marked, so the raycast that looks for somewhere to pin a page can tell
+          a wall from the floor and the rafters it is merged alongside. Plaster
+          is the only surface in the building anybody sticks anything to. */}
+      <Shell panels={panels} color={MATERIALS.wall} userData={{ wall: room.id }} />
       <Shell panels={timber} color={MATERIALS.timber} roughness={0.87} />
       <Shell panels={skirting} color={MATERIALS.skirting} roughness={0.7} />
 
@@ -251,9 +258,22 @@ function Room({ room }: { room: RoomSpec }) {
 /** Every room in the world document. */
 export function Rooms() {
   const world = useWorldStore((s) => s.world)
+  const group = useRef<THREE.Group>(null)
+
+  // Published whole rather than as a group of just the wall meshes: the shells
+  // are merged per room and per material, so pulling the walls into a group of
+  // their own would mean a second traversal of the same geometry. The raycast
+  // filters on `userData.wall` instead — see `Interaction`.
+  useLayoutEffect(() => {
+    sceneRefs.walls = group.current
+    return () => {
+      sceneRefs.walls = null
+    }
+  }, [world])
+
   if (!world) return null
   return (
-    <group>
+    <group ref={group}>
       {world.rooms.map((room) => (
         <Room key={room.id} room={room} />
       ))}

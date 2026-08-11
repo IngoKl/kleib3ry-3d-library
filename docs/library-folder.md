@@ -18,6 +18,9 @@ My Library/                   ← the folder you choose in the app
         04 Four Women.mp3
   artwork/                    ← one picture per file, for the frames on the wall
     lake.jpg
+  video/                      ← one tape per file, for the television
+    Tarkovsky/
+      Stalker.mp4
   .library/                   ← everything the app owns, in one place
     library.json               ← the rooms. You edit this. The app never does.
     books.json                 ← which book is where, and what you wrote on the
@@ -31,13 +34,19 @@ Everything the app owns lives in `.library/`, so the rest of the folder stays
 yours. A scan never looks inside `.library/` — it is skipped by name, like
 `node_modules` — so nothing in there can be mistaken for a book.
 
-**Books live in `books/`.** A library folder holds more than books, and the
-names `music/` (records for the player) and `artwork/` (what hangs on the walls)
-are reserved for the rest of it. As soon as a `books/` folder exists, indexing
-reads that and nothing else — so sleeve notes filed with an album never turn up
-on a shelf. A folder from before this convention, with books lying loose at the
-top level, is still read whole, minus `music/` and `artwork/`; the scan says
-which of the two it is doing.
+**Books live in `books/`.** A library folder holds more than books, and three
+names are reserved for the rest of it: `music/` (records for the player),
+`artwork/` (what hangs on the walls) and `video/` (tapes for the television). As
+soon as a `books/` folder exists, indexing reads that and nothing else — so sleeve
+notes filed with an album never turn up on a shelf. A folder from before this
+convention, with books lying loose at the top level, is still read whole, minus
+those three; the scan says which of the two it is doing.
+
+**Only `books/` is indexed.** The other three are walked on demand, every time the
+app asks. A book index is worth caching — probing a PDF is slow and a collection
+is tens of thousands of files — while a music folder is hundreds and a video
+folder is dozens, so a second cache to keep in sync would buy nothing and a record
+you dropped in five seconds ago would not be on the shelf.
 
 **Before you have chosen a folder**, the same two files live in the app's own
 config directory instead, so a fresh install still has somewhere to put them.
@@ -283,6 +292,32 @@ for you; version 5 added `loose`, `progress`, `labels` and `furniture`. Older
 documents still load — everything added since has been optional — but a version
 2 file will not have its shelves where you left them if it predates the rekey,
 since the old keys named positions rather than bookcases.
+
+### Pages and notes
+
+`books.json` also carries `pins`: the sheets of paper stuck to the walls.
+
+```json
+"pins": [
+  { "id": "pin-lq3x9-1", "kind": "page", "bookId": "9f3c…", "page": 47,
+    "x": 7.24, "y": 1.42, "z": 7.32, "yaw": 3.14159, "tilt": 0.03 },
+  { "id": "pin-lq3xb-2", "kind": "note", "text": "ask about the 1963 edition",
+    "colour": 1, "x": 5.3, "y": 1.6, "z": 6.1, "yaw": 1.5708, "tilt": -0.05 }
+]
+```
+
+A `page` is a **copy**. It records which book and which page number, and the book
+keeps its own page — nothing is torn out of anything, and the sheet is rasterised
+from the same file the next time it is drawn. That is also why taking one down and
+putting it up somewhere else loses nothing.
+
+Positions are in world metres with a `yaw`, like a book left on a table, and for
+the same reason: you stuck it *there*. A wall that goes away leaves the sheet
+hanging over where it was rather than teleporting to whichever wall inherited
+the id.
+
+On load, a page whose book the index has lost is dropped — it is a page of
+nothing. A note is nobody's but yours and always stays.
 
 ## `lights.json` — which lamps are on
 

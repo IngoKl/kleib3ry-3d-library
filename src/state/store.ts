@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { library } from '../services'
+import type { DriverKind } from '../services/types'
 
 /**
  * Where you are: on your feet in the room, or docked to an open book.
@@ -30,7 +31,7 @@ type AppState = {
   mode: Mode
   libraryRoot: string | null
   rootLoaded: boolean
-  driver: 'tauri' | 'browser'
+  driver: DriverKind
 
   /** Book id under the crosshair while empty-handed. */
   focusedBook: string | null
@@ -84,6 +85,12 @@ type AppState = {
   heldRecord: string | null
   /** Record crate under the crosshair while holding a record — file it back. */
   crateTarget: string | null
+  /** Tape under the crosshair, by tape id. */
+  focusedTape: string | null
+  /** Tape in hand, by tape id. Its own slot: a cassette is not a book. */
+  heldTape: string | null
+  /** Tape crate under the crosshair while holding a tape — put it back. */
+  tapeCrateTarget: string | null
   /**
    * Bookcase carcass under the crosshair, whether or not a book is.
    *
@@ -97,6 +104,22 @@ type AppState = {
   carriedBox: string | null
   /** Shelf id whose label you are typing, or null. */
   labelling: string | null
+  /**
+   * A page or note in your hand.
+   *
+   * Deliberately *not* mutually exclusive with `held`: a sheet of paper is not a
+   * book, and tearing a copy of a page out of the book you are reading would be
+   * absurd if it meant putting the book down first. E prefers the sheet only
+   * when you are aiming at somewhere a sheet can go, which is a wall — and a
+   * wall is not somewhere a book can go, so the two never compete.
+   */
+  heldPin: HeldSheet | null
+  /** Where the sheet in your hand would land. Null when not aiming at a wall. */
+  pinTarget: PinTarget | null
+  /** Id of a pinned sheet under the crosshair, one you could take down. */
+  focusedPin: string | null
+  /** True while the note field is open, so movement keys stay typed. */
+  noting: boolean
   /** Coffee maker that is currently brewing. It stops on its own. */
   brewing: string | null
   /**
@@ -138,12 +161,19 @@ type AppState = {
   setFocusedRecord: (id: string | null) => void
   setHeldRecord: (id: string | null) => void
   setCrateTarget: (id: string | null) => void
+  setFocusedTape: (id: string | null) => void
+  setHeldTape: (id: string | null) => void
+  setTapeCrateTarget: (id: string | null) => void
   setFocusedShelf: (id: string | null) => void
   toggleHud: () => void
   setControlsOpen: (open: boolean) => void
   setSurfaceTarget: (target: SurfaceTarget | null) => void
   setCarriedBox: (id: string | null) => void
   setLabelling: (shelfId: string | null) => void
+  setHeldPin: (sheet: HeldSheet | null) => void
+  setPinTarget: (target: PinTarget | null) => void
+  setFocusedPin: (id: string | null) => void
+  setNoting: (open: boolean) => void
   setJumping: (open: boolean) => void
   /** Ask the reader to open at `spread`. Cleared by the reader once it has. */
   requestJump: (spread: number | null) => void
@@ -152,6 +182,33 @@ type AppState = {
 
   loadRoot: () => Promise<void>
   pickRoot: () => Promise<void>
+}
+
+/**
+ * A sheet in your hand, before it is stuck to anything.
+ *
+ * It has no position yet, which is the whole difference between this and a
+ * `PinnedSheet` — and the reason it is session state rather than part of the
+ * layout. A page in your hand when the app closes is a page you had not decided
+ * about, and losing it costs one keystroke.
+ */
+export type HeldSheet =
+  | { kind: 'page'; bookId: string; page: number }
+  | { kind: 'note'; text: string; colour: number }
+
+/**
+ * Where a sheet would go if you pinned it now: a point on a wall or a board, and
+ * the way that surface faces.
+ *
+ * Carries no wall id. A wall is not a thing you can put something *into* the way
+ * a shelf is — there are no slots, so there is nothing to identify.
+ */
+export type PinTarget = {
+  x: number
+  y: number
+  z: number
+  /** Radians about Y, from the surface's outward normal. */
+  yaw: number
 }
 
 /**
@@ -167,6 +224,14 @@ export type SurfaceTarget = {
   y: number
   z: number
 }
+
+const samePin = (a: PinTarget | null, b: PinTarget | null) =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    Math.abs(a.x - b.x) < 0.01 &&
+    Math.abs(a.y - b.y) < 0.01 &&
+    Math.abs(a.z - b.z) < 0.01)
 
 const sameSurface = (a: SurfaceTarget | null, b: SurfaceTarget | null) =>
   a === b ||
@@ -210,12 +275,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusedRecord: null,
   heldRecord: null,
   crateTarget: null,
+  focusedTape: null,
+  heldTape: null,
+  tapeCrateTarget: null,
   focusedShelf: null,
   hudHidden: false,
   controlsOpen: false,
   surfaceTarget: null,
   carriedBox: null,
   labelling: null,
+  heldPin: null,
+  pinTarget: null,
+  focusedPin: null,
+  noting: false,
   brewing: null,
   jumpTo: null,
   jumping: false,
@@ -258,6 +330,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCrateTarget: (crateTarget) => {
     if (get().crateTarget !== crateTarget) set({ crateTarget })
   },
+  setFocusedTape: (focusedTape) => {
+    if (get().focusedTape !== focusedTape) set({ focusedTape })
+  },
+  setHeldTape: (heldTape) => set({ heldTape }),
+  setTapeCrateTarget: (tapeCrateTarget) => {
+    if (get().tapeCrateTarget !== tapeCrateTarget) set({ tapeCrateTarget })
+  },
   setFocusedShelf: (focusedShelf) => {
     if (get().focusedShelf !== focusedShelf) set({ focusedShelf })
   },
@@ -268,6 +347,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setCarriedBox: (carriedBox) => set({ carriedBox }),
   setLabelling: (labelling) => set({ labelling }),
+  setHeldPin: (heldPin) => set({ heldPin }),
+  // Written off the per-frame raycast, so it guards against no-op writes for
+  // the same reason the shelf target does.
+  setPinTarget: (pinTarget) => {
+    if (!samePin(get().pinTarget, pinTarget)) set({ pinTarget })
+  },
+  setFocusedPin: (focusedPin) => {
+    if (get().focusedPin !== focusedPin) set({ focusedPin })
+  },
+  setNoting: (noting) => set({ noting }),
   setJumping: (jumping) => set({ jumping }),
   requestJump: (jumpTo) => set({ jumpTo, jumping: false }),
 

@@ -1,4 +1,6 @@
 import { aabbFromCentre, type Aabb } from '../scene/collision'
+import { CLEARING, growForest, treeSolids, type Tree } from './forest'
+import { terrainAt } from './terrain'
 import type {
   FloorHole,
   FurnitureKind,
@@ -50,12 +52,22 @@ export const FURNITURE_SIZE: Record<
   footstool: { width: 0.5, depth: 0.42, height: 0.38, solid: true, surface: true },
   sidetable: { width: 0.46, depth: 0.46, height: 0.56, solid: true, surface: true },
   table: { width: 1.3, depth: 0.78, height: 0.74, solid: true, surface: true },
+  // Deeper than a dining table and a little higher: a desk is somewhere you
+  // spread a book open and leave it, which is what makes it a surface.
+  desk: { width: 1.5, depth: 0.72, height: 0.75, solid: true, surface: true },
   // A surface, so a book can be left on the covers — where books end up.
   bed: { width: 1.5, depth: 2.05, height: 0.55, solid: true, surface: true },
   box: { width: 0.52, depth: 0.4, height: 0.36, solid: true, surface: false },
   recordshelf: { width: 0.9, depth: 0.36, height: 0.78, solid: true, surface: true },
+  // Long, shallow and open-topped: the tapes stand in it spine-out, and it has
+  // to be lower than they are tall or a box of tapes shows you nothing but its
+  // own sides. A tape is 23 cm, so 22 leaves the labels standing proud.
+  tapecrate: { width: 0.56, depth: 0.22, height: 0.22, solid: true, surface: true },
   kitchencounter: { width: 1.8, depth: 0.62, height: 0.92, solid: true, surface: true },
   recordplayer: { width: 0.46, depth: 0.38, height: 0.18, solid: false, surface: false },
+  // A portable television, which is to say a heavy one: deep, because the tube
+  // is, and solid because it stands on the floor on its own stand.
+  crt: { width: 0.6, depth: 0.56, height: 0.52, solid: true, surface: false },
   coffeemaker: { width: 0.24, depth: 0.28, height: 0.36, solid: false, surface: false },
   fireplace: { width: 1.2, depth: 0.5, height: 1.5, solid: true, surface: false },
   floorlamp: { width: 0.36, depth: 0.36, height: 1.66, solid: true, surface: false },
@@ -63,8 +75,23 @@ export const FURNITURE_SIZE: Record<
   rug: { width: 2.2, depth: 1.6, height: 0.012, solid: false, surface: false },
   plant: { width: 0.42, depth: 0.42, height: 0.95, solid: true, surface: false },
   picture: { width: 0.6, depth: 0.05, height: 0.8, solid: false, surface: false },
+  whiteboard: { width: 1.8, depth: 0.06, height: 1.1, solid: false, surface: false },
   stairs: { width: 1.0, depth: 3.0, height: 2.6, solid: false, surface: false },
+  // A pair of treads hanging off the edge of a deck. Not solid: the whole point
+  // is to walk down it, and the walk controller reads the *floor*, not the
+  // joinery — a 24 cm drop is inside `STEP_UP` and needs no ramp.
+  step: { width: 1.4, depth: 0.62, height: 0.24, solid: false, surface: false },
 }
+
+/**
+ * Furniture that hangs on a wall rather than standing on the floor.
+ *
+ * Three things follow from it: `size` means width by *height*, `y` names the
+ * centre of the thing rather than its base, and its depth comes from the kind
+ * rather than from the document — nobody hanging a whiteboard is thinking about
+ * how far it sticks out.
+ */
+export const WALL_MOUNTED = new Set<FurnitureKind>(['picture', 'whiteboard'])
 
 /** Furniture you can sit in. A footstool is for feet. */
 export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair', 'bench', 'bed'])
@@ -73,7 +100,7 @@ export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair
 export const LAMPS = new Set<FurnitureKind>(['floorlamp', 'pendant', 'fireplace'])
 
 /** Furniture you operate rather than sit on or fill: press E and something happens. */
-export const APPLIANCES = new Set<FurnitureKind>(['recordplayer', 'coffeemaker'])
+export const APPLIANCES = new Set<FurnitureKind>(['recordplayer', 'crt', 'coffeemaker'])
 
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number }
 
@@ -321,6 +348,149 @@ export function floorSlabs(room: RoomSpec): Slab[] {
 const inside = (b: Bounds, x: number, z: number) =>
   x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ
 
+// ---- roofs --------------------------------------------------------------
+
+/**
+ * A roof, resolved to the two heights and one footprint the renderer needs.
+ *
+ * The plane passes through the eaves at the *top of the walls* and rises from
+ * there, never below — which is what keeps a porch roof from cutting through
+ * the porch ceiling it is supposed to sit on. The overhang is the one part that
+ * dips under the eaves line, and it does that outside the walls where there is
+ * nothing to intersect.
+ */
+export type DerivedRoof = {
+  roomId: string
+  kind: 'gable' | 'shed' | 'flat'
+  /** The low side. For a gable, the eaves run along this wall and its opposite. */
+  fall: Wall
+  /** 'z' when the slope falls along Z, i.e. the ridge runs east to west. */
+  axis: 'x' | 'z'
+  /** The walls, in world metres — where the gable ends stand. */
+  walls: Bounds
+  /** The same, grown by the overhang: what the roof actually covers. */
+  covers: Bounds
+  /** Height of the eaves, and of the ridge (or of the high side of a shed). */
+  eaves: number
+  peak: number
+  /** Radians, so the renderer can tip a slab by exactly the derived rise. */
+  pitch: number
+  overhang: number
+}
+
+const areaOf = (room: RoomSpec) => room.size[0] * room.size[1]
+const topOf = (room: RoomSpec) => room.elevation + room.height
+
+const overlapsInPlan = (a: RoomSpec, b: RoomSpec): boolean => {
+  const p = roomBounds(a)
+  const q = roomBounds(b)
+  return p.minX < q.maxX - EPS && p.maxX > q.minX + EPS && p.minZ < q.maxZ - EPS && p.maxZ > q.minZ + EPS
+}
+
+/**
+ * How far the eaves stand out on one side — which is the nominal overhang,
+ * unless there is a building in the way.
+ *
+ * A roof does not overhang into the wall it leans on. Without this the porch's
+ * shed roof reached 45 cm *through* the cabin's south wall and came out at head
+ * height over the great room, and the kitchen's gable end did the same through
+ * the east wall. Both are the same mistake: growing a footprint uniformly when
+ * one of its sides is a joint rather than an edge.
+ *
+ * "In the way" is a neighbour that reaches at least as high as these eaves and
+ * whose wall runs along this side. Equal heights count, so two wings of the same
+ * height meet in a valley instead of crossing overhangs in the gap between them.
+ */
+function overhangOn(
+  room: RoomSpec,
+  rooms: readonly RoomSpec[],
+  wall: Wall,
+  nominal: number,
+  eaves: number,
+): number {
+  const b = roomBounds(room)
+  const near = (a: number, c: number) => Math.abs(a - c) <= ROOM_GAP + 0.02
+
+  for (const other of rooms) {
+    if (other === room || topOf(other) < eaves - EPS) continue
+    const o = roomBounds(other)
+    // Adjacent, not merely somewhere else in the building: the two footprints
+    // have to line up across the side in question.
+    const alongX = o.minX < b.maxX + ROOM_GAP + EPS && o.maxX > b.minX - ROOM_GAP - EPS
+    const alongZ = o.minZ < b.maxZ + ROOM_GAP + EPS && o.maxZ > b.minZ - ROOM_GAP - EPS
+    if (!alongX || !alongZ) continue
+
+    if (wall === 'east' && near(o.minX, b.maxX)) return 0
+    if (wall === 'west' && near(o.maxX, b.minX)) return 0
+    if (wall === 'south' && near(o.minZ, b.maxZ)) return 0
+    if (wall === 'north' && near(o.maxZ, b.minZ)) return 0
+  }
+  return nominal
+}
+
+/**
+ * Which rooms get a roof, and where its two heights are.
+ *
+ * A room is skipped when something else stands over the same ground and reaches
+ * at least as high: the bedroom roofs the reading corner under it, and the great
+ * room roofs the loft *inside* it. The loft is the case that makes the rule
+ * subtle — it shares the great room's ceiling exactly, so equal tops are broken
+ * by footprint, and the bigger room is the one the building is shaped by.
+ */
+export function roofsOf(rooms: readonly RoomSpec[]): DerivedRoof[] {
+  const roofs: DerivedRoof[] = []
+
+  for (const room of rooms) {
+    if (room.roof.kind === 'none') continue
+
+    const covered = rooms.some(
+      (other) =>
+        other !== room &&
+        overlapsInPlan(room, other) &&
+        (topOf(other) > topOf(room) + EPS ||
+          (Math.abs(topOf(other) - topOf(room)) <= EPS && areaOf(other) > areaOf(room))),
+    )
+    if (covered) continue
+
+    const walls = roomBounds(room)
+    const over = room.roof.overhang
+    const eavesAt = topOf(room)
+    const out = (wall: Wall) => overhangOn(room, rooms, wall, over, eavesAt)
+    const covers = {
+      minX: walls.minX - out('west'),
+      maxX: walls.maxX + out('east'),
+      minZ: walls.minZ - out('north'),
+      maxZ: walls.maxZ + out('south'),
+    }
+
+    const axis: 'x' | 'z' = room.roof.fall === 'north' || room.roof.fall === 'south' ? 'z' : 'x'
+    const span = axis === 'z' ? covers.maxZ - covers.minZ : covers.maxX - covers.minX
+    const pitch = (room.roof.pitch * Math.PI) / 180
+    const eaves = eavesAt
+    // A gable climbs half the span to its ridge; a shed climbs the whole of it
+    // to the high wall. Flat is flat, and is the one honest way to say "lid".
+    const rise =
+      room.roof.kind === 'flat'
+        ? 0
+        : Math.tan(pitch) * (room.roof.kind === 'gable' ? span / 2 : span)
+
+    roofs.push({
+      roomId: room.id,
+      kind: room.roof.kind,
+      fall: room.roof.fall,
+      axis,
+      walls,
+      covers,
+      eaves,
+      peak: eaves + rise,
+      pitch: room.roof.kind === 'flat' ? 0 : pitch,
+      overhang: over,
+    })
+  }
+
+  return roofs
+}
+
 // ---- shelves and furniture ---------------------------------------------
 
 export type DerivedShelf = {
@@ -393,7 +563,7 @@ const radians = (degrees: number) => (degrees * Math.PI) / 180
  * pendant hangs from the ceiling rather than rising from the boards.
  */
 function mountHeight(room: RoomSpec, item: FurnitureSpec, height: number): number {
-  if (item.kind === 'picture') return room.elevation + (item.y ?? 1.55) - height / 2
+  if (WALL_MOUNTED.has(item.kind)) return room.elevation + (item.y ?? 1.55) - height / 2
   if (item.kind === 'pendant') return room.elevation + (item.y ?? room.height - 0.75)
   return room.elevation + (item.y ?? 0)
 }
@@ -407,12 +577,22 @@ export type DerivedWorld = {
   furniture: DerivedFurniture[]
   stairs: DerivedStair[]
   lights: DerivedLight[]
+  /**
+   * The forest, grown from the rooms it has to keep out of.
+   *
+   * Derived rather than owned by the renderer because a tree is something you
+   * walk into now: the trunks in `solids` and the trunks you can see have to be
+   * the same trunks, and the only way to guarantee that is one list.
+   */
+  trees: Tree[]
   /** Every solid, with its vertical extent. Filter by level before colliding. */
   solids: Solid[]
   /** Flattened solids, ignoring level. Handy for tests and single-storey rooms. */
   colliders: Aabb[]
   /** Floor rectangles with the stairwells cut out, for standing on. */
   slabs: Slab[]
+  /** One per roofed room. Above head height, so nothing collides with these. */
+  roofs: DerivedRoof[]
   spawn: { x: number; y: number; z: number; yaw: number }
 }
 
@@ -466,12 +646,10 @@ export function deriveWorld(
       const at = override?.at ?? item.at
       const facing = override?.facing ?? item.facing
 
+      const hung = WALL_MOUNTED.has(item.kind)
       const width = item.size?.[0] ?? base.width
-      const depth = item.kind === 'picture' ? base.depth : (item.size?.[1] ?? base.depth)
-      const height =
-        item.kind === 'picture'
-          ? (item.size?.[1] ?? base.height)
-          : (item.height ?? base.height)
+      const depth = hung ? base.depth : (item.size?.[1] ?? base.depth)
+      const height = hung ? (item.size?.[1] ?? base.height) : (item.height ?? base.height)
       const rotationY = radians(facing)
       const baseY = override?.elevation ?? mountHeight(room, item, height)
 
@@ -551,6 +729,21 @@ export function deriveWorld(
     }
   }
 
+  // The forest keeps out of every room's footprint plus a margin to walk in,
+  // which is what leaves you a way round the outside of the building.
+  const trees = growForest(
+    doc.rooms.map((room) => {
+      const b = roomBounds(room)
+      return {
+        minX: b.minX - CLEARING,
+        maxX: b.maxX + CLEARING,
+        minZ: b.minZ - CLEARING,
+        maxZ: b.maxZ + CLEARING,
+      }
+    }),
+  )
+  solids.push(...treeSolids(trees))
+
   const spawnRoom = doc.rooms.find((room) => room.id === doc.spawn.room) ?? doc.rooms[0]!
   const spawn = {
     x: spawnRoom.origin[0] + doc.spawn.at[0],
@@ -567,9 +760,11 @@ export function deriveWorld(
     furniture,
     stairs,
     lights,
+    trees,
     solids,
     colliders: solids,
     slabs,
+    roofs: roofsOf(doc.rooms),
     spawn,
   }
 }
@@ -642,6 +837,19 @@ export function floorAt(world: DerivedWorld, x: number, z: number, from = 0): nu
   for (const slab of world.slabs) {
     if (!inside(slab, x, z)) continue
     if (slab.y <= from + STEP_UP && (best === null || slab.y > best)) best = slab.y
+  }
+
+  // The ground, which is a floor like any other now that you can walk out of
+  // the porch. It comes last and loses every tie because it is the lowest thing
+  // there is: standing in a room, the boards under you win, and the only points
+  // where the ground is the answer are the ones with no building over them.
+  //
+  // `terrainAt` returns null in the lake and past the edge of the world, which
+  // is the same answer a stairwell gives — nothing here — and refuses the step
+  // for the same reason.
+  const ground = terrainAt(x, z)
+  if (ground !== null && ground <= from + STEP_UP && (best === null || ground > best)) {
+    best = ground
   }
 
   return best

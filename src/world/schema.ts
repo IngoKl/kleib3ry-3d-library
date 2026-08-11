@@ -74,13 +74,16 @@ export type FurnitureKind =
   | 'footstool'
   | 'sidetable'
   | 'table'
+  | 'desk'
   | 'bed'
   // storage
   | 'box'
   | 'recordshelf'
+  | 'tapecrate'
   | 'kitchencounter'
   // things that do something
   | 'recordplayer'
+  | 'crt'
   | 'coffeemaker'
   | 'fireplace'
   // light
@@ -90,8 +93,10 @@ export type FurnitureKind =
   | 'rug'
   | 'plant'
   | 'picture'
+  | 'whiteboard'
   // structure
   | 'stairs'
+  | 'step'
 
 export type FurnitureSpec = {
   id: string
@@ -99,13 +104,14 @@ export type FurnitureSpec = {
   at: [number, number]
   facing: number
   /**
-   * Footprint override, in metres. For a `picture` this is the framed size —
-   * width by *height* — because a picture has no depth worth naming.
+   * Footprint override, in metres. For anything hung on a wall — a `picture`, a
+   * `whiteboard` — this is the mounted size, width by *height*, because a thing
+   * on a wall has no depth worth naming.
    */
   size?: [number, number]
   /** Height override, for the kinds where it is worth varying (tables, counters). */
   height?: number
-  /** Centre height above the floor. Only pictures hang. */
+  /** Centre height above the floor, for the kinds that hang on a wall. */
   y?: number
   /**
    * Which file in `artwork/` a picture shows. Omitted, pictures are dealt out
@@ -119,6 +125,32 @@ export type FurnitureSpec = {
    * remembered in `.library/lights.json` — this is only the initial state.
    */
   on?: boolean
+}
+
+/**
+ * The roof over a room.
+ *
+ * Only the *topmost* room over any patch of ground is roofed — see `roofsOf` —
+ * so a loft inside the great room's volume and a reading corner with a bedroom
+ * on it do not sprout roofs indoors. That is derived rather than declared,
+ * because "is there a room above me" is a fact about the document and not a
+ * decision anybody wants to restate every time they move a wall.
+ *
+ * `fall` is the one thing worth stating by hand. For a gable it names the sides
+ * the eaves run along — `south` puts the eaves on the north and south walls and
+ * therefore runs the ridge east to west — and for a shed it names the low side.
+ * A porch roof falls away from the building it leans on, and getting that
+ * backwards is a roof draining into the house.
+ */
+export type RoofKind = 'none' | 'gable' | 'shed' | 'flat'
+
+export type RoofSpec = {
+  kind: RoofKind
+  /** Degrees from horizontal. 0 is flat, 45 is steep, 30 is a house. */
+  pitch: number
+  /** How far the eaves stand out past the walls, in metres. */
+  overhang: number
+  fall: Wall
 }
 
 /** A rectangle cut out of a room's floor, for a stairwell. */
@@ -150,6 +182,7 @@ export type RoomSpec = {
   /** Rectangles missing from the floor, so a stair can come up through it. */
   holes: FloorHole[]
   floor: FloorFinish
+  roof: RoofSpec
   /** True for a porch: no interior lighting, and it is not "inside". */
   outdoor: boolean
   openings: Opening[]
@@ -295,6 +328,7 @@ function oneOf<T extends string>(
 
 const WALLS = ['north', 'south', 'east', 'west'] as const
 const FLOORS = ['boards', 'deck', 'stone'] as const
+const ROOFS = ['none', 'gable', 'shed', 'flat'] as const
 
 export const FURNITURE_KINDS = [
   'armchair',
@@ -304,11 +338,14 @@ export const FURNITURE_KINDS = [
   'footstool',
   'sidetable',
   'table',
+  'desk',
   'bed',
   'box',
   'recordshelf',
+  'tapecrate',
   'kitchencounter',
   'recordplayer',
+  'crt',
   'coffeemaker',
   'fireplace',
   'floorlamp',
@@ -316,7 +353,9 @@ export const FURNITURE_KINDS = [
   'rug',
   'plant',
   'picture',
+  'whiteboard',
   'stairs',
+  'step',
 ] as const
 
 function parseOpening(raw: unknown, path: string): Opening {
@@ -372,6 +411,41 @@ function parseFurniture(raw: unknown, path: string): FurnitureSpec {
   return spec
 }
 
+/**
+ * The roof, with defaults chosen so that no existing document has to mention it.
+ *
+ * A room gets a gable and a porch gets a shed, because that is what each one is;
+ * and the eaves default to the *longer* pair of walls, so the ridge runs the
+ * length of the building rather than across it — which is the difference between
+ * a house and a shed with delusions.
+ */
+function parseRoof(source: Json, path: string, room: { size: [number, number]; outdoor: boolean }): RoofSpec {
+  const wider = room.size[0] >= room.size[1]
+  const fallback: RoofSpec = {
+    kind: room.outdoor ? 'shed' : 'gable',
+    pitch: room.outdoor ? 18 : 30,
+    overhang: 0.45,
+    fall: wider ? 'south' : 'east',
+  }
+  const raw = source.roof
+  if (raw === undefined) return fallback
+
+  const roof = object(raw, `${path}.roof`)
+  const pitch = num(roof, 'pitch', `${path}.roof`, fallback.pitch)
+  if (pitch < 0 || pitch >= 80) {
+    fail(`${path}.roof.pitch`, `expected degrees between 0 and 80, found ${pitch}`)
+  }
+  const overhang = num(roof, 'overhang', `${path}.roof`, fallback.overhang)
+  if (overhang < 0) fail(`${path}.roof.overhang`, `expected 0 or more, found ${overhang}`)
+
+  return {
+    kind: oneOf(roof, 'kind', `${path}.roof`, ROOFS, fallback.kind),
+    pitch,
+    overhang,
+    fall: oneOf(roof, 'fall', `${path}.roof`, WALLS, fallback.fall),
+  }
+}
+
 function parseHole(raw: unknown, path: string): FloorHole {
   const source = object(raw, path)
   const size = pair(source, 'size', path)
@@ -417,6 +491,7 @@ function parseRoom(raw: unknown, path: string): RoomSpec {
     ceiling: bool(source, 'ceiling', path, true),
     holes: list(source, 'holes', path).map((item, i) => parseHole(item, `${path}.holes[${i}]`)),
     floor: oneOf(source, 'floor', path, FLOORS, outdoor ? 'deck' : 'boards'),
+    roof: parseRoof(source, path, { size, outdoor }),
     outdoor,
     openings: list(source, 'openings', path).map((item, i) =>
       parseOpening(item, `${path}.openings[${i}]`),

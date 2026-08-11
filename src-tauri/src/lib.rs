@@ -1,7 +1,15 @@
-pub mod db;
-pub mod index;
-pub mod media;
-pub mod probe;
+//! The desktop shell: commands, settings, and the paths they resolve.
+//!
+//! Everything that actually reads a book lives in `kleib3ry_core`, which has no
+//! idea a window exists. What is left here is the part that is genuinely about
+//! being a desktop app — the IPC surface, the asset-protocol scope, the native
+//! folder picker, and where an installed application is allowed to keep files.
+//!
+//! The modules are re-exported because `src/bin/scan.rs` and the tests reach
+//! for them by their old names, and because "the core is over there" is worth
+//! being able to see from here.
+
+pub use kleib3ry_core::{db, index, media, probe};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,24 +20,33 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use db::Book;
 
+/// What can go wrong in the shell: whatever the core can, plus Tauri itself.
+///
+/// The core's errors are flattened rather than nested — `Core(#[from] ...)` with
+/// a transparent message — so a failure reads the same in the HUD whether it
+/// came from SQLite or from the window manager. A user does not care which
+/// crate could not find their book.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    Core(#[from] kleib3ry_core::Error),
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     Tauri(#[from] tauri::Error),
-    #[error("database: {0}")]
-    Db(#[from] rusqlite::Error),
     #[error("not a directory: {0}")]
     NotADirectory(String),
-    #[error("no library folder has been chosen")]
-    NoLibraryRoot,
-    #[error("no book with id {0}")]
-    UnknownBook(String),
     #[error("bad image data: {0}")]
     BadImage(String),
+}
+
+/// The one core error the shell asks about by name, because it is not a failure
+/// so much as a state: there is no library folder yet, and the answer to most
+/// questions is therefore "nothing" rather than an error.
+fn is_no_root(error: &Error) -> bool {
+    matches!(error, Error::Core(kleib3ry_core::Error::NoLibraryRoot))
 }
 
 // Commands must return something serde can hand to the WebView.
@@ -71,11 +88,12 @@ impl Settings {
     }
 }
 
-/// Where everything the app owns lives. Resolved once at startup.
+/// Where everything the app owns lives when there is no library folder yet.
 ///
-/// Note what is *not* here: the world document and the book layout. Those are
-/// the save file, and a save file belongs to the library it describes, so they
-/// live in the library folder itself — see `save_files`.
+/// Note what is *not* here: the world document, the book layout, the index and
+/// the covers. Those are the save file, and a save file belongs to the library
+/// it describes, so they live in the library folder itself — see
+/// `kleib3ry_core::save_files`, which both this and the server read.
 struct Paths {
     settings: PathBuf,
     database: PathBuf,
@@ -105,16 +123,13 @@ fn paths(app: &AppHandle) -> Result<Paths> {
 
 fn root_of(app: &AppHandle) -> Result<PathBuf> {
     let settings = Settings::load_from(&paths(app)?.settings)?;
-    settings.library_root.map(PathBuf::from).ok_or(Error::NoLibraryRoot)
+    settings
+        .library_root
+        .map(PathBuf::from)
+        .ok_or(Error::Core(kleib3ry_core::Error::NoLibraryRoot))
 }
 
-/// The folder inside a library folder that holds everything the app owns.
-///
-/// Keeping the save files together in one named folder means the library folder
-/// stays *your books* — one extra directory rather than app files scattered
-/// among them — and the scanner skips it by name (see `index::SKIP_DIRS`) so
-/// nothing in here is ever mistaken for a book.
-pub const CONFIG_DIR: &str = ".library";
+pub use kleib3ry_core::CONFIG_DIR;
 
 /// The two files that make a folder a library.
 ///
@@ -141,11 +156,11 @@ struct SaveFiles {
 /// library to another machine should not mean doing it again. Falls back to the
 /// app's data directory until a folder has been chosen.
 fn covers_dir(app: &AppHandle) -> Result<PathBuf> {
-    Ok(match root_of(app) {
-        Ok(root) => root.join(CONFIG_DIR).join("covers"),
-        Err(Error::NoLibraryRoot) => paths(app)?.covers,
-        Err(e) => return Err(e),
-    })
+    match root_of(app) {
+        Ok(root) => Ok(kleib3ry_core::save_files(&root).covers),
+        Err(e) if is_no_root(&e) => Ok(paths(app)?.covers),
+        Err(e) => Err(e),
+    }
 }
 
 /// The book index, beside the covers it refers to.
@@ -154,11 +169,11 @@ fn covers_dir(app: &AppHandle) -> Result<PathBuf> {
 /// same index — a command that scans a folder the app then ignores would be a
 /// trap. It is still a derived file: delete it and rescan.
 fn database(app: &AppHandle) -> Result<PathBuf> {
-    Ok(match root_of(app) {
-        Ok(root) => root.join(CONFIG_DIR).join("index.sqlite"),
-        Err(Error::NoLibraryRoot) => paths(app)?.database,
-        Err(e) => return Err(e),
-    })
+    match root_of(app) {
+        Ok(root) => Ok(kleib3ry_core::save_files(&root).database),
+        Err(e) if is_no_root(&e) => Ok(paths(app)?.database),
+        Err(e) => Err(e),
+    }
 }
 
 /// Let the WebView load images out of the cover cache.
@@ -174,16 +189,25 @@ fn allow_covers(app: &AppHandle) -> Result<PathBuf> {
 }
 
 fn save_files(app: &AppHandle) -> Result<SaveFiles> {
-    let base = match root_of(app) {
-        Ok(root) => root.join(CONFIG_DIR),
-        Err(Error::NoLibraryRoot) => paths(app)?.fallback,
-        Err(e) => return Err(e),
-    };
-    Ok(SaveFiles {
-        world: base.join("library.json"),
-        layout: base.join("books.json"),
-        lights: base.join("lights.json"),
-    })
+    match root_of(app) {
+        Ok(root) => {
+            let files = kleib3ry_core::save_files(&root);
+            Ok(SaveFiles {
+                world: files.world,
+                layout: files.layout,
+                lights: files.lights,
+            })
+        }
+        Err(e) if is_no_root(&e) => {
+            let base = paths(app)?.fallback;
+            Ok(SaveFiles {
+                world: base.join("library.json"),
+                layout: base.join("books.json"),
+                lights: base.join("lights.json"),
+            })
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Let the WebView load one of the library folder's own media directories.
@@ -197,7 +221,7 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
 fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
     let root = match root_of(app) {
         Ok(root) => root,
-        Err(Error::NoLibraryRoot) => return Ok(None),
+        Err(e) if is_no_root(&e) => return Ok(None),
         Err(e) => return Err(e),
     };
     let dir = root.join(name);
@@ -208,22 +232,7 @@ fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
     Ok(Some(dir))
 }
 
-/// Changed-ness of the world file, cheaply: modified time and length.
-///
-/// The front end polls this so that editing `library.json` in any editor
-/// reloads the room. A stamp rather than the contents keeps the poll to a stat
-/// call, and comparing both fields catches an edit that happens to preserve the
-/// length within the same clock tick.
-fn stamp_of(path: &Path) -> Option<String> {
-    let meta = fs::metadata(path).ok()?;
-    let modified = meta
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_millis();
-    Some(format!("{modified}:{}", meta.len()))
-}
+use kleib3ry_core::stamp_of;
 
 // ---- commands ----------------------------------------------------------
 
@@ -281,7 +290,8 @@ fn scan_library(app: AppHandle) -> Result<index::ScanSummary> {
     // is its own way of wedging the WebView. Report about a hundred times over
     // the whole scan, plus the last one so the bar always finishes.
     let mut last = 0u32;
-    index::scan(&root, &database, &covers, move |progress| {
+    // The core reports its own error type; the shell's wraps it.
+    Ok(index::scan(&root, &database, &covers, move |progress| {
         let step = (progress.total / 100).max(1);
         let final_item = progress.done >= progress.total;
         // The very first event always goes through so the bar appears at the
@@ -292,7 +302,7 @@ fn scan_library(app: AppHandle) -> Result<index::ScanSummary> {
         last = progress.done;
         // A dropped progress event is not worth failing the scan over.
         let _ = emitter.emit("scan:progress", progress);
-    })
+    })?)
 }
 
 /// Store a cover the WebView rendered.
@@ -338,7 +348,8 @@ fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<S
 #[tauri::command]
 fn read_book_file(app: AppHandle, id: String) -> Result<tauri::ipc::Response> {
     let conn = db::open(&database(&app)?)?;
-    let path = db::path_of(&conn, &id)?.ok_or_else(|| Error::UnknownBook(id))?;
+    let path = db::path_of(&conn, &id)?
+        .ok_or_else(|| Error::Core(kleib3ry_core::Error::UnknownBook(id)))?;
     Ok(tauri::ipc::Response::new(fs::read(path)?))
 }
 
@@ -437,6 +448,19 @@ fn list_artwork(app: AppHandle) -> Result<Vec<media::Artwork>> {
     Ok(media::list_artwork(dir.parent().unwrap_or(&dir)))
 }
 
+/// Every tape in `<library>/video`, for the crate beside the television.
+///
+/// Authorised as a directory rather than served through a command, for exactly
+/// the reason audio is: a tape is streamed while it plays, and pulling a
+/// gigabyte of MP4 through IPC to watch it would be absurd.
+#[tauri::command(async)]
+fn list_videos(app: AppHandle) -> Result<Vec<media::Tape>> {
+    let Some(dir) = allow_media(&app, media::VIDEO_DIR)? else {
+        return Ok(Vec::new());
+    };
+    Ok(media::list_videos(dir.parent().unwrap_or(&dir)))
+}
+
 /// Which lamps are on. A missing file means "as `library.json` says", which is
 /// also what you get by deleting it.
 #[tauri::command]
@@ -477,6 +501,7 @@ pub fn run() {
             save_layout,
             list_music,
             list_artwork,
+            list_videos,
             get_lights,
             save_lights,
         ])
@@ -490,14 +515,14 @@ mod tests {
 
     #[test]
     fn missing_settings_file_reads_as_default() {
-        let path = std::env::temp_dir().join("library3d-does-not-exist-9f3c.json");
+        let path = std::env::temp_dir().join("kleib3ry-does-not-exist-9f3c.json");
         let _ = fs::remove_file(&path);
         assert_eq!(Settings::load_from(&path).unwrap(), Settings::default());
     }
 
     #[test]
     fn settings_round_trip_through_disk() {
-        let dir = std::env::temp_dir().join("library3d-test-settings");
+        let dir = std::env::temp_dir().join("kleib3ry-test-settings");
         let path = dir.join("settings.json");
         let _ = fs::remove_dir_all(&dir);
 

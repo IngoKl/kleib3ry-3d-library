@@ -9,10 +9,23 @@ import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
+import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
 import { LAMPS } from '../world/derive'
 
 const WALK_FOV = 72
+/**
+ * Zoomed. Not a toggle: held, like kneeling, because you lean in to read one
+ * spine and then stop — and a view you can leave narrowed is a view you will
+ * eventually wonder why you cannot walk straight in.
+ *
+ * 26 degrees is about a 2.8x magnification, which is enough to read a printed
+ * spine from across the great room and still know which room you are in.
+ */
+const ZOOM_FOV = 26
+const ZOOM_KEYS = new Set(['KeyZ'])
+/** How fast the view closes in and opens back out, in units of zoom a second. */
+const ZOOM_RATE = 5.5
 
 const WALK = 1.6
 const RUN = 3.0
@@ -65,6 +78,18 @@ export function Player() {
   const bob = useRef(0)
   /** True between a lock being granted and the first mouse delta being discarded. */
   const settling = useRef(false)
+  /** The right button, which zooms the same as `Z` — whichever hand is free. */
+  const rightDown = useRef(false)
+  /**
+   * How much to scale a mouse delta by, written by the frame loop.
+   *
+   * Turning has to slow down as the view narrows or a zoomed view is unusable:
+   * the same wrist movement that sweeps a room at 72 degrees throws the picture
+   * off the screen at 26. Scaled by the ratio of the tangents, which is what
+   * makes a given movement of the hand cover the same distance *on screen* at
+   * any zoom.
+   */
+  const turnScale = useRef(1)
 
   // --- input -----------------------------------------------------------
   useEffect(() => {
@@ -84,6 +109,13 @@ export function Player() {
         focusedSeat,
         focusedFixture,
         focusedRecord,
+        focusedTape,
+        heldTape,
+        tapeCrateTarget,
+        heldPin,
+        pinTarget,
+        focusedPin,
+        setHeldPin,
         shelfTarget,
         boxTarget,
         crateTarget,
@@ -91,9 +123,51 @@ export function Player() {
         seat,
         setHeld,
         setHeldRecord,
+        setHeldTape,
         setSeat,
       } = state
       const shelf = useLibraryStore.getState()
+
+      /**
+       * A sheet in your hand goes on the wall you are aiming at, and comes back
+       * off it the same way.
+       *
+       * First, before anything else E does, because it cannot collide with any
+       * of it: a wall is not somewhere a book, a record or a tape can go, so
+       * `pinTarget` is only ever set when pinning is the *only* thing E could
+       * mean. A little tilt, from the position, so a board of pages does not look
+       * like a spreadsheet.
+       */
+      if (heldPin !== null) {
+        if (!pinTarget) return
+        const tilt = (Math.sin(pinTarget.x * 12.9898 + pinTarget.y * 78.233) % 1) * 0.09
+        shelf.pinUp({
+          ...(heldPin.kind === 'page'
+            ? { kind: 'page' as const, bookId: heldPin.bookId, page: heldPin.page }
+            : { kind: 'note' as const, text: heldPin.text, colour: heldPin.colour }),
+          x: pinTarget.x,
+          y: pinTarget.y,
+          z: pinTarget.z,
+          yaw: pinTarget.yaw,
+          tilt,
+        })
+        setHeldPin(null)
+        return
+      }
+
+      // Taking one down puts it back in your hand, which is where it was before
+      // you stuck it up — so moving a page from a wall to the board is E, E.
+      if (focusedPin !== null) {
+        const taken = shelf.unpin(focusedPin)
+        if (taken) {
+          setHeldPin(
+            taken.kind === 'page'
+              ? { kind: 'page', bookId: taken.bookId ?? '', page: taken.page ?? 1 }
+              : { kind: 'note', text: taken.text ?? '', colour: taken.colour ?? 0 },
+          )
+        }
+        return
+      }
 
       // Sitting down and getting up are both E, which is the same key you use
       // for everything else you do with your hands — and a chair takes you with
@@ -120,11 +194,28 @@ export function Player() {
         return
       }
 
+      // Holding a tape: the television takes it, the crate takes it back. Its
+      // place in the crate comes from the folder, so putting it back is just
+      // letting go of it — exactly like filing a record.
+      if (heldTape !== null) {
+        if (focusedFixture) {
+          useVideoStore.getState().play(heldTape)
+          setHeldTape(null)
+          return
+        }
+        if (tapeCrateTarget) setHeldTape(null)
+        return
+      }
+
       if (held === null) {
         // Taking a record out of the crate is the same gesture as taking a book
         // down, and it is offered only when no book is nearer — see `Interaction`.
         if (focusedRecord) {
           setHeldRecord(focusedRecord)
+          return
+        }
+        if (focusedTape) {
+          setHeldTape(focusedTape)
           return
         }
         if (focusedFixture) {
@@ -192,12 +283,21 @@ export function Player() {
         else if (music.tracks[0]) music.play(music.tracks[0].id)
         return
       }
+      if (item.kind === 'crt') {
+        const video = useVideoStore.getState()
+        // A television with a tape in it pauses and resumes; an empty one has
+        // nothing to show, and deliberately does *not* help itself to the first
+        // tape in the crate. Putting a tape in is a thing you do with your hands.
+        if (video.playing) video.play(video.playing)
+        return
+      }
       if (item.kind === 'coffeemaker') useAppStore.getState().brew(id)
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      // Typing a shelf label is typing: W is a letter, not a step forward.
-      if (useAppStore.getState().labelling !== null) return
+      // Typing a shelf label or a note is typing: W is a letter, not a step.
+      const app = useAppStore.getState()
+      if (app.labelling !== null || app.noting) return
       keys.current.add(e.code)
       if (useAppStore.getState().mode !== 'walk') return
 
@@ -304,10 +404,11 @@ export function Player() {
       }
       if (Math.abs(e.movementX) > MAX_STEP_PX || Math.abs(e.movementY) > MAX_STEP_PX) return
 
-      player.yaw -= e.movementX * MOUSE
+      const sensitivity = MOUSE * turnScale.current
+      player.yaw -= e.movementX * sensitivity
       player.pitch = Math.max(
         -PITCH_LIMIT,
-        Math.min(PITCH_LIMIT, player.pitch - e.movementY * MOUSE),
+        Math.min(PITCH_LIMIT, player.pitch - e.movementY * sensitivity),
       )
     }
 
@@ -320,15 +421,37 @@ export function Player() {
       browseBox(focusedBox, e.deltaY > 0 ? 1 : -1)
     }
 
+    // Right button held is the other way to zoom. `contextmenu` has to be
+    // swallowed or the browser's menu opens over the room on the way down.
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) rightDown.current = true
+    }
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 2) rightDown.current = false
+    }
+    // Losing the window with the button down would otherwise leave it stuck.
+    const onBlur = () => {
+      rightDown.current = false
+    }
+    const onContextMenu = (e: Event) => e.preventDefault()
+
     canvas.addEventListener('click', onClick)
     canvas.addEventListener('wheel', onWheel, { passive: false })
+    canvas.addEventListener('contextmenu', onContextMenu)
     document.addEventListener('pointerlockchange', onLockChange)
     document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('blur', onBlur)
     return () => {
       canvas.removeEventListener('click', onClick)
       canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('contextmenu', onContextMenu)
       document.removeEventListener('pointerlockchange', onLockChange)
       document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('blur', onBlur)
     }
   }, [gl, setPointerLocked])
 
@@ -342,11 +465,36 @@ export function Player() {
     if (mode !== 'walk') return
     const delta = Math.min(rawDelta, 1 / 20)
 
-    // The reader narrows the field of view to dock on a page; take it back.
+    // Zoom, and — because the same line does the job — taking the field of view
+    // back from the reader, which narrows it to dock on a page. It used to be
+    // snapped back to exactly 72; now it is eased towards whatever the zoom
+    // asks for, which means closing the book opens the view rather than
+    // cutting to it.
+    //
+    // Read from the keys directly rather than from the movement code below,
+    // because zoom is not movement: it works sitting down, and sitting down
+    // returns before any of that runs.
+    const zoomHeld = rightDown.current || [...keys.current].some((code) => ZOOM_KEYS.has(code))
+    const wantZoom = zoomHeld ? 1 : 0
+    player.zoom += Math.sign(wantZoom - player.zoom) * Math.min(
+      Math.abs(wantZoom - player.zoom),
+      delta * ZOOM_RATE,
+    )
+
     const perspective = camera as THREE.PerspectiveCamera
-    if (perspective.isPerspectiveCamera && perspective.fov !== WALK_FOV) {
-      perspective.fov = WALK_FOV
-      perspective.updateProjectionMatrix()
+    if (perspective.isPerspectiveCamera) {
+      // Interpolated on the *tangent* rather than on the angle, so the picture
+      // grows at an even rate instead of accelerating into the close end.
+      const wide = Math.tan(((WALK_FOV / 2) * Math.PI) / 180)
+      const tight = Math.tan(((ZOOM_FOV / 2) * Math.PI) / 180)
+      const now = wide + (tight - wide) * player.zoom
+      const fov = ((2 * Math.atan(now)) / Math.PI) * 180
+      turnScale.current = now / wide
+      if (Math.abs(perspective.fov - fov) > 1e-4) {
+        perspective.fov = fov
+        perspective.updateProjectionMatrix()
+      }
+      player.fov = fov
     }
 
     const seatId = useAppStore.getState().seat

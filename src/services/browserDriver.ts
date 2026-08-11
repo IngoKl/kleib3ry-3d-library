@@ -3,17 +3,18 @@ import {
   UnsupportedOperation,
   type IndexedArtwork,
   type IndexedBook,
+  type IndexedTape,
   type IndexedTrack,
   type LayoutDocument,
   type LibraryService,
   type LightState,
 } from './types'
 
-const ROOT_KEY = 'library3d.root'
-const LAYOUT_KEY = 'library3d.layout'
-const WORLD_KEY = 'library3d.world'
-const WORLD_STAMP_KEY = 'library3d.world.stamp'
-const LIGHTS_KEY = 'library3d.lights'
+const ROOT_KEY = 'kleib3ry.root'
+const LAYOUT_KEY = 'kleib3ry.layout'
+const WORLD_KEY = 'kleib3ry.world'
+const WORLD_STAMP_KEY = 'kleib3ry.world.stamp'
+const LIGHTS_KEY = 'kleib3ry.lights'
 
 /**
  * Plain-browser driver: no filesystem, a generated stand-in library.
@@ -117,6 +118,38 @@ const PLACEHOLDER_ARTWORK: IndexedArtwork[] = Array.from({ length: 3 }, (_, i) =
 }))
 
 /**
+ * Tapes for the crate beside the television.
+ *
+ * Their paths point at nothing, exactly as the placeholder records' do: taking
+ * one out of the crate and putting it in the machine works, playback fails, and
+ * the panel says why. That is the same failure a real `.mkv` gives in a WebView
+ * that cannot decode it, so it is worth being able to walk into on purpose.
+ */
+const TAPE_TITLES: [string, string][] = [
+  ['Holidays, 1998', 'Home'],
+  ['The Lake, Spring', 'Home'],
+  ['Stalker', 'Tarkovsky'],
+  ['Solaris', 'Tarkovsky'],
+  ['Le Samourai', 'Melville'],
+  ['Wings of Desire', 'Wenders'],
+  ['Paris, Texas', 'Wenders'],
+  ['La Jetee', 'Marker'],
+  ['Sans Soleil', 'Marker'],
+  ['Koyaanisqatsi', 'Reggio'],
+  ['Dersu Uzala', 'Kurosawa'],
+  ['Ran', 'Kurosawa'],
+]
+
+const PLACEHOLDER_TAPES: IndexedTape[] = TAPE_TITLES.map(([title, series], i) => ({
+  id: `tape-${i}`,
+  path: `placeholder://${title}`,
+  title,
+  series,
+  format: i % 4 === 0 ? 'webm' : 'mp4',
+  sizeBytes: 700_000_000 + i * 11_000_000,
+}))
+
+/**
  * Stand in for someone editing `library.json` and saving it.
  *
  * The browser build has no file to watch, so the world lives in localStorage and
@@ -192,7 +225,7 @@ export const browserDriver: LibraryService = {
     // There is no filesystem here; name the storage honestly rather than
     // inventing a path that does not exist. On the desktop these are
     // `<your library folder>/.library/library.json` and `.../books.json`.
-    return { world: 'localStorage: library3d.world', layout: 'localStorage: library3d.layout' }
+    return { world: 'localStorage: kleib3ry.world', layout: 'localStorage: kleib3ry.layout' }
   },
 
   async loadLayout() {
@@ -218,6 +251,10 @@ export const browserDriver: LibraryService = {
 
   async listArtwork() {
     return PLACEHOLDER_ARTWORK
+  },
+
+  async listTapes() {
+    return PLACEHOLDER_TAPES
   },
 
   async loadLights() {

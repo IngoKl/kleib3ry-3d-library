@@ -34,6 +34,42 @@ function bookIdOf(hit: THREE.Intersection | undefined): string | null {
   while (node && node.userData.bookId === undefined) node = node.parent
   return (node?.userData.bookId as string | undefined) ?? null
 }
+
+/** And for a sheet already pinned up. */
+function pinIdOf(hit: THREE.Intersection | undefined): string | null {
+  let node: THREE.Object3D | null = hit?.object ?? null
+  while (node && node.userData.pinId === undefined) node = node.parent
+  return (node?.userData.pinId as string | undefined) ?? null
+}
+
+/** How square-on a surface has to be for a sheet to go on it. */
+const UPRIGHT = 0.55
+
+/**
+ * Somewhere to stick a sheet, from a hit on a wall or a whiteboard.
+ *
+ * Only a near-vertical face counts: a floor is not somewhere you pin a page, and
+ * neither is the underside of a loft. And the *normal* is what decides which way
+ * the sheet faces, rather than the wall's own orientation — which is what makes
+ * this work identically for the four walls of a room, a whiteboard hung on one
+ * of them, and any wall a document invents later.
+ */
+function pinFrom(hit: THREE.Intersection | undefined): {
+  x: number
+  y: number
+  z: number
+  yaw: number
+} | null {
+  if (!hit || !hit.normal) return null
+  const normal = hit.normal
+  if (Math.abs(normal.y) > 1 - UPRIGHT) return null
+  return {
+    x: hit.point.x,
+    y: hit.point.y,
+    z: hit.point.z,
+    yaw: Math.atan2(normal.x, normal.z),
+  }
+}
 export function Interaction() {
   const camera = useThree((s) => s.camera)
   const mode = useAppStore((s) => s.mode)
@@ -58,8 +94,12 @@ export function Interaction() {
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
       store.setCrateTarget(null)
+      store.setFocusedTape(null)
+      store.setTapeCrateTarget(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
+      store.setPinTarget(null)
+      store.setFocusedPin(null)
       return
     }
 
@@ -74,8 +114,12 @@ export function Interaction() {
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
       store.setCrateTarget(null)
+      store.setFocusedTape(null)
+      store.setTapeCrateTarget(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
+      store.setPinTarget(null)
+      store.setFocusedPin(null)
       return
     }
 
@@ -94,6 +138,8 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedTape(null)
+      store.setTapeCrateTarget(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
 
@@ -133,6 +179,98 @@ export function Interaction() {
     }
     store.setCrateTarget(null)
 
+    /**
+     * Holding a tape: the television takes it, the crate takes it back. Nothing
+     * else is offered, which is the same rule the sleeve in your hand follows —
+     * a cassette fills the hand a book would need.
+     */
+    if (store.heldTape !== null) {
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedSeat(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedRecord(null)
+      store.setFocusedTape(null)
+      store.setFocusedShelf(null)
+      store.setSurfaceTarget(null)
+
+      const kindOf = (id: string | null) =>
+        id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
+
+      let set: { distance: number; id: string } | null = null
+      const operable = sceneRefs.fixtures
+      if (operable) {
+        const hit = raycaster.intersectObject(operable, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id && kindOf(id) === 'crt') set = { distance: hit.distance, id }
+      }
+
+      // The crate itself, or the tapes already standing in it — pointing into a
+      // full crate should read as "put it back", not as a miss.
+      let crate: { distance: number; id: string } | null = null
+      const tops = sceneRefs.surfaces
+      if (tops) {
+        const hit = raycaster.intersectObject(tops, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id && kindOf(id) === 'tapecrate') crate = { distance: hit.distance, id }
+      }
+      const filed = sceneRefs.tapes
+      if (filed) {
+        const hit = raycaster.intersectObject(filed, false)[0]
+        const owner = hit?.instanceId === undefined ? undefined : sceneRefs.tapeCrates[hit.instanceId]
+        if (hit && owner && (!crate || hit.distance < crate.distance)) {
+          crate = { distance: hit.distance, id: owner }
+        }
+      }
+
+      store.setFocusedFixture(set && (!crate || set.distance < crate.distance) ? set.id : null)
+      store.setTapeCrateTarget(crate && (!set || crate.distance <= set.distance) ? crate.id : null)
+      return
+    }
+    store.setTapeCrateTarget(null)
+
+    /**
+     * Holding a sheet: somewhere to put it, and nothing else.
+     *
+     * Walls, whiteboards, *and* the sheets already up — pointing at a page on the
+     * board and pressing E should put yours next to it rather than reading as a
+     * miss, so a hit on a pinned sheet is offered as a place on the surface just
+     * behind it.
+     */
+    if (store.heldPin !== null) {
+      store.setFocusedPin(null)
+
+      const candidates: THREE.Intersection[] = []
+      const boards = sceneRefs.boards
+      if (boards) {
+        const hit = raycaster.intersectObject(boards, true)[0]
+        if (hit) candidates.push(hit)
+      }
+      // The room shells are merged per material, so a hit could be a floor or a
+      // rafter; only the plaster is marked as a wall.
+      const shells = sceneRefs.walls
+      if (shells) {
+        const hit = raycaster.intersectObject(shells, true)[0]
+        if (hit && hit.object.userData.wall !== undefined) candidates.push(hit)
+      }
+
+      candidates.sort((a, b) => a.distance - b.distance)
+      store.setPinTarget(candidates.map(pinFrom).find((spot) => spot !== null) ?? null)
+      return
+    }
+    store.setPinTarget(null)
+
+    // A sheet already up, which E takes back down. Offered before the bookcase
+    // behind it, and before any book: a page on a wall is unambiguous.
+    const up = sceneRefs.pinned
+    let sheet: { distance: number; id: string } | null = null
+    if (up) {
+      const hit = raycaster.intersectObject(up, true)[0]
+      const id = pinIdOf(hit)
+      if (hit && id) sheet = { distance: hit.distance, id }
+    }
+
     // The nearest bookcase carcass, held book or not: this is what `L` labels
     // when there is no book to go by — an empty case is still worth writing on.
     let carcass: { distance: number; id: string } | null = null
@@ -162,6 +300,7 @@ export function Interaction() {
       /** A lamp to switch, a deck to start, a coffee maker to fill. */
       let fixture: { distance: number; id: string } | null = null
       let record: { distance: number; id: string } | null = null
+      let tape: { distance: number; id: string } | null = null
 
       // A chair, if one is nearer than whatever book is behind it. Recursive,
       // because a chair is a handful of meshes under one group.
@@ -224,12 +363,33 @@ export function Interaction() {
         if (hit && id) record = { distance: hit.distance, id }
       }
 
+      const box_ = sceneRefs.tapes
+      if (box_) {
+        const hit = raycaster.intersectObject(box_, false)[0]
+        const id = hit?.instanceId === undefined ? undefined : sceneRefs.tapeIds[hit.instanceId]
+        if (hit && id) tape = { distance: hit.distance, id }
+      }
+
       const operable = sceneRefs.fixtures
       if (operable) {
         const hit = raycaster.intersectObject(operable, true)[0]
         const id = furnitureIdOf(hit)
         if (hit && id) fixture = { distance: hit.distance, id }
       }
+
+      // A sheet on the wall wins outright when it is the nearest thing: nothing
+      // else lives on a wall, so there is nothing for it to be confused with.
+      if (sheet && (!best || sheet.distance < best.distance)) {
+        store.setFocusedPin(sheet.id)
+        store.setFocusedBook(null)
+        store.setFocusedSeat(null)
+        store.setFocusedBox(null)
+        store.setFocusedFixture(null)
+        store.setFocusedRecord(null)
+        store.setFocusedTape(null)
+        return
+      }
+      store.setFocusedPin(null)
 
       // A book wins a tie: you are far more often reaching for one than for
       // the chair it happens to be in front of.
@@ -239,6 +399,7 @@ export function Interaction() {
         store.setFocusedBox(null)
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
+        store.setFocusedTape(null)
       } else {
         store.setFocusedBook(best?.id ?? null)
         store.setFocusedSeat(null)
@@ -252,18 +413,20 @@ export function Interaction() {
         // two also exclude each other symmetrically — E prefers the record, so
         // if only the fixture guarded against the record, a lamp in front of a
         // crate would hand E to the record *behind* it.
+        // A record, a tape and a lamp are only offered when nothing readable is
+        // nearer, so reaching past a crate for a book cannot start the music.
+        // They also exclude *each other*, symmetrically: E prefers whichever is
+        // closest, and it took a lamp standing in front of a crate to learn that
+        // guarding only one of them hands E to the thing behind it.
         const nearer = (candidate: { distance: number } | null) =>
           candidate !== null && (!best || candidate.distance < best.distance)
-        store.setFocusedRecord(
-          nearer(record) && (!fixture || record!.distance < fixture.distance)
-            ? record!.id
-            : null,
-        )
-        store.setFocusedFixture(
-          nearer(fixture) && (!record || fixture!.distance < record.distance)
-            ? fixture!.id
-            : null,
-        )
+        const closest = (candidate: { distance: number } | null, others: ({ distance: number } | null)[]) =>
+          nearer(candidate) &&
+          others.every((other) => other === null || candidate!.distance < other.distance)
+
+        store.setFocusedRecord(closest(record, [fixture, tape]) ? record!.id : null)
+        store.setFocusedTape(closest(tape, [fixture, record]) ? tape!.id : null)
+        store.setFocusedFixture(closest(fixture, [record, tape]) ? fixture!.id : null)
       }
       return
     }
@@ -274,6 +437,8 @@ export function Interaction() {
     store.setFocusedBox(null)
     store.setFocusedFixture(null)
     store.setFocusedRecord(null)
+    store.setFocusedTape(null)
+    store.setFocusedPin(null)
 
     // A chair still takes you with your hands full: sitting down with the book
     // you mean to read is what the chair is for.

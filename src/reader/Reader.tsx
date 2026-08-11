@@ -357,6 +357,28 @@ export function Reader() {
         useAppStore.getState().setJumping(true)
         return
       }
+      if (e.code === 'KeyP') {
+        e.preventDefault()
+        /**
+         * Tear out the page you are looking at — which copies it and leaves the
+         * book exactly as it was. Nothing is removed from anything: the sheet
+         * records which book and which page, and is rasterised from the same
+         * file next time it is drawn. "Tear out" is the gesture, not the effect.
+         *
+         * The recto, the right-hand page, because that is the one a hand reaches
+         * for; on the last spread of an odd-paged book there is no recto, so the
+         * verso is what you get.
+         */
+        const app = useAppStore.getState()
+        // One sheet at a time. Silently replacing the one you were about to pin
+        // up would throw work away, and the HUD says what to do about it.
+        if (app.heldPin || !doc) return
+        const s = spreadRef.current
+        const page = rightPage(s) <= doc.numPages ? rightPage(s) : leftPage(s)
+        if (page < 1 || page > doc.numPages) return
+        app.setHeldPin({ kind: 'page', bookId: reading, page })
+        return
+      }
       if (e.code === 'F1') {
         // The controls card advertises the reading keys; it has to be
         // reachable — and dismissable — while actually reading.

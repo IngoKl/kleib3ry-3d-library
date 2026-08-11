@@ -34,8 +34,9 @@ const SKIP_DIRS: [&str; 7] = [
 const BOOKS_DIR: &str = "books";
 
 /// The other things a library folder holds, by the same convention: records for
-/// the player, pictures for the walls. Neither is ever a book.
-const RESERVED_DIRS: [&str; 2] = ["music", "artwork"];
+/// the player, pictures for the walls, tapes for the television. None of them is
+/// ever a book.
+const RESERVED_DIRS: [&str; 3] = ["music", "artwork", "video"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -290,7 +291,7 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("library3d-index-{name}"));
+        let dir = std::env::temp_dir().join(format!("kleib3ry-index-{name}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir

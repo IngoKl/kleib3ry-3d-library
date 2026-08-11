@@ -1,34 +1,32 @@
 [package]
-name = "library3d"
+name = "kleib3ry"
 version = "0.1.0"
-description = "A 3D personal library"
+description = "kleib3ry — a 3D personal library"
 authors = ["iklei"]
 edition = "2021"
 rust-version = "1.77.2"
 # `src/bin/scan.rs` is a dev-only harness, so bare `cargo run` (which is what
 # `tauri dev` shells out to) would otherwise be ambiguous.
-default-run = "library3d"
+default-run = "kleib3ry"
 
 [lib]
 # The desktop binary and any future mobile target share this crate.
-name = "library3d_lib"
+name = "kleib3ry_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Indexing, SQLite and the format probes live in their own crate, which knows
+# nothing about a window — see `../core`. That is what lets the server image be
+# a static binary instead of a Linux box carrying a browser engine.
+kleib3ry_core = { path = "../core" }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-walkdir = "2.5.0"
-rusqlite = { version = "0.40.2", features = ["bundled"] }
-zip = "4.2.0"
-quick-xml = "0.39.4"
-sha2 = "0.10.9"
-lopdf = "0.36.0"
 base64 = "0.23.1"
 
 [features]

@@ -19,6 +19,16 @@ export const player = {
   floor: 0,
   /** 0 standing, 1 fully down. Kept here so the HUD can read it. */
   crouch: 0,
+  /**
+   * How far the view is zoomed in, 0 to 1, and the field of view that produces.
+   *
+   * Here rather than in the store for the usual reason: it changes every frame
+   * while you are squinting at a spine across the room, and a React render per
+   * frame is exactly what `state/player.ts` exists to avoid. The HUD reads it to
+   * say so, and the smoke tests read it to prove it moved.
+   */
+  zoom: 0,
+  fov: 72,
 }
 
 export const EYE_HEIGHT = 1.68

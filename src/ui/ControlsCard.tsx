@@ -16,14 +16,15 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['W', 'A', 'S', 'D'], 'walk'],
       [['shift'], 'run'],
       [['ctrl'], 'kneel, to read the bottom shelf — held, not toggled'],
+      [['Z'], 'zoom in — held, like kneeling; the right mouse button does it too'],
       [['click'], 'capture the mouse to look around (Esc releases)'],
     ],
   },
   {
     title: 'hands',
     rows: [
-      [['E'], 'take or place a book or record; sit down; work a lamp, the deck, the coffee maker'],
-      [['Q'], 'drop the book in your hand — or file a held record back in its crate'],
+      [['E'], 'take or place a book, record or tape; pin a sheet to a wall; sit down; work a lamp, the deck, the television, the coffee maker'],
+      [['Q'], 'drop the book in your hand — or put a held record or tape back'],
       [['O'], 'put a book down open, at the page you were on'],
       [['F'], 'draw the book under the crosshair out to see its cover'],
       [['R'], 'read the book in your hand'],
@@ -31,6 +32,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [[',', '.'], 'browse the pile in a box (the wheel works too)'],
       [['X'], 'pick up a moving box and carry it; again to set it down'],
       [['L'], 'write a label on the bookcase you are aiming at'],
+      [['T'], 'write a note to pin up; E sticks it to whatever wall you look at'],
     ],
   },
   {
@@ -39,6 +41,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['drag'], 'pull a page across to turn it — let go early and it falls back'],
       [['←', '→'], 'turn pages'],
       [['B'], 'put a bookmark in, or take it out'],
+      [['P'], 'tear out a copy of the page — the book keeps its own'],
       [['J'], 'go to a page by number'],
       [['Esc'], 'close the book'],
     ],

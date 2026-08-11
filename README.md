@@ -1,25 +1,34 @@
-# Library
+# kleib3ry
 
-A 3D personal library. Your own PDFs and EPUBs, on shelves you place, in a room
-you design, read as physical books — with a record player wired to your music
-folder.
+A 3D personal library. Your own PDFs and EPUBs, on shelves you place, in a
+building you design, read as physical books — with a record player wired to your
+music folder and a television wired to your videos.
 
-Desktop app: React Three Fiber inside a Tauri 2 shell, with a Rust core doing
-the indexing and page rasterisation. The architecture notes live in
-[CLAUDE.md](CLAUDE.md) and the docs under [docs/](docs/).
+Desktop app: React Three Fiber inside a Tauri 2 shell, with a Rust core doing the
+indexing and page rasterisation. It also runs in a container, serving your library
+folder to a browser. The architecture is written up in
+**[docs/architecture.md](docs/architecture.md)**; the rest of the documentation is
+indexed in [docs/](docs/README.md).
 
-**Status: you can walk it, live in it, and read in it.** The default library is
-a cabin in the woods: a great room with a hearth, a loft up a flight of stairs,
-a reading corner with a bedroom above it looking over the lake, a kitchen, and
-a porch looking into the forest. Sixteen
-bookcases and ~1,700 books, first-person movement with collisions and stairs, a
-crosshair that finds a book and takes it off the shelf, and page-by-page reading
-on a curved mesh. There is a lake through the north window.
+**Status: you can walk it, live in it, and read in it.** The default library is a
+cabin in the woods: a great room with a hearth, a loft up a flight of stairs, a
+reading corner with a bedroom above it looking over the lake, a kitchen, an office
+with a whiteboard, and a porch looking into the forest. Eighteen bookcases and
+~1,700 books, first-person movement with collisions and stairs, a crosshair that
+finds a book and takes it off the shelf, and page-by-page reading on a curved
+mesh. There is a lake through the north window — and out through the gap in the
+porch railing there is grass, a forest you can walk into, and a path round the
+water.
 
 **The room is furnished as well as shelved.** A record player wired to your
-`music/` folder, framed pictures from your `artwork/` folder, lamps you can
-switch on and off, tables you can leave a book on — face down and open at the
-page you were reading — and a floor you can simply drop one onto.
+`music/` folder, a television and a crate of tapes wired to your `video/` folder,
+framed pictures from your `artwork/` folder, lamps you can switch on and off,
+tables you can leave a book on — face down and open at the page you were reading —
+and a floor you can simply drop one onto.
+
+**And it is somewhere you can leave things.** Tear a copy of a page out of a book
+— the book keeps its own — and pin it to the office whiteboard, or to any wall in
+the house. Type a note and stick that up too.
 
 **A library arrives in boxes.** A freshly indexed collection is stacked in the
 four moving boxes on the floor, and the shelves start empty: unpacking is yours
@@ -30,15 +39,20 @@ back in a box if you change your mind.
 The building itself is a file: `<your library folder>/.library/library.json`.
 Edit it and the room reloads while you are standing in it. The format is
 described in [docs/library-folder.md](docs/library-folder.md), and there is a
-full guide to building your own — rooms, lofts, stairs, railings, lighting — in
-[docs/custom-maps.md](docs/custom-maps.md).
+full guide to building your own — rooms, lofts, stairs, railings, roofs, lighting
+— in [docs/custom-maps.md](docs/custom-maps.md).
 
-A library folder holds three folders of yours: `books/` for the shelves,
-`music/` for the record player, `artwork/` for the walls. The Rust indexer is
-wired: `choose folder…` then `scan` in the desktop app indexes the PDFs and
-EPUBs in `books/` and leaves the other two alone. In the browser build there is
-no filesystem, so the boxes are filled from a **placeholder catalogue** plus one
-real generated PDF (`sample-book.pdf`) so read mode can be tested headlessly.
+A library folder holds four folders of yours: `books/` for the shelves, `music/`
+for the record player, `artwork/` for the walls, `video/` for the television. The
+Rust indexer is wired: `choose folder…` then `scan` in the desktop app indexes the
+PDFs and EPUBs in `books/` and leaves the other three alone. In the browser build
+there is no filesystem, so the boxes are filled from a **placeholder catalogue**
+plus one real generated PDF (`sample-book.pdf`) so read mode can be tested
+headlessly.
+
+## About the Name
+
+kleib3ry
 
 ## Quick start
 
@@ -53,6 +67,18 @@ npm run dev            # browser only, no filesystem access
 reading will fail without it.
 
 Both can run at once — `tauri:dev` reuses a Vite server that is already up.
+[docs/getting-started.md](docs/getting-started.md) walks through pointing it at
+your books and finding your way round the room.
+
+## In a container
+
+```bash
+docker build -t kleib3ry .
+docker run --rm -p 8080:8080 -v /path/to/your/library:/library kleib3ry
+```
+
+Then open <http://localhost:8080> and press **scan** once. The same library folder,
+the same shelves, read in a browser — see [docs/docker.md](docs/docker.md).
 
 ## Controls
 
@@ -62,17 +88,20 @@ Both can run at once — `tauri:dev` reuses a Vite server that is already up.
 | `W` `A` `S` `D` | walk |
 | `shift` | run |
 | `ctrl` | kneel, to read the bottom shelf — held, not toggled |
-| `E` | take the book or record under the crosshair; put it on the shelf, in the box, on the table or on the deck you are looking at; sit down — with a book in hand, if reading is the plan; switch a lamp; put the coffee on |
-| `Q` | drop the book you are holding — it falls, tumbles and stays where it lands; a record files itself back into its crate |
+| `Z` | zoom in — held, like kneeling. The right mouse button does the same |
+| `E` | take the book, record or tape under the crosshair; put it on the shelf, in the box, on the table, on the deck or in the television you are looking at; pin the sheet in your hand to a wall, or take one down; sit down — with a book in hand, if reading is the plan; switch a lamp; put the coffee on |
+| `Q` | drop the book you are holding — it falls, tumbles and stays where it lands; a record or a tape files itself back where it came from; a sheet of paper is thrown away |
 | `O` | put it down open, at the page you were on |
 | `G` | empty the box you are looking at onto the shelves |
 | `X` | pick up the moving box you are looking at and carry it; `X` again sets it down |
 | `L` | write a label on the bookcase you are aiming at |
+| `T` | write a note to pin up — then `E` at whatever wall you want it on |
 | `F` | draw the book under the crosshair out to look at its cover |
 | `R` | read the book in your hand |
 | drag | while reading, drag a page across to turn it — let go early and it falls back |
 | `←` `→` | turn pages without dragging; `Esc` closes the book |
 | `B` | put a bookmark in the page you are on, or take it out again |
+| `P` | while reading, tear out a copy of the page — the book keeps its own |
 | `J` | while reading, go to a page by number |
 | `H` | hide the interface, and bring it back |
 | `F1` | the controls card, in the room |
@@ -100,11 +129,12 @@ Individually:
 | --- | --- |
 | `npm run typecheck` | The front end type-checks |
 | `npm run build` | The production bundle builds from the CLI |
-| `npm test` | Headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
-| `npm run test:rust` | Settings persistence round-trips |
+| `npm test` | Headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean. Plus the world, roof, terrain, collision and shelving units |
+| `npm run test:rust` | All three crates: the core's indexing and probes, the desktop shell's settings, the server's routing and its path scope |
 | `npm run scan -- <folder>` | Indexes a library folder's `books/` from the command line, no app needed |
 | `npm run tauri:build` | A Windows installer builds end to end |
 | `npm run test:desktop` | The *built* app boots, renders in WebView2, and an IPC command round-trips |
+| `npm run docker:build` | The container image builds end to end |
 
 `npm test` writes `tests/screenshots/room.png` — the render is checked by
 assertion (draw calls, triangles, frames, no console errors), and the screenshot
@@ -120,32 +150,40 @@ your settings.
 
 ```text
 src/                front end
-  services/         the ONLY place that touches the filesystem
+  services/         the ONLY place that touches the filesystem — three drivers
   world/            the library.json document: schema, defaults, geometry,
-                    floor heights and stairs, and what happens to shelved
-                    books when the room changes
-  scene/            R3F scene graph — rooms, shelves, books, boxes, furniture,
-                    the forest outside, the spine atlas that prints titles,
-                    and the little bit of gravity that dropped books fall under
+                    roofs, floor heights and stairs, the terrain and the
+                    forest, and what happens to shelved books when the room
+                    changes
+  scene/            R3F scene graph — rooms, roofs, shelves, books, boxes,
+                    furniture, tapes, pinned pages, the forest outside, the
+                    spine atlas that prints titles, and the little bit of
+                    gravity that dropped books fall under
   reader/           read mode: page cache, page mesh, the turn
-  state/            zustand stores: world, library, media, lights, app, player
+  state/            zustand stores: world, library, media, video, lights, app;
+                    plus player and metrics, deliberately outside React
   data/             placeholder catalogue + book proportions
   ui/               DOM overlay: crosshair, focus cards, panels, typed fields
-src-tauri/          Rust core: commands, settings, db, format + tag probes
+core/               Rust: indexing, SQLite, format + tag probes, media folders.
+                    No GUI — which is what lets the container skip Tauri entirely
+src-tauri/          Rust: the desktop shell. IPC commands, settings, asset scope
+server/             Rust: the same core over HTTP, for the container
 tests/              Playwright harness — smoke tests plus world/layout units
-scripts/            asset generation, icon, test corpus
-docs/reading-spike.md   findings from the spike that de-risked 3D page reading
-docs/library-folder.md  the library folder format, and the reconciliation rules
-docs/custom-maps.md     building your own building: rooms, lofts, stairs, light
-docs/ideas.md           the running wish list
+scripts/            asset generation, icon, test corpus, desktop probe
+Dockerfile          three build stages, one small runtime
+docs/               see docs/README.md — architecture first
 ```
 
 ## The rule
 
-**Nothing above `src/services/` imports `@tauri-apps/*`.** Everything reaches
-the filesystem through the `LibraryService` interface, which has a native driver
-and a no-filesystem browser driver today. That is what keeps a Linux-hosted web
-build a driver swap instead of a rewrite.
+**Nothing above `src/services/` imports `@tauri-apps/*`.** Everything reaches the
+filesystem through the `LibraryService` interface, which has three
+implementations: the desktop app over IPC, a browser over HTTP against
+`kleib3ry-server`, and a no-filesystem browser driver with a generated catalogue.
+
+That rule earned its keep: the HTTP driver and the whole container were added
+without a single change above `src/services/`, which is exactly what it was
+written down for.
 
 ## Regenerating the icon
 

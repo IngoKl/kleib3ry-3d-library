@@ -4,6 +4,7 @@ import type {
   IndexedBook,
   LayoutDocument,
   LoosePlacement,
+  PinnedSheet,
   ScanProgress,
   ScanSummary,
 } from '../services/types'
@@ -72,6 +73,14 @@ type LibraryState = {
   readProgress: Record<string, number>
   /** Shelf id -> what is written on its label card. Overrides the document. */
   labels: Record<string, string>
+  /**
+   * Pages and notes pinned to the walls.
+   *
+   * A list rather than a map because two sheets have nothing to do with each
+   * other and there is no key anybody would look one up by: they are found by
+   * pointing at them.
+   */
+  pins: PinnedSheet[]
   /** Furniture that has been shoved somewhere else. Boxes, in practice. */
   placements: Record<string, FurnitureOverride>
 
@@ -118,11 +127,18 @@ type LibraryState = {
   /** Write on a bookcase's label. An empty string takes the label off again. */
   setLabel: (shelfId: string, text: string) => void
   labelOf: (shelfId: string) => string | null
+  /** Stick a sheet up. Its id is generated here, so callers cannot collide. */
+  pinUp: (sheet: Omit<PinnedSheet, 'id'>) => PinnedSheet
+  /** Take a sheet down, by id. Returns it, so it can go into your hand. */
+  unpin: (id: string) => PinnedSheet | undefined
   /** Shove a piece of furniture. Only the moving boxes accept this. */
   moveFurniture: (id: string, at: [number, number], facing: number, elevation?: number) => void
   bookAt: (id: string) => IndexedBook | undefined
   dimensionsOf: (id: string) => BookDimensions | undefined
 }
+
+/** Bumped per sheet pinned up, so two in the same millisecond differ. */
+let pinCounter = 0
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => Promise<void>) | null = null
@@ -201,6 +217,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       loose: state.loose,
       furniture: state.placements,
       labels: state.labels,
+      pins: state.pins,
     }
     await library.saveLayout(document).catch((e) => set({ error: String(e) }))
   }
@@ -258,6 +275,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     bookmarks: {},
     readProgress: {},
     labels: {},
+    pins: [],
     placements: {},
 
     loaded: false,
@@ -274,6 +292,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const world = currentWorld()
       const index = world?.shelfIndex.get(shelfId)
       return index === undefined ? null : (world?.shelves[index]?.label ?? null)
+    },
+
+    pinUp: (sheet) => {
+      // Counter plus the length, so ids stay unique across a session even after
+      // sheets have been taken down — a bare length would reuse one.
+      pinCounter += 1
+      const made: PinnedSheet = { ...sheet, id: `pin-${Date.now().toString(36)}-${pinCounter}` }
+      set({ pins: [...get().pins, made] })
+      scheduleSave()
+      return made
+    },
+
+    unpin: (id) => {
+      const found = get().pins.find((sheet) => sheet.id === id)
+      if (!found) return undefined
+      set({ pins: get().pins.filter((sheet) => sheet.id !== id) })
+      scheduleSave()
+      return found
     },
 
     load: async () => {
@@ -318,6 +354,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           if (known.has(id)) loose[id] = placement
         }
 
+        // A page copied out of a book the index has lost is a page of nothing,
+        // so it goes; a note is nobody's but yours, and always stays.
+        const pins = (layout?.pins ?? []).filter(
+          (sheet) => sheet.kind === 'note' || (sheet.bookId !== undefined && known.has(sheet.bookId)),
+        )
+
         const placements = layout?.furniture ?? {}
         // The world has to know where the boxes were pushed to before the books
         // are reconciled against it, or a box's pile is drawn where it used to be.
@@ -333,6 +375,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           readProgress,
           loose,
           labels: layout?.labels ?? {},
+          pins,
           placements,
           hasSavedLayout: layout !== null,
           loaded: true,

@@ -18,10 +18,12 @@ import { player } from '../state/player'
  *   Q  drop what you are holding, on the floor, with gravity
  *   O  put it down open at the page you were on
  *   L  write a label on the bookcase you are looking at
+ *   T  write a note, to stick on a wall
  *   X  pick a moving box up and carry it, or set it down again
  *
  * `E` is still the walk controller's, because it is the same reach that takes a
- * book off a shelf and it belongs next to that.
+ * book off a shelf and it belongs next to that — and pinning a sheet to a wall
+ * is that same reach.
  */
 
 /** How far in front of you a carried box floats, and how far below your eyes. */
@@ -48,6 +50,18 @@ export function Handling() {
         // back into its crate, wherever you are standing.
         if (app.heldRecord) {
           app.setHeldRecord(null)
+          return
+        }
+        // Nor does a tape. Letting go of one puts it back in its crate.
+        if (app.heldTape) {
+          app.setHeldTape(null)
+          return
+        }
+        // A sheet you have decided against is screwed up and thrown away. Only
+        // when your hands are otherwise empty, because with a book in one hand
+        // Q plainly means the book.
+        if (app.heldPin && !app.held) {
+          app.setHeldPin(null)
           return
         }
         // Drop it. Somewhere in front of you, and then wherever it rolls to —
@@ -105,6 +119,19 @@ export function Handling() {
           shelf.packed.find((item) => item.id === app.focusedBook)?.shelfId ??
           app.focusedShelf
         if (shelfId) app.setLabelling(shelfId)
+        return
+      }
+
+      if (e.code === 'KeyT') {
+        e.preventDefault()
+        // Write a note. It arrives in your hand rather than on the wall, because
+        // where it goes is a separate decision and one you make by looking.
+        //
+        // Refused rather than queued when your hand is already full: silently
+        // replacing the sheet you were about to stick up would throw away work,
+        // and the HUD says which key clears it.
+        if (app.heldPin) return
+        app.setNoting(true)
         return
       }
 

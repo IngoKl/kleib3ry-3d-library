@@ -14,7 +14,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { PROSE, makePdf } from './lib/make-pdf.mjs'
 
-const OUT = resolve(process.argv[2] ?? 'C:/tmp/library3d-test-library')
+const OUT = resolve(process.argv[2] ?? 'C:/tmp/kleib3ry-test-library')
 
 // ---- PNG ---------------------------------------------------------------
 

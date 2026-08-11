@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use library3d_lib::{index, media};
+use kleib3ry_lib::{index, media};
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);

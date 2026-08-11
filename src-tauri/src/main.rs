@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    library3d_lib::run()
+    kleib3ry_lib::run()
 }

@@ -144,12 +144,17 @@ async function unpackEverything(page: Page) {
  * normal answer for most of the poses these helpers try.
  */
 async function settled(page: Page, condition: () => boolean, timeout = 4000) {
-  try {
-    await page.waitForFunction(condition, null, { timeout, polling: 100 })
-    return true
-  } catch {
-    return false
-  }
+  const deadline = Date.now() + timeout
+  do {
+    // Asked from *this* side rather than with `waitForFunction`, which schedules
+    // its poll as a page timer. Under the load this helper exists to tolerate
+    // those timers are starved, so a condition that became true was reported as
+    // never having happened — which reads as the room being wrong, and sends the
+    // sweep on to try another twenty-nine poses for no reason.
+    if (await page.evaluate(condition)) return true
+    await page.waitForTimeout(50)
+  } while (Date.now() < deadline)
+  return false
 }
 
 /**
@@ -209,7 +214,29 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
 
   await boot(page)
   await expect(page.locator('canvas')).toBeVisible()
-  await page.waitForTimeout(2000)
+
+  /**
+   * Alive and rendering — and *only* that, which is why it is a wait rather than
+   * a reading.
+   *
+   * This runs on SwiftShader, a software rasteriser, where the printed spines
+   * cost a texture fetch per fragment across a thousand-odd boxes: free on a GPU,
+   * expensive here. Counting frames inside a fixed 2 s window therefore measured
+   * the host's spare capacity, not the app — the same 8-frame bar read 13 on an
+   * idle machine and exactly 8 on a busy one, and a test that flips on whether
+   * something else is compiling is a test nobody can act on.
+   *
+   * So: wait until enough frames have gone by, with an allowance long enough that
+   * only a *stopped* render loop can fail it. Which is what the assertion was
+   * ever for; the threshold was 30 when books were flat colours, and every
+   * lowering of it since has been this discovery arriving late.
+   */
+  const enoughFrames = 9
+  await page.waitForFunction(
+    (want) => window.__app.stats().frames >= want,
+    enoughFrames,
+    { timeout: 60_000, polling: 500 },
+  )
 
   const stats = await page.evaluate(() => window.__app.stats())
 
@@ -221,16 +248,7 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
 
   expect(stats.drawCalls).toBeGreaterThan(5)
   expect(stats.triangles).toBeGreaterThan(1000)
-  /**
-   * Alive and rendering, not a frame-rate target. This runs on SwiftShader, a
-   * software rasteriser, where the printed spines cost a texture fetch per
-   * fragment across a thousand-odd boxes — free on a GPU, expensive here. The
-   * threshold was 30 when books were flat colours and 18 for a while after;
-   * measured on a machine sharing its cores with a video call, the whole app
-   * runs at ~2 fps regardless of scene, so the bar is as low as it can be
-   * while still proving frames keep coming.
-   */
-  expect(stats.frames).toBeGreaterThan(8)
+  expect(stats.frames).toBeGreaterThanOrEqual(enoughFrames)
 
   // Books came from the service, and every one of them is in a box: the app
   // does not arrange a library it has just found on your behalf.
@@ -252,6 +270,42 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
   await page.screenshot({ path: 'tests/screenshots/room.png' })
 })
 
+/**
+ * Walking is measured in *frames*, not in milliseconds.
+ *
+ * The controller caps its own step at 1/20 s so that a dropped frame cannot
+ * teleport anybody through a wall, which means distance covered is bounded by
+ * frames rendered — and one frame here is however long a software rasteriser
+ * takes over the whole cabin, on a machine that has other things to do. Holding
+ * `W` for a fixed 1200 ms therefore tests the host's spare capacity rather than
+ * the walk controller: the same code covers 1.9 m on an idle machine and 5 cm on
+ * a busy one.
+ *
+ * So: hold the key until the thing being tested has happened, or give up. Same
+ * property, and the failure now means "walking does not work" rather than "this
+ * machine was busy" — which is the distinction `settled()` above draws for the
+ * crosshair, for exactly the same reason.
+ */
+async function walkUntil(page: Page, reached: (z: number) => boolean, budgetMs = 20_000) {
+  await page.keyboard.down('KeyW')
+  const deadline = Date.now() + budgetMs
+  try {
+    while (Date.now() < deadline) {
+      // Asked from *this* side rather than with `waitForFunction`, which schedules
+      // its poll as a page timer: when the page is saturated those timers are
+      // starved, and a walk that plainly happened reports as never having
+      // started because nothing sampled it while it was going on.
+      if (reached(await page.evaluate(() => window.__app.player().z))) return true
+      await page.waitForTimeout(250)
+    }
+    return false
+  } finally {
+    await page.keyboard.up('KeyW')
+    // One more frame's worth of easing, so a reading taken now is settled.
+    await page.waitForTimeout(200)
+  }
+}
+
 test('walking moves the player and walls stop them', async ({ page }) => {
   await boot(page)
 
@@ -261,18 +315,20 @@ test('walking moves the player and walls stop them', async ({ page }) => {
   })
 
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
-  await page.keyboard.down('KeyW')
-  await page.waitForTimeout(1200)
-  await page.keyboard.up('KeyW')
-  await page.waitForTimeout(200)
 
+  const moved = await walkUntil(page, (z) => z > start.z + 0.3, 20_000)
   const after = await page.evaluate(() => window.__app.player())
+  expect(moved, `walking got nowhere: z went ${start.z} -> ${after.z}`).toBe(true)
   expect(after.z).toBeGreaterThan(start.z + 0.3)
 
-  await page.keyboard.down('KeyW')
-  await page.waitForTimeout(2500)
-  await page.keyboard.up('KeyW')
-  expect((await page.evaluate(() => window.__app.player())).z).toBeLessThan(3)
+  // And now the other half: keep going, and stop being carried. Something in
+  // the room ahead — the moving boxes, then the south wall — refuses the step,
+  // so this waits for a *failure* to move and asserts where it happened.
+  const wall = await page.evaluate(() => window.__app.player().z)
+  await walkUntil(page, (z) => z > 3, 8_000)
+  const stopped = await page.evaluate(() => window.__app.player().z)
+  expect(stopped, 'never even reached the far side of the room').toBeGreaterThanOrEqual(wall)
+  expect(stopped, 'walked through something solid').toBeLessThan(3)
 })
 
 test('take a book, then shelve it somewhere else', async ({ page }) => {
@@ -457,7 +513,9 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
   await boot(page)
 
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.rooms).toBe(6)
+  // The great room, the loft inside it, the reading corner, the bedroom over
+  // that, the kitchen, the office off the kitchen, and the porch.
+  expect(stats.rooms).toBe(7)
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 

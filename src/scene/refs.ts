@@ -37,6 +37,25 @@ export const sceneRefs: {
   recordIds: string[]
   /** `recordCrates[instanceId]` — which crate that record is filed in. */
   recordCrates: string[]
+  /** The tapes in the crates, and which tape each instance is. */
+  tapes: THREE.InstancedMesh | null
+  tapeIds: string[]
+  /** `tapeCrates[instanceId]` — which crate that tape is filed in. */
+  tapeCrates: string[]
+  /**
+   * Whiteboards: furniture the crosshair treats as somewhere to pin a page.
+   * Its own group because the question asked of one is not the question asked of
+   * a table or a lamp.
+   */
+  boards: THREE.Object3D | null
+  /**
+   * The room shells, so a page can be pinned to a plain wall as well as to a
+   * board. Published by `Rooms`, which is the only thing that knows where the
+   * walls ended up once their openings were cut out of them.
+   */
+  walls: THREE.Object3D | null
+  /** Pages and notes already pinned up, for taking one down again. */
+  pinned: THREE.Object3D | null
   /** Books lying about the room, on tables and on the floor. */
   looseBooks: THREE.InstancedMesh | null
   looseIds: string[]
@@ -68,6 +87,12 @@ export const sceneRefs: {
   records: null,
   recordIds: [],
   recordCrates: [],
+  tapes: null,
+  tapeIds: [],
+  tapeCrates: [],
+  boards: null,
+  walls: null,
+  pinned: null,
   looseBooks: null,
   looseIds: [],
   openBooks: null,

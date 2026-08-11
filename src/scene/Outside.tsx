@@ -2,7 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { between, mulberry32 } from '../lib/rng'
-import { roomBounds } from '../world/derive'
+import { PROPORTIONS, type Tree } from '../world/forest'
+import {
+  GROUND_RADIUS,
+  GROUND_Y,
+  LAKE,
+  SHORE_EDGE,
+  SHORE_Y,
+  WATER_Y,
+} from '../world/terrain'
 import { useLightStore } from '../state/lights'
 import { useWorldStore } from '../state/world'
 
@@ -14,121 +22,22 @@ import { useWorldStore } from '../state/world'
  * ground, a lake to the north, a few hundred conifers, and hills behind them.
  *
  * It is all generated from one seed and drawn in a handful of instanced
- * meshes — eight draw calls for the entire outdoors — because none of it is
- * interactive and none of it should ever compete with the books for frame
- * budget. Nothing here is collidable either: you cannot get out of the cabin
- * except onto the porch, and the porch has a railing.
- */
-
-/** How far the ground reaches before the fog has swallowed it anyway. */
-const GROUND_RADIUS = 150
-const TREE_COUNT = 420
-/** Nothing grows this close to the buildings. */
-const CLEARING = 4.5
-
-/**
- * The lake, and the clearing that lets you see it.
+ * meshes — eight draw calls for the entire outdoors — because none of it should
+ * ever compete with the books for frame budget.
  *
- * `y` sits a few centimetres *above* the ground plane rather than below it:
- * water carved out of the ground would mean cutting a hole in the ground, and
- * at this distance a sheet laid on top is indistinguishable and free. The
- * numbers that matter are `viewX` and `viewFrom` — the corridor of cleared
- * ground running north from the cabin, without which the north window looks at
- * the backs of forty trees and the whole point of siting the cabin here is lost.
+ * What has changed is that it is no longer only scenery. You can walk out of
+ * the porch and round the water now, so where the lake is and where the trees
+ * are are answers the walk controller needs as much as this file does — and
+ * they therefore live in `world/terrain.ts` and `world/forest.ts`, with this
+ * module reading them rather than inventing them. A shoreline you can see in
+ * one place and stand in in another is the bug that arrangement prevents.
  */
-const LAKE = {
-  x: -4,
-  z: -34,
-  radiusX: 34,
-  radiusZ: 21,
-  y: -0.2,
-  viewX: 15,
-  viewFrom: -6,
-}
 
 const TRUNK = '#4a3826'
 const BIRCH_BARK = '#cfc9ba'
 const FIR_NEEDLES = ['#2f4634', '#35503b', '#28402f', '#3d5940']
 const PINE_NEEDLES = ['#2c4234', '#31493c', '#263c2e']
 const BIRCH_LEAVES = ['#5f7d40', '#6f8d4a', '#527239', '#7d9451']
-
-/**
- * Three species rather than one cone. A forest of identical lollipops is what
- * reads as cheap: a fir is a stack of skirts, a pine is a bare trunk with its
- * crown held high, and a birch is a pale stem with a rounded head that breaks
- * up all that conifer green. Still instanced — one mesh per species part.
- */
-type Species = 'fir' | 'pine' | 'birch'
-
-type Tree = {
-  x: number
-  z: number
-  height: number
-  spread: number
-  tint: number
-  /** Random turn about Y, so the low-poly facets do not all face the cabin. */
-  yaw: number
-  species: Species
-}
-
-/** True where a tree would be standing in the lake, the view, or the kitchen. */
-function occupied(x: number, z: number, keepOut: readonly THREE.Box2[]): boolean {
-  const lx = (x - LAKE.x) / LAKE.radiusX
-  const lz = (z - LAKE.z) / LAKE.radiusZ
-  if (lx * lx + lz * lz < 1.15) return true
-  // The sight-line from the north windows down to the water.
-  if (z < LAKE.viewFrom && Math.abs(x - LAKE.x) < LAKE.viewX) return true
-  for (const box of keepOut) {
-    if (x > box.min.x && x < box.max.x && z > box.min.y && z < box.max.y) return true
-  }
-  return false
-}
-
-function growForest(keepOut: readonly THREE.Box2[]): Tree[] {
-  const random = mulberry32(0x5eed)
-  const trees: Tree[] = []
-
-  // Rejection sampling in a ring: uniform in the annulus, thinned near the
-  // clearing so the tree line reads as an edge rather than as a wall.
-  for (let i = 0; i < TREE_COUNT * 6 && trees.length < TREE_COUNT; i++) {
-    const angle = random() * Math.PI * 2
-    const distance = 8 + Math.sqrt(random()) * 92
-    const x = Math.cos(angle) * distance
-    const z = Math.sin(angle) * distance
-    if (occupied(x, z, keepOut)) continue
-    if (distance < 16 && random() > (distance - 8) / 12) continue
-
-    // Mostly firs, a scatter of taller pines above the canopy line, and
-    // birches — shorter, paler — filling in at the front where you can see
-    // them from the windows.
-    const roll = random()
-    const species: Species = roll < 0.55 ? 'fir' : roll < 0.8 ? 'pine' : 'birch'
-    const height =
-      species === 'pine'
-        ? between(random, 9, 17)
-        : species === 'fir'
-          ? between(random, 5.5, 14)
-          : between(random, 4, 8)
-    const spread =
-      species === 'pine'
-        ? between(random, 0.9, 1.6)
-        : species === 'fir'
-          ? between(random, 1.0, 2.1)
-          : between(random, 1.3, 2.3)
-
-    trees.push({
-      x,
-      z,
-      height,
-      spread,
-      tint: Math.floor(random() * 4),
-      yaw: random() * Math.PI * 2,
-      species,
-    })
-  }
-
-  return trees
-}
 
 /**
  * One instanced mesh per part: every trunk in one draw call, then one call per
@@ -176,13 +85,6 @@ function Forest({ trees }: { trees: Tree[] }) {
     [canopyGeometry],
   )
 
-  /** Where a species' trunk ends and its foliage begins, as fractions of height. */
-  const PROPORTIONS: Record<Species, { trunk: number; canopyFrom: number; girth: number }> = {
-    fir: { trunk: 0.4, canopyFrom: 0.1, girth: 0.16 },
-    pine: { trunk: 0.78, canopyFrom: 0.5, girth: 0.13 },
-    birch: { trunk: 0.6, canopyFrom: 0.38, girth: 0.09 },
-  }
-
   useLayoutEffect(() => {
     const matrix = new THREE.Matrix4()
     const position = new THREE.Vector3()
@@ -202,7 +104,7 @@ function Forest({ trees }: { trees: Tree[] }) {
       trunks.current?.setColorAt(i, colour.set(tree.species === 'birch' ? BIRCH_BARK : TRUNK))
     })
 
-    const palettes: Record<Species, string[]> = {
+    const palettes: Record<Tree['species'], string[]> = {
       fir: FIR_NEEDLES,
       pine: PINE_NEEDLES,
       birch: BIRCH_LEAVES,
@@ -360,19 +262,10 @@ export function Outside() {
   const world = useWorldStore((s) => s.world)
   const night = useLightStore((s) => s.night)
 
-  /** Trees keep out of every room's footprint, plus a margin to walk in. */
-  const keepOut = useMemo(() => {
-    if (!world) return []
-    return world.rooms.map((room) => {
-      const b = roomBounds(room)
-      return new THREE.Box2(
-        new THREE.Vector2(b.minX - CLEARING, b.minZ - CLEARING),
-        new THREE.Vector2(b.maxX + CLEARING, b.maxZ + CLEARING),
-      )
-    })
-  }, [world])
-
-  const trees = useMemo(() => growForest(keepOut), [keepOut])
+  // The same trunks the walk controller collides with. Grown in `deriveWorld`
+  // rather than here, which is what stops the forest you can see and the forest
+  // you can bump into drifting apart.
+  const trees = world?.trees ?? []
 
   return (
     <group>
@@ -382,32 +275,38 @@ export function Outside() {
       <Sky night={night} />
       <Hills />
 
-      {/* The ground, a whisker below the cabin floor so the two never z-fight. */}
-      <mesh position={[0, -0.32, 0]} rotation-x={-Math.PI / 2} receiveShadow>
+      {/* The ground you now walk on, a whisker below the floor slabs so the two
+          never z-fight and the reveal reads as a shadow line at the base of a
+          wall rather than as a cabin standing on air. */}
+      <mesh position={[0, GROUND_Y, 0]} rotation-x={-Math.PI / 2} receiveShadow>
         <circleGeometry args={[GROUND_RADIUS, 48]} />
         <meshStandardMaterial color="#4a5c34" roughness={1} />
       </mesh>
 
       {/* A pale shore, so the water meets the grass at something. Under the
           water and over the grass: three sheets stacked centimetres apart,
-          rather than a hole cut in the ground for a lake nobody swims in. */}
+          rather than a hole cut in the ground for a lake nobody swims in.
+          The gaps used to be 6 cm, which was fine while the nearest you could
+          get was a window; standing on the beach they read as three floating
+          discs, so they are 1.5 cm now. The beach itself is walkable — the
+          refusal is at the water's edge, inside it. */}
       <mesh
-        position={[LAKE.x, -0.26, LAKE.z]}
+        position={[LAKE.x, SHORE_Y, LAKE.z]}
         rotation-x={-Math.PI / 2}
-        scale={[LAKE.radiusX + 2.6, LAKE.radiusZ + 2.6, 1]}
+        scale={[LAKE.radiusX * SHORE_EDGE, LAKE.radiusZ * SHORE_EDGE, 1]}
       >
-        <circleGeometry args={[1, 48]} />
+        <circleGeometry args={[1, 64]} />
         <meshStandardMaterial color="#8f8266" roughness={1} />
       </mesh>
 
       {/* The lake. Smooth and a little metallic, which at this distance is all
           that separates water from a green field of a different colour. */}
       <mesh
-        position={[LAKE.x, LAKE.y, LAKE.z]}
+        position={[LAKE.x, WATER_Y, LAKE.z]}
         rotation-x={-Math.PI / 2}
         scale={[LAKE.radiusX, LAKE.radiusZ, 1]}
       >
-        <circleGeometry args={[1, 48]} />
+        <circleGeometry args={[1, 64]} />
         <meshStandardMaterial color="#3f6076" roughness={0.12} metalness={0.55} />
       </mesh>
 

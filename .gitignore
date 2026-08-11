@@ -3,7 +3,10 @@ dist/
 dist-ssr/
 *.local
 
-# Rust / Tauri
+# Rust. Three crates now, each with its own build directory: the shared core,
+# the desktop shell that wraps it, and the HTTP server the container runs.
+core/target/
+server/target/
 src-tauri/target/
 src-tauri/gen/schemas/
 
@@ -23,3 +26,6 @@ Thumbs.db
 public/standard_fonts/
 public/cmaps/
 public/sample-book.pdf
+
+# Docker build context leftovers
+.docker-build/

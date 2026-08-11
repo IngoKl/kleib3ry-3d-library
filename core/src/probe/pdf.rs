@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn a_non_pdf_probes_to_nothing() {
-        let path = std::env::temp_dir().join("library3d-not-a.pdf");
+        let path = std::env::temp_dir().join("kleib3ry-not-a.pdf");
         std::fs::write(&path, b"definitely not a pdf").unwrap();
         assert_eq!(probe(&path), Probed::default());
         std::fs::remove_file(&path).ok();

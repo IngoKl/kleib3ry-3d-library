@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type {
   IndexedArtwork,
   IndexedBook,
+  IndexedTape,
   IndexedTrack,
   LayoutDocument,
   LibraryService,
@@ -109,6 +110,10 @@ export const tauriDriver: LibraryService = {
 
   async listArtwork() {
     return invoke<IndexedArtwork[]>('list_artwork')
+  },
+
+  async listTapes() {
+    return invoke<IndexedTape[]>('list_videos')
   },
 
   async loadLights() {

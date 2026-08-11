@@ -19,6 +19,14 @@ export const MATERIALS = {
   timber: '#6d4b2e',
   carcass: '#8a6039',
   stone: '#948b7c',
+  /**
+   * Cedar shingles gone grey, which is what a roof in the woods is after one
+   * winter. Deliberately much darker than the walls: a roof the colour of its
+   * timber makes the whole building one blur from the far side of the lake.
+   */
+  shingle: '#4b4740',
+  /** The boards you see under the eaves, looking up from outside. */
+  soffit: '#8f6f4c',
 } as const
 
 /** One texture tile covers this many metres of floor in each direction. */

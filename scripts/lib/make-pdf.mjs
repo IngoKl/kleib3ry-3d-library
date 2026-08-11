@@ -22,7 +22,7 @@ export function makePdf({ title, author, pages, body }) {
   put(2, `<< /Type /Pages /Count ${pages} /Kids [ ${kids} ] >>`)
   put(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
   put(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>')
-  put(5, `<< /Title (${esc(title)}) /Author (${esc(author)}) /Producer (library3d test corpus) >>`)
+  put(5, `<< /Title (${esc(title)}) /Author (${esc(author)}) /Producer (kleib3ry test corpus) >>`)
 
   for (let i = 0; i < pages; i++) {
     const ops = [

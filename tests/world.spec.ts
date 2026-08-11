@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { blocked } from '../src/scene/collision'
-import { solidsAt } from '../src/scene/walk'
+import { solidsAt, stepPlayer, type Stance } from '../src/scene/walk'
 import { shelfColliders } from '../src/world/shelf'
-import { STEP_UP, deriveWorld, floorAt } from '../src/world/derive'
+import { FLOOR_SLAB, STEP_UP, deriveWorld, floorAt, roomBounds } from '../src/world/derive'
+import { GROUND_Y, LAKE, PATH, WALK_RADIUS, lakeRadius, terrainAt } from '../src/world/terrain'
+import { occupied } from '../src/world/forest'
 import { parseWorldText, type WorldDocument } from '../src/world/schema'
 import { DEFAULT_WORLD_TEXT } from '../src/world/defaults'
 import { LAYOUT_SCHEMA_VERSION, reconcile } from '../src/world/reconcile'
@@ -58,6 +60,7 @@ test.describe('world document', () => {
       'reading',
       'bedroom',
       'kitchen',
+      'office',
       'porch',
     ])
     expect(WORLD.shelves.length).toBeGreaterThan(10)
@@ -65,8 +68,67 @@ test.describe('world document', () => {
     expect(WORLD.furniture.some((f) => f.kind === 'armchair')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'recordplayer')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'bed')).toBe(true)
+    // The television den in the loft, and the office it takes a whiteboard to be.
+    expect(WORLD.furniture.some((f) => f.kind === 'crt')).toBe(true)
+    expect(WORLD.furniture.some((f) => f.kind === 'tapecrate')).toBe(true)
+    expect(WORLD.furniture.some((f) => f.kind === 'whiteboard')).toBe(true)
   })
 
+  test('no window has the floor of the room above running through it', () => {
+    // The great room's north window used to reach 2.9 m up a wall the loft floor
+    // crosses at 2.28, so from the lake the view window had a plank across it.
+    // Stated generally, because the same mistake is available in every room with
+    // a storey over part of it — and it is invisible from inside, where the sill
+    // and the head are both just wall.
+    const problems: string[] = []
+
+    for (const room of WORLD.rooms) {
+      const bounds = roomBounds(room)
+      for (const opening of room.openings) {
+        const head = room.elevation + opening.sill + opening.height
+        // A point just inside the wall the opening is in, so a room whose
+        // footprint merely *touches* this wall does not count as crossing it.
+        const inset = 0.05
+        const at =
+          opening.wall === 'north'
+            ? { x: room.origin[0] + opening.at, z: bounds.minZ + inset }
+            : opening.wall === 'south'
+              ? { x: room.origin[0] + opening.at, z: bounds.maxZ - inset }
+              : opening.wall === 'west'
+                ? { x: bounds.minX + inset, z: room.origin[1] + opening.at }
+                : { x: bounds.maxX - inset, z: room.origin[1] + opening.at }
+
+        for (const over of WORLD.rooms) {
+          if (over === room) continue
+          // Only a floor *inside* this room's volume can cross its openings.
+          if (over.elevation <= room.elevation + 1e-6) continue
+          if (over.elevation >= room.elevation + room.height - 1e-6) continue
+          const b = roomBounds(over)
+          if (at.x < b.minX || at.x > b.maxX || at.z < b.minZ || at.z > b.maxZ) continue
+
+          const underside = over.elevation - FLOOR_SLAB
+          if (head > underside + 1e-6) {
+            problems.push(
+              `${room.id}'s ${opening.wall} ${opening.kind} reaches ${head.toFixed(2)} ` +
+                `but ${over.id}'s floor starts at ${underside.toFixed(2)}`,
+            )
+          }
+        }
+      }
+    }
+
+    expect(problems, problems.join('; ')).toEqual([])
+  })
+
+  test('the office is walked into from the kitchen, not sealed off', () => {
+    const ground = solidsAt([...WORLD.solids, ...shelfColliders(WORLD.shelves)], 0)
+    // The matching pair of doors at world x = 8.44. Nothing solid the whole way
+    // through, and floor under every step of it.
+    for (let z = 2.6; z <= 4.1; z += 0.05) {
+      expect(floorAt(WORLD, 8.44, z, 0), `no floor at z=${z.toFixed(2)}`).toBe(0)
+      expect(blocked(ground, { x: 8.44, z }, 0.28), `blocked at z=${z.toFixed(2)}`).toBe(false)
+    }
+  })
   test('the loft is a storey, with a stair and a hole for it to come up', () => {
     const loft = WORLD.rooms.find((room) => room.id === 'loft')!
     expect(loft.elevation).toBeGreaterThan(2)
@@ -194,6 +256,143 @@ test.describe('world document', () => {
       expect(floorAt(WORLD, 2.6, z, 0), `no floor at z=${z.toFixed(2)}`).toBe(0)
       expect(blocked(ground, { x: 2.6, z }, 0.28), `blocked at z=${z.toFixed(2)}`).toBe(false)
     }
+  })
+})
+
+test.describe('the roof', () => {
+  const roofOf = (id: string) => WORLD.roofs.find((roof) => roof.roomId === id)
+
+  test('only the topmost room over a patch of ground is roofed', () => {
+    // The loft stands inside the great room's volume and shares its ceiling
+    // exactly; the reading corner has the bedroom on top of it. Neither may
+    // grow a roof, or the building has roofs indoors.
+    expect(roofOf('loft')).toBeUndefined()
+    expect(roofOf('reading')).toBeUndefined()
+
+    for (const id of ['main', 'bedroom', 'kitchen', 'office', 'porch']) {
+      expect(roofOf(id), `${id} has no roof`).toBeDefined()
+    }
+  })
+
+  test('a gable rises from the top of its walls to a ridge above them', () => {
+    const main = roofOf('main')!
+    const room = WORLD.rooms.find((r) => r.id === 'main')!
+    expect(main.kind).toBe('gable')
+    // Pinned to the wall top, never sunk into the room: the eaves are exactly
+    // the ceiling height, which is what keeps a roof out of a room's headroom.
+    expect(main.eaves).toBeCloseTo(room.elevation + room.height, 6)
+    expect(main.peak).toBeGreaterThan(main.eaves + 1)
+    // Half the span, since a gable climbs to the middle.
+    const span = main.covers.maxZ - main.covers.minZ
+    expect(main.peak - main.eaves).toBeCloseTo(Math.tan(main.pitch) * (span / 2), 6)
+  })
+
+  test('a roof does not overhang into the building it leans on', () => {
+    // The porch's shed roof climbs north to meet the cabin. Given an overhang
+    // on that side it reached 45 cm through the south wall and came out over
+    // the great room, which is the bug this asserts against.
+    const porch = roofOf('porch')!
+    const room = WORLD.rooms.find((r) => r.id === 'porch')!
+    expect(porch.kind).toBe('shed')
+    expect(porch.covers.minZ).toBeCloseTo(room.origin[1] - room.size[1] / 2, 6)
+    // ...and it still stands out over the decking on its low side.
+    expect(porch.covers.maxZ).toBeGreaterThan(room.origin[1] + room.size[1] / 2 + 0.2)
+
+    // Tucked under the cabin's wall rather than through it.
+    const cabin = WORLD.rooms.find((r) => r.id === 'main')!
+    expect(porch.peak).toBeLessThan(cabin.elevation + cabin.height)
+
+    // The kitchen's gable end abuts the great room's east wall for the same
+    // reason, and is flush with it.
+    const kitchen = roofOf('kitchen')!
+    const kitchenRoom = WORLD.rooms.find((r) => r.id === 'kitchen')!
+    expect(kitchen.covers.minX).toBeCloseTo(kitchenRoom.origin[0] - kitchenRoom.size[0] / 2, 6)
+  })
+
+  test('nothing you can stand on is under a roof slope', () => {
+    // Every roof begins at its own room's ceiling, so no floor in the building
+    // is ever within reach of one. Cheap to state, and the thing that would
+    // break first if the plane were ever anchored anywhere else.
+    for (const roof of WORLD.roofs) {
+      const room = WORLD.rooms.find((r) => r.id === roof.roomId)!
+      expect(roof.eaves).toBeGreaterThanOrEqual(room.elevation + room.height - 1e-6)
+    }
+  })
+})
+
+test.describe('outside', () => {
+  const solids = [...WORLD.solids, ...shelfColliders(WORLD.shelves)]
+
+  test('the ground is a floor, and the lake is not', () => {
+    // A clearing north of the cabin, on the way down to the water.
+    expect(terrainAt(0, -8)).toBe(GROUND_Y)
+    // The middle of the lake.
+    expect(terrainAt(LAKE.x, LAKE.z)).toBeNull()
+    // And the world ends somewhere, in fog rather than at a visible wall.
+    expect(terrainAt(WALK_RADIUS + 4, 0)).toBeNull()
+  })
+
+  test('indoors, the boards win over the ground under them', () => {
+    // The ground now runs under the whole building, and it must lose every tie:
+    // standing in the great room the floor is the floor, not the grass at -0.24.
+    expect(floorAt(WORLD, 0, 0, 0)).toBe(0)
+    expect(floorAt(WORLD, 0, 0, 2.5)).toBe(2.5)
+  })
+
+  test('you can walk out of the porch and down onto the grass', () => {
+    // Out through the gap in the south railing at world x = -0.85. The drop from
+    // the decking is 24 cm, which is a step rather than a fall.
+    let stance: Stance = { x: -0.85, z: 5.6, floor: 0 }
+    for (let i = 0; i < 60; i++) {
+      stance = stepPlayer(WORLD, solids, stance, { x: stance.x, z: stance.z + 0.05 }, 0.28)
+    }
+    expect(stance.z, 'never got off the porch').toBeGreaterThan(8)
+    expect(stance.floor).toBeCloseTo(GROUND_Y, 6)
+  })
+
+  test('and you cannot walk into the water', () => {
+    // Straight down the cleared sight-line from the north windows to the shore.
+    let stance: Stance = { x: LAKE.x, z: -9, floor: GROUND_Y }
+    for (let i = 0; i < 400; i++) {
+      stance = stepPlayer(WORLD, solids, stance, { x: stance.x, z: stance.z - 0.05 }, 0.28)
+    }
+    // Stopped at the water's edge, having actually got there.
+    expect(lakeRadius(stance.x, stance.z)).toBeGreaterThanOrEqual(1)
+    expect(lakeRadius(stance.x, stance.z)).toBeLessThan(1.05)
+  })
+
+  test('there is a walk round the pond, and no trees standing in it', () => {
+    const middle = (PATH.from + PATH.to) / 2
+    const keepOut = WORLD.rooms.map((room) => ({
+      minX: room.origin[0] - room.size[0] / 2 - 4.5,
+      maxX: room.origin[0] + room.size[0] / 2 + 4.5,
+      minZ: room.origin[1] - room.size[1] / 2 - 4.5,
+      maxZ: room.origin[1] + room.size[1] / 2 + 4.5,
+    }))
+
+    for (let i = 0; i < 72; i++) {
+      const angle = (i / 72) * Math.PI * 2
+      const x = LAKE.x + Math.cos(angle) * LAKE.radiusX * middle
+      const z = LAKE.z + Math.sin(angle) * LAKE.radiusZ * middle
+      const where = `${i} of 72, at (${x.toFixed(1)}, ${z.toFixed(1)})`
+
+      expect(Math.hypot(x, z), `outside the world: ${where}`).toBeLessThan(WALK_RADIUS)
+      expect(floorAt(WORLD, x, z, GROUND_Y), `no ground: ${where}`).toBe(GROUND_Y)
+      // The forest is grown around the path, so nothing may be planted in it.
+      expect(occupied(x, z, keepOut), `a tree could grow at ${where}`).toBe(true)
+      expect(blocked(solidsAt(solids, GROUND_Y), { x, z }, 0.28), `blocked: ${where}`).toBe(false)
+    }
+  })
+
+  test('a tree is something you walk into, not through', () => {
+    // The forest used to be scenery. Now that the ground is walkable it has to
+    // be solid, and it has to be solid at *head* height as well as at the knees.
+    const here = solidsAt(solids, GROUND_Y)
+    expect(WORLD.trees.length).toBeGreaterThan(100)
+    const trunks = WORLD.trees.filter((tree) =>
+      blocked(here, { x: tree.x, z: tree.z }, 0.05),
+    )
+    expect(trunks.length).toBe(WORLD.trees.length)
   })
 })
 

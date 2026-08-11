@@ -223,9 +223,9 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 
 | field | meaning |
 | --- | --- |
-| `size` | footprint `[width, depth]` — or for a picture, `[width, height]` |
+| `size` | footprint `[width, depth]` — or for anything hung on a wall, `[width, height]` |
 | `height` | height override, for the kinds where it is worth varying |
-| `y` | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For a **picture** it is the centre of the frame; for a **pendant** it is where the fitting is. |
+| `y` | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a `whiteboard` — it is the centre of the thing; for a **pendant** it is where the fitting is. |
 | `source` | which file in `artwork/` a picture shows |
 | `rise` | how far a flight of stairs climbs |
 | `on` | whether a lamp starts lit |
@@ -241,11 +241,14 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 | `footstool` | yes | put books on | for feet |
 | `sidetable` | yes | put books on | |
 | `table` | yes | put books on | `size` and `height` both worth setting |
+| `desk` | yes | put books on | deeper and a little higher than a table |
 | `bed` | yes | sit, put books on | headboard is its back; `facing` points the foot into the room |
 | `kitchencounter` | yes | put books on | comes with a sink |
 | `recordshelf` | yes | put books on | fills with records from `music/` |
+| `tapecrate` | yes | put books on | fills with tapes from `video/`; low, so the labels stand proud |
 | `box` | yes | fill, carry (`X`) | a moving box; books with no shelf pile up in it |
 | `recordplayer` | no | play (`E`) | put it on a `y` so it stands on something |
+| `crt` | yes | play a tape (`E`) | a television. `E` with a tape in hand puts it in; `E` empty-handed pauses |
 | `coffeemaker` | no | brew (`E`) | ditto |
 | `fireplace` | yes | switch (`E`) | lights the room it is in |
 | `floorlamp` | yes | switch (`E`) | |
@@ -253,12 +256,55 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 | `plant` | yes | — | `height` varies it |
 | `rug` | no | — | `size` sets its footprint |
 | `picture` | no | — | takes an image from `artwork/` |
+| `whiteboard` | no | pin things to (`E`) | hung like a picture; `size` is `[width, height]` |
 | `stairs` | no | climb | see above |
+| `step` | no | walk down | a pair of treads hanging off the edge of a deck. Decoration: the walk controller takes a 24 cm drop unaided |
 
 Everything marked solid is something you bump into, so keep furniture out of the
 line you walk in on. (The default reading corner has a comment about exactly
 this: a footstool in a doorway is the kind of thing you only find by walking
 into it.)
+
+---
+
+## Roofs
+
+Every room gets one without being asked, and only the **topmost** room over any
+patch of ground gets one at all — so a loft inside the great room's volume, and a
+reading corner with a bedroom on top of it, do not sprout roofs indoors. That is
+worked out from the document rather than declared, because "is there a room above
+me" is a fact about the file and not a decision anybody wants to restate every
+time they move a wall.
+
+The default is a 30° gable over the room's longer axis, or an 18° lean-to over
+anything `"outdoor"`. Say otherwise with a `roof` block:
+
+```json
+"roof": { "kind": "gable", "pitch": 28, "overhang": 0.5, "fall": "south" }
+```
+
+| field | means |
+| --- | --- |
+| `kind` | `gable` (two slopes, a ridge), `shed` (one slope), `flat`, or `none` |
+| `pitch` | degrees from horizontal. 0 is flat, 30 is a house, 45 is steep |
+| `overhang` | how far the eaves stand out past the walls, in metres |
+| `fall` | for a gable, the sides the **eaves** run along; for a shed, the **low** side |
+
+`fall` is the one worth thinking about. `"south"` puts the eaves on the north and
+south walls, which runs the ridge east to west — along the length of a building
+that is wider than it is deep. And a lean-to must fall *away* from what it leans
+on: get the porch's backwards and you have a roof draining into the house.
+
+Two things are handled for you. The plane is pinned to the **top of the walls** and
+only rises from there, so a roof can never come down into a room's headroom or
+through the ceiling below it. And a roof does not overhang into a building it
+abuts — without that, the porch's shed roof reaches 45 cm through the cabin's
+south wall and comes out over the great room.
+
+An opening's *head* is your problem, though. The great room's north window used to
+reach 2.9 m up a wall the loft floor crosses at 2.28, so from the lake the view
+window had a plank across it. It is invisible from inside, where the sill and the
+head are both just wall, and there is a test that now refuses it.
 
 ---
 
@@ -284,7 +330,7 @@ Two things to watch:
 
 ---
 
-## The other two folders
+## The other three folders
 
 A library folder holds more than books:
 
@@ -293,6 +339,7 @@ My Library/
   books/       ← indexed for the shelves
   music/       ← one record per mp3/wav/flac/ogg/m4a
   artwork/     ← one picture per jpg/png/webp/gif
+  video/       ← one tape per mp4/webm/m4v/mov/mkv/ogv
   .library/    ← everything the app owns
 ```
 
@@ -306,6 +353,34 @@ Four Women.mp3` reads exactly as you would hope.
 `artwork/` fills the picture frames. A frame with a `source` names its file; the
 rest are dealt out of the folder in document order, so dropping images in is the
 whole of the work.
+
+`video/` fills the tape crates, dealt the same way the records are — folder order,
+nothing to arrange, and the folder a file sits in becomes what is written under
+the title on its label. Whether a tape actually plays is up to the WebView, which
+decodes what Chromium decodes: roughly H.264 in MP4 and VP8/VP9 in WebM. A
+container it cannot read is still a tape in the crate — it goes in the machine,
+fails to start, and the panel says why, which is a better answer than pretending
+the file is not there.
+
+---
+
+## Pinning things up
+
+Any wall in the building takes a sheet of paper, and so does a `whiteboard`.
+
+- **`P`** while reading tears out a copy of the page you are on. The book keeps
+  its own — see [library-folder.md](library-folder.md#pages-and-notes) for what is
+  actually stored.
+- **`T`** writes a note.
+- **`E`** aimed at a wall or a board pins whichever you are holding to it.
+- **`E`** on something already up takes it down, back into your hand — so moving
+  a page from a wall to the board is `E`, `E`.
+- **`Q`** throws away the sheet in your hand.
+
+Nothing about this needs anything in `library.json`: a wall is a wall. The
+whiteboard in the default map's office is a good place to aim at, and the office
+is the room the feature was built for, but a page pins just as happily over the
+hearth.
 
 ---
 

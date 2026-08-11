@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { Lighting } from './scene/Lighting'
 import { Outside } from './scene/Outside'
 import { Rooms } from './scene/Rooms'
+import { Roofs } from './scene/Roofs'
 import { Furniture } from './scene/Furniture'
 import { Bookshelves } from './scene/Bookshelves'
 import { ShelfLabels } from './scene/ShelfLabels'
@@ -17,6 +18,10 @@ import { PlacementGhost } from './scene/PlacementGhost'
 import { Player } from './scene/Player'
 import { HeldBook } from './scene/HeldBook'
 import { HeldRecord } from './scene/HeldRecord'
+import { HeldTape } from './scene/HeldTape'
+import { HeldSheet } from './scene/HeldSheet'
+import { Pinned } from './scene/Pinned'
+import { Tapes } from './scene/Tapes'
 import { Probe } from './scene/Probe'
 import { Reader } from './reader/Reader'
 import { readerStatus, resetReaderStatus } from './reader/status'
@@ -27,6 +32,7 @@ import { useAppStore } from './state/store'
 import { useLibraryStore } from './state/library'
 import { useLightStore } from './state/lights'
 import { useMediaStore } from './state/media'
+import { useVideoStore } from './state/video'
 import { useWorldStore } from './state/world'
 import { warmCovers } from './state/covers'
 import { library } from './services'
@@ -48,6 +54,7 @@ export default function App() {
 
   const loadLights = useLightStore((s) => s.load)
   const loadMedia = useMediaStore((s) => s.load)
+  const loadVideo = useVideoStore((s) => s.load)
 
   // The world has to be up before the library, or there are no shelves to
   // reconcile against and every book would look like it had nowhere to go.
@@ -58,7 +65,7 @@ export default function App() {
       await loadWorld()
       await loadRoot()
       await loadLibrary()
-      await Promise.all([loadLights(), loadMedia()])
+      await Promise.all([loadLights(), loadMedia(), loadVideo()])
       // Start the cover sweep only once everything else is up: it is a long,
       // low-priority walk through the whole catalogue, and it must never be
       // what the first frame is waiting on.
@@ -71,7 +78,7 @@ export default function App() {
         error: e instanceof Error ? e.message : String(e),
       })
     })
-  }, [loadWorld, loadRoot, loadLibrary, loadLights, loadMedia])
+  }, [loadWorld, loadRoot, loadLibrary, loadLights, loadMedia, loadVideo])
 
   useEffect(() => watchWorld(), [watchWorld])
 
@@ -221,6 +228,17 @@ export default function App() {
       /** The records the music folder produced, and what is on the deck. */
       records: () => useMediaStore.getState().tracks.map((track) => track.id),
       nowPlaying: () => useMediaStore.getState().playing,
+      tapes: () => useVideoStore.getState().tapes.map((tape) => tape.id),
+      nowWatching: () => ({
+        playing: useVideoStore.getState().playing,
+        error: useVideoStore.getState().error,
+      }),
+      heldTape: () => useAppStore.getState().heldTape,
+      /** Sheets pinned up round the house, and the one in your hand. */
+      pins: () => useLibraryStore.getState().pins.map((sheet) => ({ ...sheet })),
+      heldPin: () => useAppStore.getState().heldPin,
+      pinTarget: () => useAppStore.getState().pinTarget,
+      focusedPin: () => useAppStore.getState().focusedPin,
       artwork: () => useMediaStore.getState().artwork.map((picture) => picture.id),
       spines: () => ({
         printed: sceneRefs.printedSpines,
@@ -287,6 +305,7 @@ export default function App() {
         <Lighting />
         <Outside />
         <Rooms />
+        <Roofs />
         <Furniture />
         <Bookshelves />
         <ShelfLabels />
@@ -294,12 +313,16 @@ export default function App() {
         <BoxedBooks />
         <LooseBooks />
         <Records />
+        <Tapes />
+        <Pinned />
         <PlacementGhost />
         <Interaction />
         <Handling />
         <Player />
         <HeldBook />
         <HeldRecord />
+        <HeldTape />
+        <HeldSheet />
         <Reader />
       </Canvas>
       <Hud />

@@ -1,0 +1,28 @@
+[package]
+name = "kleib3ry_server"
+version = "0.1.0"
+description = "Serve a kleib3ry library folder over HTTP, for the container"
+authors = ["iklei"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[[bin]]
+name = "kleib3ry-server"
+path = "src/main.rs"
+
+[dependencies]
+kleib3ry_core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# No HTTP crate. The whole surface is a dozen routes, a static directory and
+# byte ranges for the media files, which is a few hundred lines of
+# `std::net::TcpListener` — and the same argument the rest of this project makes
+# for hand-rolling its collision and its tag reading applies here: it keeps the
+# shipped licence surface where it is, and it keeps the image small.
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

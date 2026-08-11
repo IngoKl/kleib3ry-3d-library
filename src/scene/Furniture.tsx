@@ -10,6 +10,7 @@ import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
 import { APPLIANCES, LAMPS, SITTABLE, type DerivedFurniture } from '../world/derive'
 import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
+import { useVideoStore, videoElement } from '../state/video'
 
 /**
  * Furniture, built from boxes and cylinders rather than shipped as models.
@@ -44,6 +45,14 @@ const SLATE = '#3f4440'
 const STEEL = '#7e8177'
 const LEAF = '#3f6b42'
 const TERRACOTTA = '#9c5a3c'
+// The beige-grey of every television ever sold in 1987, and the dead green a
+// switched-off tube actually is — not black, which is what a dark grey box in a
+// dim room reads as when you get it wrong.
+const CASING = '#b9b2a1'
+const CASING_DARK = '#8e887a'
+const TUBE_OFF = '#2b322e'
+const BOARD_WHITE = '#eef0ee'
+const ALUMINIUM = '#a9aeb0'
 
 /** Warm bulb colour, shared by everything that lights the room. */
 const BULB = '#ffd9a0'
@@ -834,10 +843,267 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
   )
 }
 
+/**
+ * A desk: a top, a modesty panel, and a bank of drawers under one end.
+ *
+ * Deeper and a shade higher than the dining table it would otherwise be, because
+ * a desk is somewhere you spread a book open and leave it — which is also why it
+ * is a `surface` and the dining chairs are not.
+ */
+function Desk({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const top = 0.04
+  const leg = 0.07
+  const drawers = width * 0.34
+
+  return (
+    <group>
+      <mesh position={[0, height - top / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, top, depth]} />
+        <meshStandardMaterial color={OAK} roughness={0.62} />
+      </mesh>
+
+      {/* Two legs at the open end; the drawer bank carries the other. */}
+      {[-1, 1].map((side) => (
+        <mesh
+          key={`leg${side}`}
+          position={[-width / 2 + leg, (height - top) / 2, (side * (depth - leg * 2)) / 2]}
+          castShadow
+        >
+          <boxGeometry args={[leg, height - top, leg]} />
+          <meshStandardMaterial color={OAK} roughness={0.8} />
+        </mesh>
+      ))}
+
+      <mesh
+        position={[width / 2 - drawers / 2, (height - top) / 2, 0]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[drawers, height - top, depth * 0.92]} />
+        <meshStandardMaterial color={OAK} roughness={0.78} />
+      </mesh>
+      {/* Three drawer fronts, which is what makes the bank read as drawers
+          rather than as a plinth. */}
+      {[0, 1, 2].map((i) => (
+        <mesh
+          key={`drawer${i}`}
+          position={[
+            width / 2 - drawers / 2,
+            (height - top) * (0.22 + i * 0.28),
+            (depth * 0.92) / 2 + 0.008,
+          ]}
+        >
+          <boxGeometry args={[drawers * 0.86, (height - top) * 0.22, 0.016]} />
+          <meshStandardMaterial color={PINE} roughness={0.7} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/**
+ * A whiteboard. Aluminium frame, a pen tray, and a face you can pin things to.
+ *
+ * Hung like a picture — `size` is width by height and `y` is the centre of the
+ * board — because that is how anybody hanging one thinks about it. What makes it
+ * more than a white picture is that it is published to `sceneRefs.pinnable`, so
+ * the crosshair offers it as somewhere a torn-out page can go.
+ */
+function Whiteboard({ width, height }: { width: number; height: number }) {
+  const frame = 0.03
+  return (
+    <group>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[width + frame * 2, height + frame * 2, 0.05]} />
+        <meshStandardMaterial color={ALUMINIUM} roughness={0.42} metalness={0.55} />
+      </mesh>
+      {/* The face, a hair proud of the frame so the two never z-fight. */}
+      <mesh position={[0, 0, 0.027]} receiveShadow>
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial color={BOARD_WHITE} roughness={0.32} />
+      </mesh>
+      {/* Pen tray along the bottom edge, tipped up to hold what is in it. */}
+      <mesh position={[0, -height / 2 - frame, 0.05]} rotation-x={-0.35} castShadow>
+        <boxGeometry args={[width * 0.55, 0.02, 0.07]} />
+        <meshStandardMaterial color={ALUMINIUM} roughness={0.45} metalness={0.5} />
+      </mesh>
+      {[-0.09, 0, 0.09].map((x, i) => (
+        <mesh key={x} position={[x, -height / 2 - frame + 0.02, 0.062]} rotation-z={Math.PI / 2}>
+          <cylinderGeometry args={[0.008, 0.008, 0.1, 8]} />
+          <meshStandardMaterial color={['#2b3a55', '#7d3b32', '#3f5a4a'][i]} roughness={0.5} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** An open crate of tapes: four low sides and a base, and nothing else. */
+function TapeCrate({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const wall = 0.016
+  return (
+    <group>
+      <mesh position={[0, wall / 2, 0]} receiveShadow castShadow>
+        <boxGeometry args={[width, wall, depth]} />
+        <meshStandardMaterial color={CARD_DARK} roughness={1} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh key={`x${side}`} position={[(side * (width - wall)) / 2, height / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[wall, height, depth]} />
+          <meshStandardMaterial color={OAK} roughness={0.85} />
+        </mesh>
+      ))}
+      {[-1, 1].map((side) => (
+        <mesh key={`z${side}`} position={[0, height / 2, (side * (depth - wall)) / 2]} castShadow receiveShadow>
+          <boxGeometry args={[width, height, wall]} />
+          <meshStandardMaterial color={OAK} roughness={0.85} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/**
+ * The television: a portable colour set, which is to say a heavy one.
+ *
+ * The screen is the only interesting part. When a tape is running it carries a
+ * `VideoTexture` over the one `<video>` element `state/video.ts` owns, so the
+ * picture is the tape rather than a decoration; the rest of the time it is the
+ * dead green a tube actually is, with a soft scanline wash over it so a set that
+ * is off still reads as glass rather than as a hole in the casing.
+ *
+ * The texture is created here rather than in the store because the store has no
+ * business knowing about three; the element is a singleton, so this is the one
+ * place that needs to dispose of anything.
+ */
+function Crt({
+  width,
+  depth,
+  height,
+  playing,
+}: {
+  width: number
+  depth: number
+  height: number
+  playing: string | null
+}) {
+  const screenW = width * 0.78
+  const screenH = height * 0.72
+
+  const picture = useMemo(() => {
+    if (!playing) return null
+    const texture = new THREE.VideoTexture(videoElement())
+    texture.colorSpace = THREE.SRGBColorSpace
+    // A tube's picture does not tile, and a tape's aspect is whatever it is:
+    // clamped and stretched to the glass, which is what a 4:3 set did to
+    // everything anyway.
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.wrapT = THREE.ClampToEdgeWrapping
+    return texture
+  }, [playing])
+  useEffect(() => () => picture?.dispose(), [picture])
+
+  return (
+    <group>
+      {/* The casing, with the tube's depth in it. */}
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, height, depth]} />
+        <meshStandardMaterial color={CASING} roughness={0.72} />
+      </mesh>
+      {/* A recessed bezel, so the glass sits inside the box rather than on it. */}
+      <mesh position={[0, height * 0.54, depth / 2 + 0.004]}>
+        <boxGeometry args={[screenW + 0.035, screenH + 0.035, 0.02]} />
+        <meshStandardMaterial color={CASING_DARK} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, height * 0.54, depth / 2 + 0.016]}>
+        <planeGeometry args={[screenW, screenH]} />
+        {/* Keyed so a tape starting mounts a *new* material: swapping a map into
+            a live one reuses its map-less shader program and draws black, which
+            is the same trap the picture frames fell into. */}
+        {picture ? (
+          <meshBasicMaterial key="tape" map={picture} toneMapped={false} />
+        ) : (
+          <meshStandardMaterial key="off" color={TUBE_OFF} roughness={0.16} metalness={0.3} />
+        )}
+      </mesh>
+
+      {/* The control panel down the side of the glass: a dial, a smaller dial,
+          and the slot the tape goes into. */}
+      {[0.66, 0.5].map((at, i) => (
+        <mesh
+          key={at}
+          position={[width * 0.42, height * at, depth / 2 + 0.012]}
+          rotation-x={Math.PI / 2}
+        >
+          <cylinderGeometry args={[0.022 - i * 0.005, 0.022 - i * 0.005, 0.022, 12]} />
+          <meshStandardMaterial color={CASING_DARK} roughness={0.55} />
+        </mesh>
+      ))}
+      <mesh position={[width * 0.42, height * 0.2, depth / 2 + 0.006]}>
+        <boxGeometry args={[width * 0.11, 0.026, 0.012]} />
+        <meshStandardMaterial color="#3a3630" roughness={0.9} />
+      </mesh>
+      {/* The speaker grille, under the glass. */}
+      <mesh position={[-width * 0.1, height * 0.12, depth / 2 + 0.006]}>
+        <boxGeometry args={[width * 0.5, 0.05, 0.01]} />
+        <meshStandardMaterial color={CASING_DARK} roughness={0.95} />
+      </mesh>
+
+      {/* Feet, and a telescopic aerial pulled up at the back. */}
+      {[-1, 1].map((sx) =>
+        [-1, 1].map((sz) => (
+          <mesh
+            key={`foot${sx}${sz}`}
+            position={[(sx * width) / 2.6, 0.008, (sz * depth) / 2.8]}
+            castShadow
+          >
+            <boxGeometry args={[0.05, 0.016, 0.05]} />
+            <meshStandardMaterial color="#332f2b" roughness={0.9} />
+          </mesh>
+        )),
+      )}
+      <group position={[-width * 0.36, height, -depth * 0.3]} rotation-z={0.42}>
+        <mesh position={[0, 0.22, 0]} castShadow>
+          <cylinderGeometry args={[0.005, 0.007, 0.44, 6]} />
+          <meshStandardMaterial color={STEEL} roughness={0.35} metalness={0.7} />
+        </mesh>
+      </group>
+    </group>
+  )
+}
+
+/**
+ * Two treads hanging off the edge of a deck.
+ *
+ * Not solid, and not a `stairs`: the drop from the decking to the ground is 24 cm,
+ * which is inside the step the walk controller takes unaided, so there is no ramp
+ * to build. This exists so the place you walk down looks like a place to walk
+ * down. It hangs *below* its own origin, which is the top of the deck.
+ */
+function Step({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const tread = height / 2
+  const run = depth / 2
+  return (
+    <group>
+      {[0, 1].map((i) => (
+        <mesh
+          key={i}
+          position={[0, -tread * (i + 0.5), -run / 2 + run * i]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[width, tread, run]} />
+          <meshStandardMaterial color={MATERIALS.timber} roughness={0.92} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 function Piece({ item, source }: { item: DerivedFurniture; source: string | null }) {
   const lit = useLightStore((s) => (LAMPS.has(item.kind) ? s.isOn(item.id, item.on ?? true) : false))
   const playing = useMediaStore((s) => s.playing)
   const paused = useMediaStore((s) => s.paused)
+  const tape = useVideoStore((s) => (item.kind === 'crt' ? s.playing : null))
   const brewing = useAppStore((s) => s.brewing === item.id)
 
   const body = (() => {
@@ -856,6 +1122,8 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <SideTable height={item.height} />
       case 'table':
         return <Table width={item.width} depth={item.depth} height={item.height} />
+      case 'desk':
+        return <Desk width={item.width} depth={item.depth} height={item.height} />
       case 'bed':
         return <Bed width={item.width} depth={item.depth} />
       case 'rug':
@@ -876,12 +1144,22 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <RecordShelf width={item.width} depth={item.depth} height={item.height} />
       case 'recordplayer':
         return <RecordPlayer spinning={playing !== null && !paused} playing={playing} />
+      case 'tapecrate':
+        return <TapeCrate width={item.width} depth={item.depth} height={item.height} />
+      case 'crt':
+        return (
+          <Crt width={item.width} depth={item.depth} height={item.height} playing={tape} />
+        )
       case 'picture':
         return <Picture item={item} source={source} />
+      case 'whiteboard':
+        return <Whiteboard width={item.width} height={item.height} />
       case 'box':
         return <MovingBox width={item.width} depth={item.depth} />
       case 'stairs':
         return <Stairs width={item.width} run={item.depth} rise={item.height} />
+      case 'step':
+        return <Step width={item.width} depth={item.depth} height={item.height} />
     }
   })()
 
@@ -905,17 +1183,20 @@ export function Furniture() {
   const boxes = useRef<THREE.Group>(null)
   const surfaces = useRef<THREE.Group>(null)
   const fixtures = useRef<THREE.Group>(null)
+  const boards = useRef<THREE.Group>(null)
 
   useLayoutEffect(() => {
     sceneRefs.seats = seats.current
     sceneRefs.boxes = boxes.current
     sceneRefs.surfaces = surfaces.current
     sceneRefs.fixtures = fixtures.current
+    sceneRefs.boards = boards.current
     return () => {
       sceneRefs.seats = null
       sceneRefs.boxes = null
       sceneRefs.surfaces = null
       sceneRefs.fixtures = null
+      sceneRefs.boards = null
     }
   }, [world, artwork])
 
@@ -958,7 +1239,10 @@ export function Furniture() {
   const tops = world.furniture.filter(
     (item) => item.surface && !SITTABLE.has(item.kind) && item.kind !== 'box',
   )
-  const claimed = new Set([...sittable, ...movingBoxes, ...operable, ...tops].map((i) => i.id))
+  const pinnable = world.furniture.filter((item) => item.kind === 'whiteboard')
+  const claimed = new Set(
+    [...sittable, ...movingBoxes, ...operable, ...tops, ...pinnable].map((i) => i.id),
+  )
   const rest = world.furniture.filter((item) => !claimed.has(item.id))
 
   return (
@@ -989,6 +1273,14 @@ export function Furniture() {
 
       <group ref={fixtures}>
         {operable.map((item) => (
+          <Piece key={`${item.roomId}:${item.id}`} item={item} source={null} />
+        ))}
+      </group>
+
+      {/* Whiteboards, which the crosshair treats as walls you may pin to rather
+          than as furniture you may do anything else with. */}
+      <group ref={boards}>
+        {pinnable.map((item) => (
           <Piece key={`${item.roomId}:${item.id}`} item={item} source={null} />
         ))}
       </group>

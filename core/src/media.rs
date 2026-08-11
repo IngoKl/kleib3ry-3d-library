@@ -1,5 +1,5 @@
-//! The rest of the library folder: `music/` for the record player and
-//! `artwork/` for the walls.
+//! The rest of the library folder: `music/` for the record player, `artwork/`
+//! for the walls, and `video/` for the tapes that go in the television.
 //!
 //! Deliberately *not* in SQLite. The book index is there because probing a PDF
 //! is slow enough to be worth caching and a large collection is tens of
@@ -18,9 +18,18 @@ use crate::probe::{audio, title_from_filename};
 
 pub const MUSIC_DIR: &str = "music";
 pub const ARTWORK_DIR: &str = "artwork";
+pub const VIDEO_DIR: &str = "video";
 
 const AUDIO_EXTENSIONS: [&str; 5] = ["mp3", "wav", "flac", "ogg", "m4a"];
 const IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "gif"];
+/// What a tape can be.
+///
+/// Listed rather than probed, and deliberately wider than what will actually
+/// play: the WebView plays what Chromium plays, which is roughly H.264 in MP4
+/// and VP8/VP9 in WebM. A Matroska file is still a tape in the crate — it goes
+/// in the machine, fails to start, and says so in the panel, which is a better
+/// answer than pretending the file is not there.
+const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "webm", "m4v", "mov", "mkv", "ogv"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +51,24 @@ pub struct Artwork {
     pub title: String,
 }
 
+/// A tape in the crate beside the television.
+///
+/// `series` is the folder it sits in, which for a video folder is very often the
+/// thing it belongs to — a season, a director, "holidays 1998". The same
+/// convention as a music folder's album, and for the same reason: the shape
+/// somebody has already sorted their files into is better metadata than
+/// anything a probe would find.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tape {
+    pub id: String,
+    pub path: String,
+    pub title: String,
+    pub series: Option<String>,
+    pub format: String,
+    pub size_bytes: u64,
+}
+
 /// `<root>/music`, if it exists. Absent, the library simply has no records —
 /// which is not an error, it is a library nobody has put music in.
 pub fn music_root(root: &Path) -> Option<PathBuf> {
@@ -51,6 +78,11 @@ pub fn music_root(root: &Path) -> Option<PathBuf> {
 
 pub fn artwork_root(root: &Path) -> Option<PathBuf> {
     let dir = root.join(ARTWORK_DIR);
+    dir.is_dir().then_some(dir)
+}
+
+pub fn video_root(root: &Path) -> Option<PathBuf> {
+    let dir = root.join(VIDEO_DIR);
     dir.is_dir().then_some(dir)
 }
 
@@ -145,12 +177,41 @@ pub fn list_artwork(root: &Path) -> Vec<Artwork> {
         .collect()
 }
 
+/// Every tape under `<root>/video`, in folder order.
+///
+/// No probing at all, unlike a book: a container's duration and title sit behind
+/// a demuxer, and shipping one to print a nicer label on a cassette is a large
+/// dependency for a small gain. The filename is the title, the folder is the
+/// series, and the WebView finds out the rest when the tape is played.
+pub fn list_videos(root: &Path) -> Vec<Tape> {
+    let Some(dir) = video_root(root) else { return Vec::new() };
+
+    files_under(&dir, &VIDEO_EXTENSIONS)
+        .into_iter()
+        .filter_map(|(path, format)| {
+            let id = book_id(&path).ok()?;
+            let size_bytes = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let (outer, inner) = folder_names(&path, &dir);
+
+            Some(Tape {
+                id,
+                path: path.to_string_lossy().to_string(),
+                title: title_from_filename(&path),
+                // The nearest folder, which is the more specific of the two.
+                series: inner.or(outer),
+                format,
+                size_bytes,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("library3d-media-{name}"));
+        let dir = std::env::temp_dir().join(format!("kleib3ry-media-{name}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -195,6 +256,30 @@ mod tests {
             pictures.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(),
             vec!["A Pines", "B Lake"],
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_library_with_no_video_folder_simply_has_no_tapes() {
+        let dir = temp_dir("no-video");
+        assert!(list_videos(&dir).is_empty());
+        assert_eq!(video_root(&dir), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tapes_take_the_folder_as_their_series() {
+        let dir = temp_dir("tapes");
+        fs::create_dir_all(dir.join("video/Holidays/1998")).unwrap();
+        fs::write(dir.join("video/Holidays/1998/03_the_lake.mp4"), b"not really mp4").unwrap();
+        fs::write(dir.join("video/notes.txt"), b"x").unwrap();
+
+        let tapes = list_videos(&dir);
+        assert_eq!(tapes.len(), 1);
+        assert_eq!(tapes[0].title, "03 The Lake");
+        // The nearest folder wins: "1998" is more specific than "Holidays".
+        assert_eq!(tapes[0].series.as_deref(), Some("1998"));
+        assert_eq!(tapes[0].format, "mp4");
         let _ = fs::remove_dir_all(&dir);
     }
 

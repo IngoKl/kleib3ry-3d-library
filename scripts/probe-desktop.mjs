@@ -20,8 +20,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2).filter((a) => a !== '--keep')
 /** Leave the library folder configured instead of restoring the previous one. */
 const keep = process.argv.includes('--keep')
-const libraryFolder = resolve(args[0] ?? 'C:/tmp/library3d-test-library')
-const exe = args[1] ?? resolve(root, 'src-tauri/target/release/library3d.exe')
+const libraryFolder = resolve(args[0] ?? 'C:/tmp/kleib3ry-test-library')
+const exe = args[1] ?? resolve(root, 'src-tauri/target/release/kleib3ry.exe')
 const PORT = 9223
 
 if (!existsSync(exe)) {

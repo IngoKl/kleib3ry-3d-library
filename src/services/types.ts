@@ -51,6 +51,42 @@ export type LayoutDocument = {
   furniture?: Record<string, { at: [number, number]; facing: number }>
   /** Shelf id -> what you have written on its label. */
   labels?: Record<string, string>
+  /** Pages torn out of books and notes written by hand, pinned up round the house. */
+  pins?: PinnedSheet[]
+}
+
+/**
+ * A sheet of paper stuck to a wall: a page copied out of a book, or a note.
+ *
+ * "Torn out" is a lie the interface tells and this type keeps honest — a page
+ * records which book and which *page number* it came from, and the book keeps
+ * its page. Nothing is removed from anything; the sheet is a second view of a
+ * page that is still where it was, which is also why a pin survives being taken
+ * down and put up somewhere else.
+ *
+ * World coordinates and a yaw rather than a wall id, for the same reason a book
+ * put down on a table stores a point: you stuck it *there*. A wall that goes
+ * away should leave the sheet hanging in the air over where it was rather than
+ * teleporting it to whichever wall inherited the id.
+ */
+export type PinnedSheet = {
+  /** Unique within a library. Generated when the sheet is made. */
+  id: string
+  kind: 'page' | 'note'
+  /** For a page: which book, and which page of it. The book is not modified. */
+  bookId?: string
+  page?: number
+  /** For a note: what is written on it. */
+  text?: string
+  x: number
+  y: number
+  z: number
+  /** Radians about Y. The direction the face of the sheet points. */
+  yaw: number
+  /** Radians of tilt about the sheet's own normal. Nothing pinned up is straight. */
+  tilt: number
+  /** Which pad a note came off, as an index into the renderer's colours. */
+  colour?: number
 }
 
 /**
@@ -96,6 +132,24 @@ export type IndexedArtwork = {
 }
 
 /**
+ * A tape in the library's `video/` folder.
+ *
+ * No duration and no thumbnail: reading either means demuxing a container, and
+ * the whole reason `video/` is walked on demand rather than indexed is that a
+ * tape needs no more describing than its filename gives it.
+ */
+export type IndexedTape = {
+  id: string
+  path: string
+  title: string
+  /** The folder it sits in — a season, a year, a director. */
+  series: string | null
+  /** `mp4`, `webm`, `m4v`, `mov`, `mkv`, `ogv`. */
+  format: string
+  sizeBytes: number
+}
+
+/**
  * Which lamps are on. Kept in its own small file rather than in the book
  * layout: it is about the room rather than about the books, and a file you can
  * delete to get all the lights back on is a good thing to have.
@@ -108,9 +162,19 @@ export type LightState = {
   night?: boolean
 }
 
+/**
+ * Which driver is live.
+ *
+ * `tauri` is the desktop app talking to the Rust core over IPC; `http` is a
+ * browser talking to `kleib3ry-server` over the same seam; `browser` is a plain
+ * tab with no filesystem at all and a generated stand-in library. The HUD shows
+ * it, because a library that looks empty is nearly always the wrong one of these.
+ */
+export type DriverKind = 'tauri' | 'http' | 'browser'
+
 export interface LibraryService {
   /** Which driver is live. Surfaced in the HUD so misconfiguration is visible. */
-  readonly kind: 'tauri' | 'browser'
+  readonly kind: DriverKind
 
   /** False when the host cannot present a native directory picker. */
   readonly canPickFolder: boolean
@@ -153,11 +217,13 @@ export interface LibraryService {
 
   /**
    * The rest of the library folder: records for the player, pictures for the
-   * walls. Both resolve to an empty list on a host that cannot read files, so
-   * the scene simply has no records rather than failing to build.
+   * walls, tapes for the television. All three resolve to an empty list on a
+   * host that cannot read files, so the scene simply has no records rather than
+   * failing to build.
    */
   listTracks(): Promise<IndexedTrack[]>
   listArtwork(): Promise<IndexedArtwork[]>
+  listTapes(): Promise<IndexedTape[]>
 
   /** Which lamps are on, from `.library/lights.json`. Null if never written. */
   loadLights(): Promise<LightState | null>

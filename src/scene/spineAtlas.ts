@@ -25,23 +25,56 @@ import * as THREE from 'three'
  * book be a real book — cover on the front board, printed spine on the spine —
  * while the whole library stays one draw call.
  *
- * The atlas is re-uploaded whenever any cell changes, so its size is a direct
- * cost while you walk into a new shelf; 144 cells at this resolution is ~15 MB.
+ * The atlas is re-uploaded whenever any cell changes, so its *total size* is a
+ * per-pass cost while you walk into a new shelf — and that total is the budget
+ * everything else here is spent out of. It is fixed at about 15 MB, which is
+ * what the frame times will carry: a first attempt at sharper covers took it to
+ * 23 MB and the headless renderer, which uploads textures on the CPU, spent long
+ * enough per pass that Playwright's own clicks started timing out.
+ *
+ * Inside that budget, cell size trades against cell count, and the trade was
+ * re-struck once in favour of size. A cover used to get 80x136 px of a 128x208
+ * cell, which at the distance you are at when you draw a book out with `F` to
+ * look at it was visibly a thumbnail. It now gets 116x182 of a 176x240 cell:
+ * 1.9x the pixels, with the spine 1.5x. Some of that came free — the old cell
+ * was 28% margin — and the rest is paid for in cells, 88 rather than 143.
+ *
+ * Cells are the right thing to spend: they are handed out nearest-first, so
+ * losing some costs legibility at the *back* of what you can read, and a book
+ * with no cell goes back to plain cloth, which is what everything past four
+ * metres already is.
  */
-const CELL_W = 128
-const CELL_H = 208
-const COLUMNS = 12
-const ROWS = 12
+const CELL_W = 176
+const CELL_H = 240
 
 /** The spine strip, down the left-hand edge of the cell. */
-const SPINE_W = 40
-/** The cover panel. Its proportions match a board — depth by height. */
-const COVER_X = 44
-const COVER_W = 80
-const COVER_Y = 36
-const COVER_H = 136
+const SPINE_W = 52
+/**
+ * The cover panel. Its proportions match a board — depth by height — and it is
+ * pushed out to the edges of what the cell has left, because every pixel of
+ * margin here is a pixel of somebody's cover thrown away.
+ */
+const COVER_X = 56
+const COVER_W = 116
+const COVER_Y = 28
+const COVER_H = 182
 
-export const SLOT_COUNT = COLUMNS * ROWS
+/**
+ * How many cells an atlas is cut into.
+ *
+ * A parameter rather than a constant because the shelves are not the only thing
+ * printed through here: a VHS cassette is a thin box with a printed spine and a
+ * label on one face, which is exactly what this draws, so `Tapes` shares the
+ * whole machinery — and a crate of a dozen tapes wants sixteen cells, not
+ * eighty-eight. Giving it the book grid meant a second 15 MB texture uploaded
+ * for twelve cassettes, which is how the frame budget was found.
+ */
+export type AtlasGrid = { columns: number; rows: number }
+
+/** 88 cells at ~15 MB. See the note above for what fixes both numbers. */
+const BOOK_GRID: AtlasGrid = { columns: 11, rows: 8 }
+
+export const SLOT_COUNT = BOOK_GRID.columns * BOOK_GRID.rows
 
 /**
  * The first cell is never assigned to a book: it is plain white, and every
@@ -78,6 +111,8 @@ export const CELL_REGIONS = {
 
 export type SpineAtlas = {
   texture: THREE.CanvasTexture
+  /** How many cells this atlas can hand out, i.e. everything but the blank one. */
+  assignable: number
   /** The UV rectangle for a slot, as `[x, y, width, height]`. */
   rect(slot: number): [number, number, number, number]
   blank: [number, number, number, number]
@@ -107,10 +142,10 @@ function inkFor(colour: THREE.Color): string {
   return luminance > 0.55 ? '#241c14' : '#f1e6cf'
 }
 
-export function makeBookAtlas(): SpineAtlas {
+export function makeBookAtlas(grid: AtlasGrid = BOOK_GRID): SpineAtlas {
   const canvas = document.createElement('canvas')
-  canvas.width = COLUMNS * CELL_W
-  canvas.height = ROWS * CELL_H
+  canvas.width = grid.columns * CELL_W
+  canvas.height = grid.rows * CELL_H
   const ctx = canvas.getContext('2d')!
 
   ctx.fillStyle = '#ffffff'
@@ -127,8 +162,8 @@ export function makeBookAtlas(): SpineAtlas {
   let pending = false
 
   const originOf = (slot: number) => ({
-    x: (slot % COLUMNS) * CELL_W,
-    y: Math.floor(slot / COLUMNS) * CELL_H,
+    x: (slot % grid.columns) * CELL_W,
+    y: Math.floor(slot / grid.columns) * CELL_H,
   })
 
   const rect = (slot: number): [number, number, number, number] => {
@@ -180,7 +215,7 @@ export function makeBookAtlas(): SpineAtlas {
     }
     // A board is proud of its pages on three edges, and the pages show.
     ctx.fillStyle = '#e9e0cb'
-    ctx.fillRect(x + COVER_X + COVER_W, y + COVER_Y + 3, 3, COVER_H - 6)
+    ctx.fillRect(x + COVER_X + COVER_W, y + COVER_Y + 4, 4, COVER_H - 8)
 
     // The rounded shoulders of a bound spine, faked with two gradients rather
     // than geometry: the box stays a box, but it stops reading as flat.
@@ -192,13 +227,14 @@ export function makeBookAtlas(): SpineAtlas {
     ctx.fillStyle = shading
     ctx.fillRect(x, y, SPINE_W, CELL_H)
 
-    // Head and tail bands, as most cloth bindings have.
+    // Head and tail bands, as most cloth bindings have. In pixels rather than
+    // fractions, and so scaled with the cell when it grew.
     ctx.fillStyle = shade(colour, -0.35)
-    ctx.fillRect(x, y + CELL_H * 0.11, SPINE_W, 3)
-    ctx.fillRect(x, y + CELL_H * 0.82, SPINE_W, 3)
+    ctx.fillRect(x, y + CELL_H * 0.11, SPINE_W, 4)
+    ctx.fillRect(x, y + CELL_H * 0.82, SPINE_W, 4)
     ctx.fillStyle = shade(colour, 0.22)
-    ctx.fillRect(x, y + CELL_H * 0.115, SPINE_W, 1)
-    ctx.fillRect(x, y + CELL_H * 0.825, SPINE_W, 1)
+    ctx.fillRect(x, y + CELL_H * 0.115, SPINE_W, 2)
+    ctx.fillRect(x, y + CELL_H * 0.825, SPINE_W, 2)
 
     // Text runs up the spine, which is how a spine is read on a shelf.
     ctx.beginPath()
@@ -214,8 +250,11 @@ export function makeBookAtlas(): SpineAtlas {
     // a squeezed title still tells you which book it is, a missing one does not.
     const available = CELL_H * 0.62
     const title = art.title
-    let fontSize = Math.min(19, Math.max(9, art.thickness * 700))
-    for (; fontSize > 8; fontSize -= 1) {
+    // Scaled with the strip: the cap and the floor are both about 1.4x what they
+    // were, which is the ratio the spine grew by, so a title that just fitted
+    // still just fits and everything is drawn larger.
+    let fontSize = Math.min(25, Math.max(12, art.thickness * 910))
+    for (; fontSize > 10; fontSize -= 1) {
       ctx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`
       if (ctx.measureText(title).width <= available) break
     }
@@ -223,7 +262,7 @@ export function makeBookAtlas(): SpineAtlas {
     ctx.fillText(title, -CELL_H * 0.04, 0, available)
 
     if (art.author && art.thickness > 0.014) {
-      ctx.font = `400 ${Math.max(8, fontSize - 5)}px "Segoe UI", system-ui, sans-serif`
+      ctx.font = `400 ${Math.max(10, fontSize - 6)}px "Segoe UI", system-ui, sans-serif`
       ctx.globalAlpha = 0.82
       ctx.fillText(art.author, CELL_H * 0.31, 0, CELL_H * 0.22)
       ctx.globalAlpha = 1
@@ -235,6 +274,7 @@ export function makeBookAtlas(): SpineAtlas {
 
   return {
     texture,
+    assignable: grid.columns * grid.rows - 1,
     rect,
     blank: rect(BLANK_SLOT),
     draw,

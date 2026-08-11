@@ -14,7 +14,8 @@
  * floorboards meet with nothing to step over.
  */
 export const DEFAULT_WORLD_TEXT = `{
-  // A cabin in the woods, with a lake through the north window.
+  // A cabin in the woods, with a lake through the north window — and a way out
+  // of the porch, down onto the grass and round the water.
   //
   // Edit this file and the room reloads as you save it. If an edit is wrong the
   // room you are standing in keeps running and the problem is reported in the
@@ -44,10 +45,27 @@ export const DEFAULT_WORLD_TEXT = `{
       // same ceiling you see from down here.
       "height": 4.8,
 
+      // The roof. Only the *topmost* room over a patch of ground is roofed, so
+      // this one covers the loft inside it as well and the loft needs no roof
+      // of its own — which is worked out from the document rather than declared.
+      //
+      // "fall" names the sides the eaves run along, so "south" puts them on the
+      // north and south walls and runs the ridge east to west, along the length
+      // of the building. Every other room in this file leaves the roof out
+      // entirely and gets a 30-degree gable over the longer axis, which is what
+      // you want nine times out of ten.
+      "roof": { "kind": "gable", "pitch": 28, "overhang": 0.5, "fall": "south" },
+
       "openings": [
         // "at" is measured from the middle of that wall. The big one faces the
-        // lake; the sill is low so it reads as a view rather than as a window.
-        { "wall": "north", "at": 0, "width": 4.6, "height": 2.1, "sill": 0.8, "kind": "window" },
+        // lake; it is wide and low so it reads as a view rather than as a window.
+        //
+        // Its *top* is the number that matters. The loft floor reaches this wall,
+        // and its slab hangs from 2.28 to 2.5 — so an opening any taller than
+        // 1.48 above this sill has the floor of the room above crossing it, which
+        // from outside is a window with a plank through it. 1.38 leaves a hand's
+        // width of plaster between the head of the window and the boards.
+        { "wall": "north", "at": 0, "width": 4.6, "height": 1.38, "sill": 0.8, "kind": "window" },
         { "wall": "west", "at": 3.0, "width": 1.6, "height": 1.5, "sill": 0.95, "kind": "window" },
         { "wall": "south", "at": 0.3, "width": 1.6, "height": 1.4, "sill": 0.95, "kind": "window" },
         // Doors need a matching door in the next room's facing wall. The east
@@ -184,7 +202,16 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "loft-table", "kind": "sidetable", "at": [-0.6, 0.95], "facing": 0 },
         { "id": "loft-lamp", "kind": "floorlamp", "at": [-2.7, 1.0], "facing": 0 },
         { "id": "loft-plant", "kind": "plant", "at": [0.5, -2.3], "facing": 0, "height": 0.8 },
-        { "id": "picture-2", "kind": "picture", "at": [-4.94, 1.6], "facing": 90, "y": 1.5, "size": [0.7, 0.9] }
+        { "id": "picture-2", "kind": "picture", "at": [-4.94, 1.6], "facing": 90, "y": 1.5, "size": [0.7, 0.9] },
+
+        // The television, in front of the armchair and turned back towards it,
+        // with the tapes in a crate beside it. Press E on the set to play the
+        // tape in your hands, or to stop the one that is running; E on a tape
+        // takes it out of the crate, and Q files it back. The crate fills itself
+        // from your video/ folder in folder order, the way the record crates
+        // fill themselves from music/ — so there is nothing to arrange.
+        { "id": "telly", "kind": "crt", "at": [-1.6, 2.15], "facing": 195 },
+        { "id": "tapes", "kind": "tapecrate", "at": [-0.8, 2.25], "facing": 195 }
       ]
     },
 
@@ -294,7 +321,10 @@ export const DEFAULT_WORLD_TEXT = `{
         // World z = 2.1, matching the great room's east door.
         { "wall": "west", "at": 0.7, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "east", "at": 0, "width": 1.6, "height": 1.2, "sill": 1.05, "kind": "window" },
-        { "wall": "north", "at": 0.8, "width": 1.0, "height": 1.1, "sill": 1.15, "kind": "window" }
+        { "wall": "north", "at": 0.8, "width": 1.0, "height": 1.1, "sill": 1.15, "kind": "window" },
+        // Through to the office. It sits at the east end of the wall because the
+        // west end of it is the run of counter.
+        { "wall": "south", "at": 1.2, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" }
       ],
 
       "shelves": [],
@@ -309,8 +339,51 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "kitchen-table", "kind": "table", "at": [-0.5, -0.75], "facing": 0, "size": [1.1, 0.72] },
         { "id": "kitchen-chair-1", "kind": "diningchair", "at": [-0.5, -0.05], "facing": 180 },
         { "id": "kitchen-chair-2", "kind": "diningchair", "at": [-0.5, -1.45], "facing": 0 },
-        { "id": "kitchen-plant", "kind": "plant", "at": [1.6, 1.35], "facing": 0, "height": 0.55 },
+        // In the south-west corner, clear of both doorways: it used to stand in the
+        // south-east one, which is where the door to the office now is.
+        { "id": "kitchen-plant", "kind": "plant", "at": [-1.75, -1.4], "facing": 0, "height": 0.55 },
         { "id": "kitchen-pendant", "kind": "pendant", "at": [-0.5, -0.75], "facing": 0 }
+      ]
+    },
+
+    {
+      "id": "office",
+      "name": "Office",
+      // South of the kitchen: 3.1 (the kitchen's edge) + 0.24 (two wall
+      // thicknesses) + 2 (half of 4) = 5.34.
+      "origin": [7.24, 5.34],
+      "size": [4, 4],
+      // A little taller than the kitchen, so the two roofs step rather than
+      // meeting in a valley at exactly the same height.
+      "height": 2.8,
+
+      "openings": [
+        // World x = 8.44, matching the kitchen's south door.
+        { "wall": "north", "at": 1.2, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" },
+        { "wall": "west", "at": 0, "width": 1.4, "height": 1.2, "sill": 0.95, "kind": "window" },
+        { "wall": "east", "at": -0.6, "width": 1.2, "height": 1.2, "sill": 0.95, "kind": "window" }
+      ],
+
+      // Along the east wall, clear of the lane you walk in on — which runs from
+      // the door at local x = 1.2 straight south.
+      "shelves": [
+        { "id": "office-0", "at": [1.825, -0.7], "facing": 270, "rows": 5, "label": "Notes" },
+        { "id": "office-1", "at": [1.825, 0.5], "facing": 270, "rows": 5 }
+      ],
+
+      "furniture": [
+        // The whiteboard, filling the south wall, with the desk facing it. Press
+        // P while reading to tear a copy of the page you are on out of the book
+        // — the book keeps its page — and E to pin what you are holding to this
+        // board, or to any wall in the library. T writes a note instead.
+        { "id": "board", "kind": "whiteboard", "at": [0, 1.94], "facing": 180, "y": 1.5, "size": [2.4, 1.2] },
+        { "id": "desk", "kind": "desk", "at": [0, 0.35], "facing": 0, "size": [1.6, 0.75] },
+        { "id": "desk-chair", "kind": "diningchair", "at": [0, -0.4], "facing": 0 },
+        { "id": "office-rug", "kind": "rug", "at": [0, -0.1], "facing": 0, "size": [2.6, 2.0] },
+        { "id": "office-lamp", "kind": "floorlamp", "at": [-1.5, 1.4], "facing": 0 },
+        { "id": "office-plant", "kind": "plant", "at": [-1.6, -1.5], "facing": 0, "height": 0.8 },
+        { "id": "picture-5", "kind": "picture", "at": [-1.0, -1.94], "facing": 0, "y": 1.6, "size": [0.7, 0.5] },
+        { "id": "office-pendant", "kind": "pendant", "at": [0, -0.1], "facing": 0 }
       ]
     },
 
@@ -327,10 +400,23 @@ export const DEFAULT_WORLD_TEXT = `{
       "outdoor": true,
       "walls": ["south", "east", "west"],
 
+      // A lean-to over the decking: one slope, low on the south side, climbing
+      // north to tuck under the cabin's south wall. "fall" is the low side, and
+      // getting it backwards is a roof that drains into the house.
+      "roof": { "kind": "shed", "pitch": 18, "fall": "south" },
+
       "openings": [
         // Railings: waist-high aprons with the whole opening above them, open
-        // to the forest rather than glazed.
-        { "wall": "south", "at": 0, "width": 5.4, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
+        // to the forest rather than glazed. A railing is a *window* with no
+        // glass in it, which is also why it stops you: only a door you could
+        // walk through is subtracted from the collision.
+        //
+        // Which is what the gap at the west end is. The railing and the door
+        // tile the wall exactly between them — 4.3 centred at 0.55 covers local
+        // -1.6 to 2.7, and 1.1 centred at -2.15 covers -2.7 to -1.6 — because
+        // two openings that overlap would cut each other's panels to ribbons.
+        { "wall": "south", "at": 0.55, "width": 4.3, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
+        { "wall": "south", "at": -2.15, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "east", "at": 0, "width": 2.4, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false },
         { "wall": "west", "at": 0, "width": 2.4, "height": 1.75, "sill": 0.95, "kind": "window", "glazed": false }
       ],
@@ -346,7 +432,13 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "porch-chair-2", "kind": "diningchair", "at": [-0.3, -0.6], "facing": 0 },
         { "id": "porch-bench", "kind": "bench", "at": [-2.1, 0.2], "facing": 90 },
         { "id": "porch-plant", "kind": "plant", "at": [2.6, -0.9], "facing": 0, "height": 0.7 },
-        { "id": "porch-lamp", "kind": "pendant", "at": [-0.3, 0.2], "facing": 0, "y": 2.2, "on": false }
+        { "id": "porch-lamp", "kind": "pendant", "at": [-0.3, 0.2], "facing": 0, "y": 2.2, "on": false },
+
+        // Down onto the grass. The treads are decoration: the drop from the
+        // decking to the ground is 24 cm, which is inside the step the walk
+        // controller will take unaided, so the steps are what makes it look
+        // like somewhere to walk down rather than somewhere to fall off.
+        { "id": "porch-step", "kind": "step", "at": [-2.15, 1.81], "facing": 0 }
       ]
     }
   ]
