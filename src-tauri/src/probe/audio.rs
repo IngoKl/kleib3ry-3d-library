@@ -133,32 +133,57 @@ fn id3v2(bytes: &[u8]) -> Tags {
         return Tags::default();
     }
 
+    let flags = bytes[5];
     let size = syncsafe(&bytes[6..10]);
     let end = (10 + size).min(bytes.len());
-    let mut cursor = 10;
-    let mut tags = Tags::default();
 
-    while cursor + 10 <= end {
-        let id = &bytes[cursor..cursor + 4];
+    // Unsynchronisation stuffs a zero byte after every 0xFF so the tag can
+    // never look like an MPEG frame sync; the stuffing has to come out before
+    // the frame walk or every length lands mid-frame.
+    let body: std::borrow::Cow<[u8]> = if flags & 0x80 != 0 {
+        let raw = &bytes[10..end];
+        let mut out = Vec::with_capacity(raw.len());
+        let mut i = 0;
+        while i < raw.len() {
+            out.push(raw[i]);
+            i += if raw[i] == 0xff && raw.get(i + 1) == Some(&0) { 2 } else { 1 };
+        }
+        std::borrow::Cow::Owned(out)
+    } else {
+        std::borrow::Cow::Borrowed(&bytes[10..end])
+    };
+
+    // The optional extended header sits where the first frame would be; walked
+    // over as a frame it reads as garbage and ends the scan.
+    let mut cursor = 0;
+    if flags & 0x40 != 0 && body.len() >= 4 {
+        // v2.4 counts the size field in its length, v2.3 does not.
+        let ext = if major >= 4 { syncsafe(&body[0..4]) } else { 4 + be32(&body[0..4]) };
+        cursor = ext.min(body.len());
+    }
+
+    let mut tags = Tags::default();
+    while cursor + 10 <= body.len() {
+        let id = &body[cursor..cursor + 4];
         if id == [0, 0, 0, 0] {
             break; // padding
         }
         let length = if major >= 4 {
-            syncsafe(&bytes[cursor + 4..cursor + 8])
+            syncsafe(&body[cursor + 4..cursor + 8])
         } else {
-            be32(&bytes[cursor + 4..cursor + 8])
+            be32(&body[cursor + 4..cursor + 8])
         };
         let body_start = cursor + 10;
         let body_end = body_start + length;
-        if length == 0 || body_end > end {
+        if length == 0 || body_end > body.len() {
             break;
         }
 
-        let body = &bytes[body_start..body_end];
+        let frame = &body[body_start..body_end];
         match id {
-            b"TIT2" => tags.title = text_frame(body),
-            b"TPE1" => tags.artist = text_frame(body),
-            b"TALB" => tags.album = text_frame(body),
+            b"TIT2" => tags.title = text_frame(frame),
+            b"TPE1" => tags.artist = text_frame(frame),
+            b"TALB" => tags.album = text_frame(frame),
             _ => {}
         }
         cursor = body_end;
@@ -168,12 +193,20 @@ fn id3v2(bytes: &[u8]) -> Tags {
 }
 
 /// The last 128 bytes of an MP3, if somebody's collection predates ID3v2.
+///
+/// Seeks rather than reads: this fallback runs for every untagged file, and a
+/// music folder full of multi-gigabyte lossless rips must not be slurped whole
+/// just to look at their tails.
 fn id3v1(path: &Path) -> Option<Tags> {
-    let bytes = fs::read(path).ok()?;
-    if bytes.len() < 128 {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() < 128 {
         return None;
     }
-    let tail = &bytes[bytes.len() - 128..];
+    file.seek(SeekFrom::End(-128)).ok()?;
+    let mut tail = [0u8; 128];
+    file.read_exact(&mut tail).ok()?;
+    let tail = &tail[..];
     if &tail[0..3] != b"TAG" {
         return None;
     }
@@ -324,6 +357,36 @@ mod tests {
         let tags = flac(&file);
         assert_eq!(tags.title.as_deref(), Some("Sinnerman"));
         assert_eq!(tags.artist.as_deref(), Some("Nina Simone"));
+    }
+
+    /// The extended header sits where the first frame would be; the walk has
+    /// to step over it rather than read it as a frame.
+    #[test]
+    fn an_extended_header_does_not_hide_the_frames() {
+        let mut body = vec![3u8]; // UTF-8
+        body.extend_from_slice(b"Four Women");
+
+        let mut frames = Vec::new();
+        // v2.3 extended header: size excludes the 4-byte size field itself.
+        frames.extend_from_slice(&6u32.to_be_bytes());
+        frames.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+        frames.extend_from_slice(b"TIT2");
+        frames.extend_from_slice(&(body.len() as u32).to_be_bytes());
+        frames.extend_from_slice(&[0, 0]);
+        frames.extend_from_slice(&body);
+
+        let size = frames.len();
+        let mut out = b"ID3".to_vec();
+        out.extend_from_slice(&[3, 0, 0x40]); // extended-header flag
+        out.extend_from_slice(&[
+            ((size >> 21) & 0x7f) as u8,
+            ((size >> 14) & 0x7f) as u8,
+            ((size >> 7) & 0x7f) as u8,
+            (size & 0x7f) as u8,
+        ]);
+        out.extend_from_slice(&frames);
+
+        assert_eq!(id3v2(&out).title.as_deref(), Some("Four Women"));
     }
 
     /// Garbage in must not panic: these run over whatever is in a music folder.

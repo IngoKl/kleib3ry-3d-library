@@ -52,9 +52,10 @@ export function Books() {
 
   // Instance capacity has to be fixed at construction, so allocate headroom and
   // hide the unused tail rather than rebuilding the mesh whenever a book moves.
-  const capacity = useMemo(() => Math.max(64, Math.ceil((packed.length + 64) / 256) * 256), [
-    packed.length === 0,
-  ])
+  // Plain arithmetic, no memo: the rounding is what keeps the value (and so the
+  // remount) stable. A memo keyed on emptiness froze the capacity at the first
+  // non-empty size, and every book past it was silently invisible.
+  const capacity = Math.max(64, Math.ceil((packed.length + 64) / 256) * 256)
 
   const geometry = useMemo(() => {
     const base = makeBookGeometry()

@@ -115,6 +115,11 @@ export function reconcile(
   /** Every id the previous layout mentioned, whether or not it kept its place. */
   const wasPlaced = new Set<string>()
 
+  // A book is in exactly one place. A hand-edited or corrupt layout can list
+  // the same id in two rows; without this, both copies rendered — or worse,
+  // one copy shelved and one boxed. First mention wins.
+  const claimed = new Set<string>()
+
   for (const [key, ids] of Object.entries(saved?.rows ?? {})) {
     for (const id of ids) wasPlaced.add(id)
 
@@ -122,7 +127,9 @@ export function reconcile(
     // the case lost rows. Either way every book on it has lost its home.
     const parsed = parseRowKey(key)
     if (!parsed || !validRows.has(key)) {
-      displaced.push(...ids.filter((id) => known.has(id)))
+      const lost = ids.filter((id) => known.has(id) && !claimed.has(id))
+      for (const id of lost) claimed.add(id)
+      displaced.push(...lost)
       continue
     }
 
@@ -131,9 +138,10 @@ export function reconcile(
     const kept: string[] = []
     let used = 0
     for (const id of ids) {
-      if (!known.has(id)) continue
+      if (!known.has(id) || claimed.has(id)) continue
       const size = dims(id)
       if (!size) continue
+      claimed.add(id)
       if (used + size.thickness > ROW_CAPACITY) {
         displaced.push(id)
         continue

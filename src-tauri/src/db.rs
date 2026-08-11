@@ -60,6 +60,10 @@ pub fn open(path: &Path) -> Result<Connection> {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(path)?;
+    // A scan on the worker thread and a cover save from the WebView are both
+    // writers; without a timeout the loser gets an instant SQLITE_BUSY and, in
+    // the scan's case, that error aborts the whole walk.
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
     migrate(&conn)?;
     Ok(conn)
 }
@@ -126,6 +130,15 @@ fn row_to_book(row: &rusqlite::Row<'_>) -> rusqlite::Result<Book> {
 }
 
 pub fn upsert_book(conn: &Connection, book: &Book, mtime: i64) -> Result<()> {
+    // A file replaced in place gets a new id but keeps its path, and the stale
+    // row would trip the UNIQUE(path) constraint and kill the scan — every
+    // scan, until the database was deleted. The old row describes content no
+    // longer at that path, so it goes; if that content still exists elsewhere
+    // the walk re-adds it under its own id.
+    conn.execute(
+        "DELETE FROM books WHERE path = ?1 AND id <> ?2",
+        params![book.path, book.id],
+    )?;
     conn.execute(
         "INSERT INTO books (id, path, format, title, author, cover, page_count, size_bytes, mtime, indexed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -151,6 +164,21 @@ pub fn upsert_book(conn: &Connection, book: &Book, mtime: i64) -> Result<()> {
             mtime,
             book.indexed_at,
         ],
+    )?;
+    Ok(())
+}
+
+/// Keep the stored path in step with a file that moved without changing.
+///
+/// `is_current` matches on content identity alone, so a renamed or moved book
+/// skips re-probing — but the row would keep pointing at the dead old path and
+/// the book could never be opened again. `OR REPLACE` clears the rare row still
+/// squatting on the destination path; it describes a file that is gone or moved
+/// and will be re-added or pruned by the same scan.
+pub fn refresh_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE OR REPLACE books SET path = ?2 WHERE id = ?1 AND path <> ?2",
+        params![id, path],
     )?;
     Ok(())
 }
@@ -181,14 +209,29 @@ pub fn list_books(conn: &Connection) -> Result<Vec<Book>> {
 
 /// Drop rows whose file is no longer on disk. Returns the removed ids so their
 /// cover files can be cleaned up too.
-pub fn prune_missing(conn: &Connection, seen: &[String]) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT id FROM books")?;
+///
+/// `unreadable` is the paths the scan found but could not open — a lock held by
+/// a sync client or antivirus, not a deletion. Pruning those would cascade away
+/// reading progress over a transient error, so they are kept for a later scan
+/// to sort out.
+pub fn prune_missing(
+    conn: &Connection,
+    seen: &[String],
+    unreadable: &[String],
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT id, path FROM books")?;
     let all = stmt
-        .query_map([], |row| row.get::<_, String>(0))?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let seen: std::collections::HashSet<&str> = seen.iter().map(String::as_str).collect();
-    let gone: Vec<String> = all.into_iter().filter(|id| !seen.contains(id.as_str())).collect();
+    let unreadable: std::collections::HashSet<&str> =
+        unreadable.iter().map(String::as_str).collect();
+    let gone: Vec<String> = all
+        .into_iter()
+        .filter(|(id, path)| !seen.contains(id.as_str()) && !unreadable.contains(path.as_str()))
+        .map(|(id, _)| id)
+        .collect();
 
     for id in &gone {
         conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
@@ -283,9 +326,50 @@ mod tests {
         upsert_book(&conn, &sample("a", "Kept"), 10).unwrap();
         upsert_book(&conn, &sample("b", "Gone"), 10).unwrap();
 
-        let removed = prune_missing(&conn, &["a".to_string()]).unwrap();
+        let removed = prune_missing(&conn, &["a".to_string()], &[]).unwrap();
         assert_eq!(removed, vec!["b".to_string()]);
         assert_eq!(count_books(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn prune_spares_files_that_merely_could_not_be_read() {
+        let conn = open_in_memory().unwrap();
+        upsert_book(&conn, &sample("a", "Kept"), 10).unwrap();
+        upsert_book(&conn, &sample("b", "Locked"), 10).unwrap();
+
+        let locked = sample("b", "Locked").path;
+        let removed = prune_missing(&conn, &["a".to_string()], &[locked]).unwrap();
+        assert_eq!(removed, Vec::<String>::new());
+        assert_eq!(count_books(&conn).unwrap(), 2);
+    }
+
+    #[test]
+    fn a_moved_file_keeps_its_row_but_follows_its_path() {
+        let conn = open_in_memory().unwrap();
+        upsert_book(&conn, &sample("a", "First"), 10).unwrap();
+
+        refresh_path(&conn, "a", r"C:\books\filed\First.epub").unwrap();
+        let books = list_books(&conn).unwrap();
+        assert_eq!(books[0].path, r"C:\books\filed\First.epub");
+        // The same call with the path already current is a no-op.
+        refresh_path(&conn, "a", r"C:\books\filed\First.epub").unwrap();
+        assert_eq!(count_books(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn replacing_a_file_in_place_swaps_the_row_rather_than_failing() {
+        let conn = open_in_memory().unwrap();
+        upsert_book(&conn, &sample("a", "Old Edition"), 10).unwrap();
+
+        // Same path, new content: a different id landing on a taken path used
+        // to trip UNIQUE(path) and abort every scan from then on.
+        let mut replacement = sample("b", "New Edition");
+        replacement.path = sample("a", "Old Edition").path;
+        upsert_book(&conn, &replacement, 20).unwrap();
+
+        let books = list_books(&conn).unwrap();
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].id, "b");
     }
 
     #[test]

@@ -47,6 +47,11 @@ fn read_entry<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, name: &str)
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// No metadata or cover is anywhere near this big; a zip entry claiming
+/// otherwise is a bomb, and decompressing it unbounded is an allocation abort
+/// that no `catch_unwind` in the indexer can contain.
+const MAX_ENTRY_BYTES: u64 = 32 * 1024 * 1024;
+
 fn read_entry_bytes<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
     name: &str,
@@ -57,18 +62,56 @@ fn read_entry_bytes<R: Read + std::io::Seek>(
             .map(|f| f.name().eq_ignore_ascii_case(name))
             .unwrap_or(false)
     })?;
-    let mut file = zip.by_index(index).ok()?;
+    let file = zip.by_index(index).ok()?;
     let mut buf = Vec::new();
-    file.read_to_end(&mut buf).ok()?;
-    Some(buf)
+    file.take(MAX_ENTRY_BYTES + 1).read_to_end(&mut buf).ok()?;
+    (buf.len() as u64 <= MAX_ENTRY_BYTES).then_some(buf)
 }
 
+/// Resolve a manifest href against the package document's directory.
+///
+/// Hrefs are relative URLs: `../cover.jpg` and `image%20one.png` are both
+/// common in real files, and the zip directory stores neither dot segments nor
+/// percent escapes — a literal comparison never matches them.
 fn join(base: &str, href: &str) -> String {
-    if base.is_empty() {
-        href.to_string()
-    } else {
-        format!("{base}/{href}")
+    let href = percent_decode(href);
+    let mut parts: Vec<&str> =
+        if base.is_empty() { Vec::new() } else { base.split('/').collect() };
+    for segment in href.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            s => parts.push(s),
+        }
     }
+    parts.join("/")
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let decoded = (bytes[i] == b'%' && i + 2 < bytes.len())
+            .then(|| {
+                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
+                u8::from_str_radix(hex, 16).ok()
+            })
+            .flatten();
+        match decoded {
+            Some(b) => {
+                out.push(b);
+                i += 3;
+            }
+            None => {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn rootfile_path(xml: &str) -> Option<String> {
@@ -271,6 +314,11 @@ mod tests {
     fn hrefs_resolve_against_the_package_directory() {
         assert_eq!(join("OEBPS", "images/cover.png"), "OEBPS/images/cover.png");
         assert_eq!(join("", "cover.png"), "cover.png");
+        // Relative-URL forms the zip directory does not store literally.
+        assert_eq!(join("OEBPS", "../cover.jpg"), "cover.jpg");
+        assert_eq!(join("OEBPS", "./images/cover.png"), "OEBPS/images/cover.png");
+        assert_eq!(join("OEBPS", "image%20one.png"), "OEBPS/image one.png");
+        assert_eq!(join("", "../../escape.png"), "escape.png");
     }
 
     #[test]

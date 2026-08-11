@@ -13,6 +13,15 @@ import type {
   ScanSummary,
 } from './types'
 
+/**
+ * One persistent subscription with a swappable callback, rather than a listen
+ * per scan: `listen` resolves asynchronously, and a scan started before the
+ * subscription landed lost its first progress events — on a small library, all
+ * of them. `scan` awaits the registration instead.
+ */
+let scanCallback: ((progress: ScanProgress) => void) | null = null
+let scanSubscription: Promise<unknown> | null = null
+
 /** Desktop driver: native filesystem access through the Rust core. */
 export const tauriDriver: LibraryService = {
   kind: 'tauri',
@@ -39,15 +48,19 @@ export const tauriDriver: LibraryService = {
   },
 
   async scan() {
+    // Progress events emitted before the listener registration settles would
+    // be dropped; the registration is cheap and the scan is not, so wait.
+    await scanSubscription
     return invoke<ScanSummary>('scan_library')
   },
 
   onScanProgress(listener) {
-    // `listen` resolves to the unlisten function; callers get a synchronous
-    // teardown that waits for the subscription before removing it.
-    const pending = listen<ScanProgress>('scan:progress', (event) => listener(event.payload))
+    scanCallback = listener
+    scanSubscription ??= listen<ScanProgress>('scan:progress', (event) =>
+      scanCallback?.(event.payload),
+    )
     return () => {
-      void pending.then((unlisten) => unlisten())
+      if (scanCallback === listener) scanCallback = null
     }
   },
 

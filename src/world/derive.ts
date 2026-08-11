@@ -423,8 +423,12 @@ export type DerivedWorld = {
  * stays where you left it — and it is kept out of `library.json` on purpose:
  * that file is yours, and the app writing your furniture back into it would
  * mean your comments and your formatting were at the mercy of a shove.
+ *
+ * `elevation` is the floor the box was set down on. Optional because older
+ * saves lack it; without it the box stands at its document room's storey,
+ * which is wrong exactly when it was carried up or down a flight of stairs.
  */
-export type FurnitureOverride = { at: [number, number]; facing: number }
+export type FurnitureOverride = { at: [number, number]; facing: number; elevation?: number }
 
 export function deriveWorld(
   doc: WorldDocument,
@@ -469,7 +473,7 @@ export function deriveWorld(
           ? (item.size?.[1] ?? base.height)
           : (item.height ?? base.height)
       const rotationY = radians(facing)
-      const baseY = mountHeight(room, item, height)
+      const baseY = override?.elevation ?? mountHeight(room, item, height)
 
       const derived: DerivedFurniture = {
         ...item,
@@ -523,10 +527,15 @@ export function deriveWorld(
         stairs.push({
           id: item.id,
           bounds: {
-            minX: derived.x - Math.max(Math.abs(dx) * halfRun, Math.abs(dz) * halfWide),
-            maxX: derived.x + Math.max(Math.abs(dx) * halfRun, Math.abs(dz) * halfWide),
-            minZ: derived.z - Math.max(Math.abs(dz) * halfRun, Math.abs(dx) * halfWide),
-            maxZ: derived.z + Math.max(Math.abs(dz) * halfRun, Math.abs(dx) * halfWide),
+            // Summed, not the max of the two terms: that is the AABB of a
+            // rotated rectangle, and the schema accepts any facing. With max,
+            // a 45° flight lost its corners — `stairProgress` returned null on
+            // real treads and the walk refused the step. (For axis-aligned
+            // flights one term is zero, so nothing changes.)
+            minX: derived.x - (Math.abs(dx) * halfRun + Math.abs(dz) * halfWide),
+            maxX: derived.x + (Math.abs(dx) * halfRun + Math.abs(dz) * halfWide),
+            minZ: derived.z - (Math.abs(dz) * halfRun + Math.abs(dx) * halfWide),
+            maxZ: derived.z + (Math.abs(dz) * halfRun + Math.abs(dx) * halfWide),
           },
           bottom: room.elevation,
           top: room.elevation + rise,
@@ -582,7 +591,13 @@ export function roomAt(
   let bestGap = Infinity
   for (const room of world.rooms) {
     if (!inside(roomBounds(room), x, z)) continue
-    if (near === undefined) return best ?? room
+    if (near === undefined) {
+      // No height given: keep looking and answer with the lowest, as the
+      // contract says — returning the first match handed out the loft for
+      // ground-floor positions in any document that listed it first.
+      if (best === null || room.elevation < best.elevation) best = room
+      continue
+    }
     const gap = Math.abs(room.elevation - near)
     if (gap < bestGap) {
       bestGap = gap

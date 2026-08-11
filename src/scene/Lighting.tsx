@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import * as THREE from 'three'
 import { FurnitureLights } from './Furniture'
 import { roomBounds } from '../world/derive'
 import type { RoomSpec } from '../world/schema'
@@ -110,6 +111,11 @@ export function Lighting() {
   const midZ = (extent.minZ + extent.maxZ) / 2
   const radius = Math.hypot(spanX, spanZ) / 2 + 5
 
+  // The target has to be *in the scene* for its world matrix to update —
+  // `target-position` on a detached default target leaves the sun aimed at the
+  // world origin no matter where the building is.
+  const sunTarget = useMemo(() => new THREE.Object3D(), [])
+
   return (
     <>
       {/* Shelves face into the room with their backs to the walls, so they see
@@ -129,9 +135,10 @@ export function Lighting() {
       {/* Low and to the north-west, which is where the lake is: afternoon
           light coming in through the big window rather than noon overhead. At
           night the same light is the moon over the same lake. */}
+      <primitive object={sunTarget} position={[midX, 0, midZ]} />
       <directionalLight
         position={[midX - spanX * 0.5, extent.height + radius * 0.55, extent.minZ - radius * 0.7]}
-        target-position={[midX, 0, midZ]}
+        target={sunTarget}
         intensity={night ? 0.35 : 1.9}
         color={night ? '#b4c4e2' : '#ffe6c2'}
         castShadow

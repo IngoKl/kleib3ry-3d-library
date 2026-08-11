@@ -197,7 +197,15 @@ export const browserDriver: LibraryService = {
 
   async loadLayout() {
     const stored = localStorage.getItem(LAYOUT_KEY)
-    return stored ? (JSON.parse(stored) as LayoutDocument) : null
+    if (!stored) return null
+    try {
+      return JSON.parse(stored) as LayoutDocument
+    } catch {
+      // A corrupt value would otherwise fail every launch from here on. An
+      // unpacked library beats a permanently empty room.
+      localStorage.removeItem(LAYOUT_KEY)
+      return null
+    }
   },
 
   async saveLayout(layout) {
@@ -214,7 +222,13 @@ export const browserDriver: LibraryService = {
 
   async loadLights() {
     const stored = localStorage.getItem(LIGHTS_KEY)
-    return stored ? (JSON.parse(stored) as LightState) : null
+    if (!stored) return null
+    try {
+      return JSON.parse(stored) as LightState
+    } catch {
+      localStorage.removeItem(LIGHTS_KEY)
+      return null
+    }
   },
 
   async saveLights(state) {

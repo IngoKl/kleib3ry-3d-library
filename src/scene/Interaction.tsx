@@ -248,10 +248,17 @@ export function Interaction() {
         store.setFocusedBox(best?.inBox ?? cardboard)
 
         // A record and a lamp are only offered when nothing readable is nearer,
-        // so reaching past the crate for a book cannot start the music.
+        // so reaching past the crate for a book cannot start the music. The
+        // two also exclude each other symmetrically — E prefers the record, so
+        // if only the fixture guarded against the record, a lamp in front of a
+        // crate would hand E to the record *behind* it.
         const nearer = (candidate: { distance: number } | null) =>
           candidate !== null && (!best || candidate.distance < best.distance)
-        store.setFocusedRecord(nearer(record) ? record!.id : null)
+        store.setFocusedRecord(
+          nearer(record) && (!fixture || record!.distance < fixture.distance)
+            ? record!.id
+            : null,
+        )
         store.setFocusedFixture(
           nearer(fixture) && (!record || fixture!.distance < record.distance)
             ? fixture!.id

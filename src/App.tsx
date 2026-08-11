@@ -19,7 +19,7 @@ import { HeldBook } from './scene/HeldBook'
 import { HeldRecord } from './scene/HeldRecord'
 import { Probe } from './scene/Probe'
 import { Reader } from './reader/Reader'
-import { readerStatus } from './reader/status'
+import { readerStatus, resetReaderStatus } from './reader/status'
 import { Hud } from './ui/Hud'
 import { metrics } from './state/metrics'
 import { EYE_HEIGHT, player, teleport } from './state/player'
@@ -63,7 +63,14 @@ export default function App() {
       // low-priority walk through the whole catalogue, and it must never be
       // what the first frame is waiting on.
       warmCovers(useLibraryStore.getState().books)
-    })()
+    })().catch((e) => {
+      // One rejection must not silently strand the app half-loaded with the
+      // only trace in the console; the HUD shows the library error.
+      useLibraryStore.setState({
+        loaded: true,
+        error: e instanceof Error ? e.message : String(e),
+      })
+    })
   }, [loadWorld, loadRoot, loadLibrary, loadLights, loadMedia])
 
   useEffect(() => watchWorld(), [watchWorld])
@@ -244,6 +251,10 @@ export default function App() {
       setModeForTest: (mode: string) => useAppStore.getState().setMode(mode as 'walk' | 'read'),
       /** Open a book and wait until a page has actually rasterised. */
       readForTest: async (id: string) => {
+        // The reader resets the status in an effect, after React commits; a
+        // second read in one session would otherwise see the previous book's
+        // `rendered` still standing and return its numbers.
+        resetReaderStatus(id)
         useAppStore.getState().setReading(id)
         useAppStore.getState().setMode('read')
         for (let i = 0; i < 100; i++) {

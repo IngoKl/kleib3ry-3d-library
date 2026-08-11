@@ -258,6 +258,11 @@ export function Player() {
         e.preventDefault()
         const { held, setReading, setMode } = useAppStore.getState()
         if (held) {
+          // Only PDFs open; the reader has no text to explain itself with, so
+          // docking onto a blank page block for an EPUB is a dead end. The HUD
+          // already withholds the R hint for these.
+          const book = useLibraryStore.getState().byId.get(held)
+          if (book?.format !== 'pdf') return
           setReading(held)
           setMode('read')
         }
@@ -354,14 +359,16 @@ export function Player() {
       velocity.current.z = 0
       player.speed = 0
       // Just forward of the chair's centre, so the backrest is behind you
-      // rather than through you.
+      // rather than through you. Eased, not assigned: E from a step away used
+      // to hard-cut the camera to the chair.
       const forwardX = Math.sin(seat.rotationY)
       const forwardZ = Math.cos(seat.rotationY)
-      player.x = seat.x + forwardX * 0.06
-      player.z = seat.z + forwardZ * 0.06
+      const settle = Math.min(1, delta * 8)
+      player.x += (seat.x + forwardX * 0.06 - player.x) * settle
+      player.z += (seat.z + forwardZ * 0.06 - player.z) * settle
       player.crouch = 0
       player.floor = seat.y
-      player.eye += (seat.y + SEATED_EYE - player.eye) * Math.min(1, delta * 8)
+      player.eye += (seat.y + SEATED_EYE - player.eye) * settle
 
       camera.position.set(player.x, player.eye, player.z)
       camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ')
@@ -436,7 +443,12 @@ export function Player() {
     player.floor += (next.floor - player.floor) * Math.min(1, delta * 14)
     if (Math.abs(next.floor - player.floor) < 0.005) player.floor = next.floor
 
-    player.eye = player.floor + EYE_HEIGHT + (KNEEL_HEIGHT - EYE_HEIGHT) * player.crouch
+    // Eased rather than assigned so standing up from a chair rises instead of
+    // snapping; crouch and floor changes carry their own easing already, so
+    // this settles to the exact height within a few frames.
+    const wantEye = player.floor + EYE_HEIGHT + (KNEEL_HEIGHT - EYE_HEIGHT) * player.crouch
+    player.eye += (wantEye - player.eye) * Math.min(1, delta * 10)
+    if (Math.abs(wantEye - player.eye) < 0.002) player.eye = wantEye
 
     player.speed = Math.hypot(velocity.current.x, velocity.current.z)
 

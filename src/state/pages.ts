@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { openDocument, renderPage } from '../reader/pdf'
+import { closeDocument, openDocument, renderPage } from '../reader/pdf'
 
 /**
  * Page images for books that are open in the *room* rather than in the reader.
@@ -58,14 +58,21 @@ export function pageTexture(bookId: string, page: number): Promise<THREE.Texture
   const job = (async (): Promise<THREE.Texture | null> => {
     try {
       const doc = await openDocument(bookId)
-      const canvas = await renderPage(doc, page, PAGE_PX)
-      if (!canvas) return null
-      const texture = new THREE.CanvasTexture(canvas)
-      texture.colorSpace = THREE.SRGBColorSpace
-      texture.needsUpdate = true
-      cache.set(id, texture)
-      trim()
-      return texture
+      try {
+        const canvas = await renderPage(doc, page, PAGE_PX)
+        if (!canvas) return null
+        const texture = new THREE.CanvasTexture(canvas)
+        texture.colorSpace = THREE.SRGBColorSpace
+        texture.needsUpdate = true
+        cache.set(id, texture)
+        trim()
+        return texture
+      } finally {
+        // The texture outlives the document on purpose: it is the document
+        // that costs the memory, and the reader holds its own reference while
+        // a book is actually open.
+        closeDocument(bookId)
+      }
     } catch {
       return null
     } finally {

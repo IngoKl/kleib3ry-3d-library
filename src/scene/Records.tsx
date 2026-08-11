@@ -172,7 +172,15 @@ export function Records() {
   // Print the sleeves. No recycling: a crate holds dozens, the grid holds 143,
   // and anything past the grid stays plain card rather than stealing a cell.
   useLayoutEffect(() => {
-    const uvRect = new Float32Array(capacity * 4)
+    // Update the attribute in place when the capacity allows: a replaced
+    // attribute's GPU buffer is only freed on geometry dispose, so swapping in
+    // a fresh one per world edit accumulated orphaned buffers.
+    let rects = geometry.getAttribute('aUvRect') as THREE.InstancedBufferAttribute | undefined
+    if (!rects || rects.count !== capacity) {
+      rects = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4)
+      geometry.setAttribute('aUvRect', rects)
+    }
+    const uvRect = rects.array as Float32Array
     for (let i = 0; i < capacity; i++) {
       const item = filed[i]
       const slot = item && i < ASSIGNABLE_SLOTS ? FIRST_ASSIGNABLE + i : null
@@ -181,13 +189,22 @@ export function Records() {
       uvRect.set(rect, i * 4)
     }
     atlas.commit()
-    geometry.setAttribute('aUvRect', new THREE.InstancedBufferAttribute(uvRect, 4))
+    rects.needsUpdate = true
   }, [capacity, filed, atlas, geometry])
+
+  /** The records the lift values were dealt to; a re-deal invalidates them. */
+  const liftOwner = useRef<unknown>(null)
 
   useLayoutEffect(() => {
     const mesh = meshRef.current
     if (!mesh) return
-    if (lift.current.length !== capacity) lift.current = new Float32Array(capacity)
+    if (lift.current.length !== capacity || liftOwner.current !== filed) {
+      // Reset on a re-deal even at the same capacity: a sleeve mid-lift would
+      // otherwise leave its value on an index that now belongs to a different
+      // record.
+      lift.current = new Float32Array(capacity)
+      liftOwner.current = filed
+    }
     for (let i = 0; i < capacity; i++) write(mesh, i)
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true

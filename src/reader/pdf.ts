@@ -9,36 +9,56 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
  * PDF rasterisation for both the reader and cover extraction.
  *
  * The spike established that the render itself is cheap and the *decode* is
- * what costs frames, so documents are opened once and cached, and pages are
+ * what costs frames, so documents are opened once and shared, and pages are
  * rasterised one at a time rather than in parallel.
+ *
+ * Open documents are reference-counted rather than cached forever: a parsed
+ * document pins its complete file bytes in the pdf.js worker, so "opened once
+ * and kept" during the cover warm sweep meant the whole library resident in
+ * memory at once. Every `openDocument` must be paired with a `closeDocument`;
+ * the document is destroyed when the last holder lets go.
  */
 
-const documents = new Map<string, Promise<PDFDocumentProxy>>()
+type OpenEntry = { doc: Promise<PDFDocumentProxy>; refs: number }
+const documents = new Map<string, OpenEntry>()
 
 export function openDocument(id: string): Promise<PDFDocumentProxy> {
   const existing = documents.get(id)
-  if (existing) return existing
+  if (existing) {
+    existing.refs += 1
+    return existing.doc
+  }
 
-  const opening = (async () => {
-    const bytes = await library.readBook(id)
-    return pdfjs.getDocument({
-      data: bytes,
-      standardFontDataUrl: '/standard_fonts/',
-      cMapUrl: '/cmaps/',
-      cMapPacked: true,
-    }).promise
-  })()
+  const entry: OpenEntry = {
+    refs: 1,
+    doc: (async () => {
+      const bytes = await library.readBook(id)
+      return pdfjs.getDocument({
+        data: bytes,
+        standardFontDataUrl: '/standard_fonts/',
+        cMapUrl: '/cmaps/',
+        cMapPacked: true,
+      }).promise
+    })(),
+  }
 
-  documents.set(id, opening)
+  documents.set(id, entry)
   // A failed open must not be cached, or the book can never be retried.
-  opening.catch(() => documents.delete(id))
-  return opening
+  entry.doc.catch(() => {
+    if (documents.get(id) === entry) documents.delete(id)
+  })
+  return entry.doc
 }
 
 export function closeDocument(id: string) {
-  const pending = documents.get(id)
+  const entry = documents.get(id)
+  if (!entry) return
+  entry.refs -= 1
+  if (entry.refs > 0) return
   documents.delete(id)
-  void pending?.then((doc) => doc.cleanup()).catch(() => {})
+  // Destroying the loading task, not `cleanup`: cleanup keeps the worker-side
+  // document (and the file bytes) alive, which is the leak this exists to close.
+  void entry.doc.then((doc) => doc.loadingTask.destroy()).catch(() => {})
 }
 
 /** One page at a time: concurrent renders on one document thrash the worker. */
@@ -78,5 +98,10 @@ export async function renderPage(
 }
 
 export async function pageCount(id: string): Promise<number> {
-  return (await openDocument(id)).numPages
+  const doc = await openDocument(id)
+  try {
+    return doc.numPages
+  } finally {
+    closeDocument(id)
+  }
 }

@@ -284,7 +284,9 @@ fn scan_library(app: AppHandle) -> Result<index::ScanSummary> {
     index::scan(&root, &database, &covers, move |progress| {
         let step = (progress.total / 100).max(1);
         let final_item = progress.done >= progress.total;
-        if !final_item && progress.done < last + step {
+        // The very first event always goes through so the bar appears at the
+        // start of the scan rather than one step into it.
+        if progress.done != 0 && !final_item && progress.done < last + step {
             return;
         }
         last = progress.done;
@@ -301,6 +303,15 @@ fn scan_library(app: AppHandle) -> Result<index::ScanSummary> {
 /// be cached like any other cover.
 #[tauri::command]
 fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<String> {
+    // The id becomes a file name inside the covers directory. It is normally a
+    // hex hash, but it arrives from the WebView, and `PathBuf::join` follows
+    // `..` and absolute paths — so anything that is not a plain name is a
+    // write outside the cache and gets refused.
+    if id.is_empty()
+        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(Error::BadImage(format!("not a cover id: {id}")));
+    }
     let payload = data_url
         .split_once(";base64,")
         .map(|(_, rest)| rest)

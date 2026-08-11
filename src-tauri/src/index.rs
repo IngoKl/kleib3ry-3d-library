@@ -212,6 +212,17 @@ pub fn scan(
 
     let mut summary = ScanSummary { found: files.len() as u32, ..Default::default() };
     let mut seen = Vec::with_capacity(files.len());
+    // Files the walk found but could not open — a sync client's lock, not a
+    // deletion. Remembered so the prune below leaves their rows (and reading
+    // progress) alone.
+    let mut unreadable = Vec::new();
+
+    // Autocommit would fsync once per book — thousands of commits on a first
+    // scan. Batched commits keep the scan fast while still letting a cover
+    // save from the WebView get a turn between chunks.
+    const COMMIT_EVERY: u32 = 64;
+    let mut writes = 0u32;
+    conn.execute_batch("BEGIN")?;
 
     for (i, (path, format)) in files.iter().enumerate() {
         on_progress(ScanProgress {
@@ -222,16 +233,21 @@ pub fn scan(
 
         let Ok(meta) = fs::metadata(path) else {
             summary.failed += 1;
+            unreadable.push(path.to_string_lossy().to_string());
             continue;
         };
         let Ok(id) = book_id(path) else {
             summary.failed += 1;
+            unreadable.push(path.to_string_lossy().to_string());
             continue;
         };
         seen.push(id.clone());
 
         let mtime = modified_seconds(&meta);
         if db::is_current(&conn, &id, meta.len(), mtime)? {
+            // Unchanged content can still have moved; the stored path must
+            // follow it or the book can never be opened again.
+            db::refresh_path(&conn, &id, &path.to_string_lossy())?;
             summary.unchanged += 1;
             continue;
         }
@@ -240,13 +256,18 @@ pub fn scan(
             Some(Ok(book)) => {
                 db::upsert_book(&conn, &book, mtime)?;
                 summary.added += 1;
+                writes += 1;
+                if writes % COMMIT_EVERY == 0 {
+                    conn.execute_batch("COMMIT; BEGIN")?;
+                }
             }
             // Either the probe returned an error or it panicked outright.
             Some(Err(_)) | None => summary.failed += 1,
         }
     }
 
-    let removed = db::prune_missing(&conn, &seen)?;
+    let removed = db::prune_missing(&conn, &seen, &unreadable)?;
+    conn.execute_batch("COMMIT")?;
     for id in &removed {
         // Best effort: a leftover cover is harmless, a failed scan is not.
         for ext in ["jpg", "png", "gif", "webp", "svg"] {

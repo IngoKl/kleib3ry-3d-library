@@ -1,6 +1,6 @@
 import { library } from '../services'
 import type { IndexedBook } from '../services/types'
-import { openDocument, renderPage } from '../reader/pdf'
+import { closeDocument, openDocument, renderPage } from '../reader/pdf'
 
 /**
  * Cover images, fetched or rendered on demand.
@@ -37,13 +37,20 @@ export function coverFor(book: IndexedBook): Promise<string | null> {
 
     try {
       const doc = await openDocument(book.id)
-      const canvas = await renderPage(doc, 1, COVER_HEIGHT_PX)
-      if (!canvas) return null
+      try {
+        const canvas = await renderPage(doc, 1, COVER_HEIGHT_PX)
+        if (!canvas) return null
 
-      const dataUrl = canvas.toDataURL('image/png')
-      // Persist so the next launch reads it off disk instead of re-rendering.
-      const saved = await library.saveRenderedCover(book.id, dataUrl).catch(() => null)
-      return saved ? library.assetUrl(saved) : dataUrl
+        const dataUrl = canvas.toDataURL('image/png')
+        // Persist so the next launch reads it off disk instead of re-rendering.
+        const saved = await library.saveRenderedCover(book.id, dataUrl).catch(() => null)
+        return saved ? library.assetUrl(saved) : dataUrl
+      } finally {
+        // Let the document go the moment the cover is out of it. The warm
+        // sweep walks the whole catalogue; holding each parsed PDF would pin
+        // the entire library in the pdf.js worker by the time it finished.
+        closeDocument(book.id)
+      }
     } catch {
       return null
     }

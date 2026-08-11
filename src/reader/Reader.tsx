@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { applyBow, applyGutterCurl, gutterRise, makeSheet, type Sheet } from './pageMesh'
 import { makePageTextures, spreadWindow } from './pageTextures'
-import { openDocument } from './pdf'
+import { closeDocument, openDocument } from './pdf'
 import { readerStatus, resetReaderStatus } from './status'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
@@ -155,7 +155,9 @@ export function Reader() {
     let cancelled = false
     setDoc(null)
     setFailure(null)
-    setSpread(0)
+    // Open at the spread you left off, not at the cover: the position is
+    // saved on every turn precisely so coming back resumes.
+    setSpread(useLibraryStore.getState().readProgress[reading] ?? 0)
 
     resetReaderStatus(reading)
     if (book.format !== 'pdf') {
@@ -173,6 +175,8 @@ export function Reader() {
         if (cancelled) return
         setAspect(view.width / view.height)
         readerStatus.pages = opened.numPages
+        // A saved position can outrun the file if it changed on disk.
+        setSpread((s) => Math.max(0, Math.min(s, Math.floor(opened.numPages / 2))))
         setDoc(opened)
       })
       .catch((e) => {
@@ -184,8 +188,21 @@ export function Reader() {
 
     return () => {
       cancelled = true
+      // Release the reader's hold; the document is destroyed once no cover or
+      // page render still shares it. Without this every book ever opened
+      // stayed resident in the pdf.js worker for the life of the app.
+      closeDocument(reading)
     }
   }, [reading, book])
+
+  // Closing the book must also let go of its textures: the component stays
+  // mounted, so without this the last book's full-resolution page cache
+  // survived until a different book was opened.
+  useEffect(() => {
+    if (reading) return
+    setDoc(null)
+    setFailure(null)
+  }, [reading])
 
   // ---- page textures ---------------------------------------------------
   const targetPx = useMemo(
@@ -251,7 +268,10 @@ export function Reader() {
   )
   const toggleBookmark = useLibraryStore((s) => s.toggleBookmark)
   const setProgress = useLibraryStore((s) => s.setProgress)
-  const spreadCount = doc ? Math.ceil(doc.numPages / 2) : 0
+  // Spread s shows pages 2s and 2s+1, so the last page lives on spread
+  // floor(N/2) — `ceil(N/2)` undercounted by one for even page counts, which
+  // made the final page unreachable by "go to page".
+  const spreadCount = doc ? Math.floor(doc.numPages / 2) + 1 : 0
 
   /**
    * Remember the page, so putting the book down open puts it down *here*.
@@ -261,8 +281,11 @@ export function Reader() {
    * something the reader would get to hear about.
    */
   useEffect(() => {
-    if (reading) setProgress(reading, spread)
-  }, [reading, spread, setProgress])
+    // Gated on the document being open: before that, `spread` is still the
+    // transient 0 of a mounting reader, and writing it would erase the very
+    // position about to be restored.
+    if (reading && doc) setProgress(reading, spread)
+  }, [reading, doc, spread, setProgress])
 
   /**
    * Jump to a page somebody typed.
@@ -312,7 +335,12 @@ export function Reader() {
         sheets.turning.back.needsUpdate = true
         sheets.turning.mesh.visible = true
         readerStatus.turning = true
-        turnRef.current = { dir, progress: 0, dragging: held, target: 1 }
+        // A click that ended before the faces rasterised has no pointer on the
+        // leaf any more; installing it as `dragging` would strand a turn the
+        // frame loop never advances and block every turn after it. A finished
+        // click means a turn, so let it fall on its own.
+        const dragging = held && drag.current !== null
+        turnRef.current = { dir, progress: 0, dragging, target: 1 }
 
         // The leaf takes a moment to fall; use it to make sure the spread it
         // lands on can be committed the instant it does.
@@ -327,6 +355,14 @@ export function Reader() {
       if (e.code === 'KeyJ') {
         e.preventDefault()
         useAppStore.getState().setJumping(true)
+        return
+      }
+      if (e.code === 'F1') {
+        // The controls card advertises the reading keys; it has to be
+        // reachable — and dismissable — while actually reading.
+        e.preventDefault()
+        const app = useAppStore.getState()
+        app.setControlsOpen(!app.controlsOpen)
         return
       }
       if (e.key === 'ArrowRight' || e.code === 'Space') {

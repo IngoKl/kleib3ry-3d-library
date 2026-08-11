@@ -241,6 +241,9 @@ export function LooseBooks() {
     [],
   )
 
+  /** The book whose instance colour currently carries the crosshair tint. */
+  const lastFocused = useRef<string | null>(null)
+
   /** Cover planes, keyed by book id, posed alongside the instance matrices. */
   const covers = useRef(new Map<string, THREE.Group>())
   const registerCover = useCallback((id: string, node: THREE.Group | null) => {
@@ -307,6 +310,22 @@ export function LooseBooks() {
 
     const nudge = useLibraryStore.getState().nudge
     let dirty = false
+
+    // The crosshair tint is baked into the instance colour by `write`, and the
+    // loop below skips bodies at rest — which is every book you can actually
+    // point at. Repaint the one gaining and the one losing focus explicitly,
+    // or resting books never highlight (and one focused mid-fall sticks).
+    const focused = useAppStore.getState().focusedBook
+    if (focused !== lastFocused.current) {
+      for (let i = 0; i < closed.length; i++) {
+        const id = closed[i]![0]
+        if (id === focused || id === lastFocused.current) {
+          write(mesh, i)
+          dirty = true
+        }
+      }
+      lastFocused.current = focused
+    }
 
     for (let i = 0; i < closed.length; i++) {
       const [id] = closed[i]!

@@ -119,12 +119,28 @@ type LibraryState = {
   setLabel: (shelfId: string, text: string) => void
   labelOf: (shelfId: string) => string | null
   /** Shove a piece of furniture. Only the moving boxes accept this. */
-  moveFurniture: (id: string, at: [number, number], facing: number) => void
+  moveFurniture: (id: string, at: [number, number], facing: number, elevation?: number) => void
   bookAt: (id: string) => IndexedBook | undefined
   dimensionsOf: (id: string) => BookDimensions | undefined
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
+let runSave: (() => Promise<void>) | null = null
+
+/**
+ * Write any pending layout save out now instead of at the end of the debounce.
+ *
+ * The debounce exists to coalesce bursts of shelving; it must not be a window
+ * in which closing the app — or re-reading the layout from disk — quietly
+ * discards the last thing you did. Callers that are about to read the file
+ * (`load`) or lose the page (shutdown) flush first.
+ */
+export async function flushLayoutSave(): Promise<void> {
+  if (saveTimer === undefined) return
+  clearTimeout(saveTimer)
+  saveTimer = undefined
+  await runSave?.()
+}
 
 /** The world, or a stand-in with no shelves at all if it has not loaded yet. */
 function currentWorld(): DerivedWorld | null {
@@ -174,22 +190,28 @@ function flatten(world: DerivedWorld | null, boxes: Record<string, string[]>): s
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => {
+  const saveNow = async () => {
+    const state = get()
+    const document: LayoutDocument = {
+      schemaVersion: LAYOUT_SCHEMA_VERSION,
+      rows: state.savedRows,
+      boxes: state.savedBoxes,
+      bookmarks: state.bookmarks,
+      progress: state.readProgress,
+      loose: state.loose,
+      furniture: state.placements,
+      labels: state.labels,
+    }
+    await library.saveLayout(document).catch((e) => set({ error: String(e) }))
+  }
+  runSave = saveNow
+
   /** Persist the layout, coalescing the bursts that come from moving books. */
   const scheduleSave = () => {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
-      const state = get()
-      const document: LayoutDocument = {
-        schemaVersion: LAYOUT_SCHEMA_VERSION,
-        rows: state.savedRows,
-        boxes: state.savedBoxes,
-        bookmarks: state.bookmarks,
-        progress: state.readProgress,
-        loose: state.loose,
-        furniture: state.placements,
-        labels: state.labels,
-      }
-      void library.saveLayout(document).catch((e) => set({ error: String(e) }))
+      saveTimer = undefined
+      void saveNow()
     }, SAVE_DEBOUNCE_MS)
   }
 
@@ -256,6 +278,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
     load: async () => {
       try {
+        // A shelving made moments ago may still be sitting in the debounce;
+        // reading the file before it lands would roll the edit back.
+        await flushLayoutSave()
         const [books, layout] = await Promise.all([library.listBooks(), library.loadLayout()])
         const byId = new Map(books.map((b) => [b.id, b]))
         const dims = new Map(books.map((b) => [b.id, dimensionsFor(b)]))
@@ -383,8 +408,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       scheduleSave()
     },
 
-    moveFurniture: (id, at, facing) => {
-      const placements = { ...get().placements, [id]: { at, facing } }
+    moveFurniture: (id, at, facing, elevation) => {
+      const placements = {
+        ...get().placements,
+        [id]: elevation === undefined ? { at, facing } : { at, facing, elevation },
+      }
       set({ placements })
       useWorldStore.getState().setPlacements(placements)
       scheduleSave()
@@ -655,3 +683,12 @@ export function packedRow(shelfIndex: number, row: number): PackedBook[] {
 useWorldStore.subscribe((state, previous) => {
   if (state.revision !== previous.revision) useLibraryStore.getState().rebuild()
 })
+
+// Closing the window inside the debounce must not lose the last shelving.
+// `pagehide` is the reliable end-of-page signal; `beforeunload` is belt and
+// braces for the WebView. The save is fire-and-forget — there is no keeping a
+// page alive for it — but the IPC message is away before teardown.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => void flushLayoutSave())
+  window.addEventListener('beforeunload', () => void flushLayoutSave())
+}

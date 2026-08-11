@@ -145,19 +145,24 @@ export function arrangeInto(
   const free = order.map((key) => ({ key, used: widthOf(rows[key] ?? [], dims) }))
 
   const leftOver: string[] = []
-  let cursor = 0
   for (const id of ids) {
     const size = dims(id)
-    if (!size) continue
-
-    while (cursor < free.length && free[cursor]!.used + size.thickness > ROW_CAPACITY) cursor += 1
-    if (cursor >= free.length) {
-      // The shelves are full. Everything after this is too, so stop searching.
+    if (!size) {
+      // No dimensions means no shelf position; report it unplaced rather than
+      // vanishing it — the caller leaves leftOver books where they were.
       leftOver.push(id)
       continue
     }
 
-    const slot = free[cursor]!
+    // First fit over every row rather than a cursor that only advances: the
+    // books arrive in box-stack order, not by thickness, so one fat book must
+    // not disqualify a row for every thin one behind it.
+    const slot = free.find((row) => row.used + size.thickness <= ROW_CAPACITY)
+    if (!slot) {
+      leftOver.push(id)
+      continue
+    }
+
     ;(rows[slot.key] ??= []).push(id)
     slot.used += size.thickness
   }

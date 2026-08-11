@@ -138,12 +138,18 @@ export function Handling() {
 
       const x = player.x - Math.sin(player.yaw) * CARRY_AHEAD
       const z = player.z - Math.cos(player.yaw) * CARRY_AHEAD
+      // Snapped to a quarter turn: the collision AABBs assume right-angle
+      // rotations (see `aabbFromCentre`), and a box set down at 45° would
+      // render rotated while colliding axis-aligned.
+      const facing = Math.round((player.yaw * 180) / Math.PI / 90) * 90
       // Stored room-local, because that is the frame the document is written
       // in: a box recorded in world metres would jump the first time somebody
-      // moved the room it belongs to.
+      // moved the room it belongs to. The elevation rides along because the
+      // document room only knows its own storey — a box carried up to the
+      // loft used to derive at ground level, inside the loft floor.
       useLibraryStore
         .getState()
-        .moveFurniture(id, [x - room.origin[0], z - room.origin[1]], (player.yaw * 180) / Math.PI)
+        .moveFurniture(id, [x - room.origin[0], z - room.origin[1]], facing, player.floor)
     }
 
     window.addEventListener('keydown', onKeyDown)

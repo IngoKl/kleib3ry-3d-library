@@ -53,10 +53,10 @@ export function BoxedBooks() {
   const atlas = useMemo(() => makeBookAtlas(), [])
   useEffect(() => () => atlas.dispose(), [atlas])
 
-  const capacity = useMemo(
-    () => Math.max(32, Math.ceil((placed.length + 32) / 64) * 64),
-    [placed.length === 0],
-  )
+  // Rounded up in chunks so the value (and the remount it forces) only changes
+  // when a pile actually outgrows it — a memo keyed on emptiness froze this at
+  // the first non-empty size and hid every book past it.
+  const capacity = Math.max(32, Math.ceil((placed.length + 32) / 64) * 64)
 
   const geometry = useMemo(() => {
     const base = makeBookGeometry()
@@ -175,7 +175,19 @@ export function BoxedBooks() {
       sceneRefs.boxedOwners = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capacity, placed, held])
+  }, [capacity, placed])
+
+  // Picking a book up (or putting one back) only hides or shows its instance;
+  // repainting the whole box atlas for that was a ~15 MB texture re-upload and
+  // a visible hitch on every grab.
+  useLayoutEffect(() => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    for (let i = 0; i < capacity; i++) write(mesh, i)
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [held])
 
   // What each box is showing, for the panel and for browsing.
   useLayoutEffect(() => {

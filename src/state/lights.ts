@@ -41,19 +41,26 @@ type LightsState = {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
+let runSave: (() => void) | null = null
 
 export const useLightStore = create<LightsState>((set, get) => {
+  const saveNow = () => {
+    const document: LightState = {
+      schemaVersion: LIGHT_SCHEMA_VERSION,
+      on: get().on,
+      night: get().night,
+    }
+    // A light that will not save is not worth interrupting anybody over; the
+    // room is still lit the way they asked for this session.
+    void library.saveLights(document).catch(() => {})
+  }
+  runSave = saveNow
+
   const scheduleSave = () => {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
-      const document: LightState = {
-        schemaVersion: LIGHT_SCHEMA_VERSION,
-        on: get().on,
-        night: get().night,
-      }
-      // A light that will not save is not worth interrupting anybody over; the
-      // room is still lit the way they asked for this session.
-      void library.saveLights(document).catch(() => {})
+      saveTimer = undefined
+      saveNow()
     }, SAVE_DEBOUNCE_MS)
   }
 
@@ -95,3 +102,16 @@ export const useLightStore = create<LightsState>((set, get) => {
     },
   }
 })
+
+// A lamp flipped just before closing the window should still be flipped on the
+// next launch; the debounce must not be a window that loses it.
+if (typeof window !== 'undefined') {
+  const flush = () => {
+    if (saveTimer === undefined) return
+    clearTimeout(saveTimer)
+    saveTimer = undefined
+    runSave?.()
+  }
+  window.addEventListener('pagehide', flush)
+  window.addEventListener('beforeunload', flush)
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { library } from '../services'
 import { metrics, type RenderMetrics } from '../state/metrics'
+import { readerStatus } from '../reader/status'
 import { useLibraryStore } from '../state/library'
 import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
@@ -83,8 +84,16 @@ export function Hud() {
     }).length
   }, [world, loose])
 
+  // Why the reader is showing nothing, on the same poll as the render stats:
+  // `readerStatus` lives outside React, and the failure plane in the scene has
+  // no way to carry text — without this the message existed only for tests.
+  const [readerFailure, setReaderFailure] = useState<string | null>(null)
+
   useEffect(() => {
-    const id = setInterval(() => setRender({ ...metrics }), 250)
+    const id = setInterval(() => {
+      setRender({ ...metrics })
+      setReaderFailure(readerStatus.failure)
+    }, 250)
     return () => clearInterval(id)
   }, [])
 
@@ -349,11 +358,17 @@ export function Hud() {
         <div className="held-card" data-testid="reading-card">
           <p className="held-label">reading</p>
           <p className="focus-title">{reading.title}</p>
-          <p className="focus-key">
-            drag a page across · <kbd>←</kbd>
-            <kbd>→</kbd> turn · <kbd>B</kbd> bookmark · <kbd>J</kbd> go to page ·{' '}
-            <kbd>Esc</kbd> close
-          </p>
+          {readerFailure ? (
+            <p className="focus-key" data-testid="reader-failure">
+              this book will not open — {readerFailure} · <kbd>Esc</kbd> close
+            </p>
+          ) : (
+            <p className="focus-key">
+              drag a page across · <kbd>←</kbd>
+              <kbd>→</kbd> turn · <kbd>B</kbd> bookmark · <kbd>J</kbd> go to page ·{' '}
+              <kbd>Esc</kbd> close
+            </p>
+          )}
         </div>
       )}
 

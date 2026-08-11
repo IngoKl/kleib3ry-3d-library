@@ -88,18 +88,27 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     player.src = library.assetUrl(track.path)
     player.currentTime = 0
     player.onended = () => get().next()
-    // A placeholder record in the browser build points at nothing. Say so in
-    // the panel rather than throwing an unhandled rejection into the console.
-    void player.play().catch((e) => {
-      set({ error: `cannot play ${track.title} — ${e instanceof Error ? e.message : String(e)}` })
-    })
     set({ playing: id, paused: false, error: null })
+    // A placeholder record in the browser build points at nothing. Say so in
+    // the panel rather than throwing an unhandled rejection into the console —
+    // and take the record off the deck again, or the HUD shows it spinning
+    // forever on a playback that never started.
+    void player.play().catch((e) => {
+      if (get().playing !== id) return
+      player.removeAttribute('src')
+      set({
+        playing: null,
+        paused: false,
+        error: `cannot play ${track.title} — ${e instanceof Error ? e.message : String(e)}`,
+      })
+    })
   },
 
   stop: () => {
-    const player = audio()
-    player.pause()
-    player.removeAttribute('src')
+    if (element) {
+      element.pause()
+      element.removeAttribute('src')
+    }
     set({ playing: null, paused: false })
   },
 
