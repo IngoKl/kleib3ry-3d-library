@@ -52,6 +52,15 @@ npm run test:desktop   # launches the built exe with WebView2 remote debugging,
                        # attaches over CDP, drives scan → shelve → read
 ```
 
+`tauri:build` emits both the NSIS installer and, beside it,
+`src-tauri/target/release/kleib3ry.exe` — a standalone executable with the whole
+front end linked in, pdf.js cmaps and standard fonts included. `npm run
+tauri:build:exe` builds only that, skipping the installer. It is single-file to
+hand someone, not zero-footprint: settings still land in the app config dir, and
+it renders through the system WebView2 runtime rather than shipping an engine,
+which is the trade that keeps it around 10 MB instead of 150. Use the installer
+for anyone whose machine might not have that runtime.
+
 And the container:
 
 ```bash

@@ -124,6 +124,8 @@ declare global {
       heldPin: () => { kind: 'page' | 'note'; page?: number; text?: string } | null
       pinTarget: () => { x: number; y: number; z: number; yaw: number } | null
       focusedPin: () => string | null
+      /** Where each whiteboard is drawn, measured off its meshes. */
+      boards: () => { id: string; bottom: number; top: number }[]
       reader: () => ReaderStatus
       readForTest: (id: string) => Promise<ReaderStatus>
       setModeForTest: (mode: string) => void
@@ -1319,6 +1321,19 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
   expect(stillThere.rendered, 'the book lost the page it was copied from').toBe(true)
   await page.keyboard.press('Escape')
   await settled(page, () => window.__app.stats().mode === 'walk', 8000)
+
+  // Before anything is pinned: the board is hung at head height, not propped on
+  // the skirting. `y` in the document is the centre of a hung thing, and the
+  // renderer used to read it as the base — which put the office board's top edge
+  // at 1.5 m, under the eye line of anybody standing in front of it, with the
+  // pen tray by their knees.
+  const boards = await page.evaluate(() => window.__app.boards())
+  expect(boards.length, 'no whiteboard in the office').toBeGreaterThan(0)
+  for (const board of boards) {
+    // 1.68 is the standing eye line; 0.75 is desk height.
+    expect(board.top, `${board.id} hangs below eye level`).toBeGreaterThan(1.68)
+    expect(board.bottom, `${board.id} hangs down behind the desk`).toBeGreaterThan(0.75)
+  }
 
   // Somewhere with plaster on it: the north wall east of the window and clear of
   // the bookcase, which is the one stretch of the great room that is only wall.

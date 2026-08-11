@@ -15,6 +15,7 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "tauri:build:exe": "tauri build --no-bundle",
     "icon": "node scripts/make-icon.mjs && tauri icon assets/icon-source.png",
     "test:desktop": "node scripts/probe-desktop.mjs",
     "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/make-sample-book.mjs",

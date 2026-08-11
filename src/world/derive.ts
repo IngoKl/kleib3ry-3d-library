@@ -649,7 +649,15 @@ export function deriveWorld(
       const hung = WALL_MOUNTED.has(item.kind)
       const width = item.size?.[0] ?? base.width
       const depth = hung ? base.depth : (item.size?.[1] ?? base.depth)
-      const height = hung ? (item.size?.[1] ?? base.height) : (item.height ?? base.height)
+      // A flight's height is its `rise` — the same number the ramp below climbs.
+      // Reading `height` here instead left the treads at the kind's default 2.6
+      // while the ramp went to wherever the document said, so the bedroom flight
+      // was drawn ending 62 cm under the floor it delivers you onto.
+      const height = hung
+        ? (item.size?.[1] ?? base.height)
+        : item.kind === 'stairs'
+          ? (item.rise ?? base.height)
+          : (item.height ?? base.height)
       const rotationY = radians(facing)
       const baseY = override?.elevation ?? mountHeight(room, item, height)
 
@@ -695,7 +703,9 @@ export function deriveWorld(
 
       if (item.kind === 'stairs') {
         const run = item.size?.[1] ?? base.depth
-        const rise = item.rise ?? base.height
+        // One number for the climb, shared with what gets drawn: the ramp and
+        // the treads disagreeing is invisible until you are standing on it.
+        const rise = height
         // The flight climbs towards its facing direction, which is the same
         // convention as a bookcase's open front: 0 is +Z.
         const dx = Math.sin(rotationY)

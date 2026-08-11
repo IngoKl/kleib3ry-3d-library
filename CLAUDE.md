@@ -45,7 +45,8 @@ cargo test --manifest-path core/Cargo.toml index::
 Beyond `verify`:
 
 ```bash
-npm run tauri:build    # Windows installer
+npm run tauri:build    # Windows installer, plus the standalone exe beside it
+npm run tauri:build:exe # only the standalone exe (no installer)
 npm run test:desktop   # node scripts/probe-desktop.mjs [libraryFolder] [exe] — launches the built
                        # exe with WebView2 remote debugging, attaches over CDP, drives scan→shelve→read
 npm run docker:build   # the container image

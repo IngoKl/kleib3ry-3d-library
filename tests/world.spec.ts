@@ -2,7 +2,14 @@ import { expect, test } from '@playwright/test'
 import { blocked } from '../src/scene/collision'
 import { solidsAt, stepPlayer, type Stance } from '../src/scene/walk'
 import { shelfColliders } from '../src/world/shelf'
-import { FLOOR_SLAB, STEP_UP, deriveWorld, floorAt, roomBounds } from '../src/world/derive'
+import {
+  FLOOR_SLAB,
+  STEP_UP,
+  WALL_MOUNTED,
+  deriveWorld,
+  floorAt,
+  roomBounds,
+} from '../src/world/derive'
 import { GROUND_Y, LAKE, PATH, WALK_RADIUS, lakeRadius, terrainAt } from '../src/world/terrain'
 import { occupied } from '../src/world/forest'
 import { parseWorldText, type WorldDocument } from '../src/world/schema'
@@ -169,6 +176,38 @@ test.describe('world document', () => {
 
       // …and you arrive on the upper floor, not under it.
       expect(previous).toBeCloseTo(flight.top, 2)
+    }
+  })
+
+  test('the treads reach as far up as the ramp does', () => {
+    // The renderer draws a flight `height` tall and the walk controller climbs
+    // `rise`, and for a while those were two different numbers: `rise` was read
+    // from the document while `height` fell back to the kind's default 2.6. The
+    // bedroom flight climbs 3.22, so its treads stopped 62 cm under the floor
+    // they deliver you onto — walkable, and visibly not joined.
+    for (const flight of WORLD.stairs) {
+      const drawn = WORLD.furniture.find((item) => item.id === flight.id)!
+      expect(drawn.height, `the ${flight.id} treads do not reach the landing`).toBeCloseTo(
+        flight.top - flight.bottom,
+        5,
+      )
+    }
+  })
+
+  test('what is hung on a wall hangs where the document says', () => {
+    // `y` on a picture or a whiteboard is the centre of the thing — that is how
+    // anybody hanging one thinks about it, and it is what custom-maps.md
+    // promises. The derived `y` is the *base*, like every other piece, so the
+    // two differ by half the height and nothing else. The renderer's half of
+    // this — that a hung body is actually *drawn* about that centre — is in
+    // smoke.spec.ts, which can see the meshes.
+    for (const room of WORLD.rooms) {
+      for (const spec of room.furniture) {
+        if (!WALL_MOUNTED.has(spec.kind) || spec.y === undefined) continue
+        const item = WORLD.furniture.find((piece) => piece.id === spec.id)!
+        expect(item.y + item.height / 2 - room.elevation, `${spec.id} hangs at the wrong height`)
+          .toBeCloseTo(spec.y, 5)
+      }
     }
   })
 

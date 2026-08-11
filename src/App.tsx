@@ -240,6 +240,20 @@ export default function App() {
       pinTarget: () => useAppStore.getState().pinTarget,
       focusedPin: () => useAppStore.getState().focusedPin,
       artwork: () => useMediaStore.getState().artwork.map((picture) => picture.id),
+      /**
+       * How high off the floor each whiteboard actually *is*, measured off the
+       * meshes rather than off the document.
+       *
+       * Asked of the scene because that is where it went wrong: the derived
+       * world had the board at the right height all along and the renderer drew
+       * it centred on its own base, half a board too low. Nothing above the
+       * scene graph can see that.
+       */
+      boards: () =>
+        (sceneRefs.boards?.children ?? []).map((piece) => {
+          const box = new THREE.Box3().setFromObject(piece)
+          return { id: String(piece.userData.furnitureId ?? ''), bottom: box.min.y, top: box.max.y }
+        }),
       spines: () => ({
         printed: sceneRefs.printedSpines,
         slots: ASSIGNABLE_SLOTS,

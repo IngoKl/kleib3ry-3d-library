@@ -8,7 +8,7 @@ import { useWorldStore } from '../state/world'
 import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
-import { APPLIANCES, LAMPS, SITTABLE, type DerivedFurniture } from '../world/derive'
+import { APPLIANCES, LAMPS, SITTABLE, WALL_MOUNTED, type DerivedFurniture } from '../world/derive'
 import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
 import { useVideoStore, videoElement } from '../state/video'
 
@@ -1163,9 +1163,17 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
     }
   })()
 
+  // `item.y` is the base of every piece, but a picture and a whiteboard are
+  // modelled about their centres — which is the only way to draw a frame — so
+  // the two hung kinds are lifted by half their height. Done here rather than in
+  // each body so the next thing hung on a wall cannot get it wrong: without it
+  // the board's own `y` of 1.5 m put its centre at 0.9 and its pen tray at knee
+  // height.
+  const lift = WALL_MOUNTED.has(item.kind) ? item.height / 2 : 0
+
   return (
     <group
-      position={[item.x, item.y, item.z]}
+      position={[item.x, item.y + lift, item.z]}
       rotation-y={item.rotationY}
       // Carried on the group so a hit on any of the chair's several meshes
       // resolves to the piece of furniture, not to an arm or a leg.
