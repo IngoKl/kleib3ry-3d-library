@@ -8,19 +8,36 @@ Desktop app: React Three Fiber inside a Tauri 2 shell, with a Rust core doing
 the indexing and page rasterisation. The full architecture and phase plan live
 in [docs/plan.md](docs/plan.md).
 
-**Status: you can walk it and read in it.** Two rooms — a main room and a
-reading corner with an armchair — seventeen bookcases and ~1,700 books,
-first-person movement with collisions, a crosshair that finds a book and takes
-it off the shelf, and page-by-page reading on a curved mesh.
+**Status: you can walk it, live in it, and read in it.** The default library is
+a cabin in the woods: a great room with a hearth, a loft up a flight of stairs,
+a reading corner, a kitchen, and a porch looking into the forest. Sixteen
+bookcases and ~1,700 books, first-person movement with collisions and stairs, a
+crosshair that finds a book and takes it off the shelf, and page-by-page reading
+on a curved mesh. There is a lake through the north window.
 
-The room itself is a file: `<your library folder>/.library/library.json`. Edit
-it and the room reloads while you are standing in it. See
-[docs/library-folder.md](docs/library-folder.md).
+**The room is furnished as well as shelved.** A record player wired to your
+`music/` folder, framed pictures from your `artwork/` folder, lamps you can
+switch on and off, tables you can leave a book on — face down and open at the
+page you were reading — and a floor you can simply drop one onto.
 
-The Rust indexer is wired: `choose folder…` then `scan` in the desktop app
-indexes your real PDFs and EPUBs. In the browser build there is no filesystem,
-so the shelves are stocked from a **placeholder catalogue** plus one real
-generated PDF (`sample-book.pdf`) so read mode can be tested headlessly.
+**A library arrives in boxes.** A freshly indexed collection is stacked in the
+four moving boxes on the floor, and the shelves start empty: unpacking is yours
+to do. Look at a box and press `G` to tip the whole thing onto empty shelves, or
+take books out one at a time with `E` and put them where you want them — and
+back in a box if you change your mind.
+
+The building itself is a file: `<your library folder>/.library/library.json`.
+Edit it and the room reloads while you are standing in it. The format is
+described in [docs/library-folder.md](docs/library-folder.md), and there is a
+full guide to building your own — rooms, lofts, stairs, railings, lighting — in
+[docs/custom-maps.md](docs/custom-maps.md).
+
+A library folder holds three folders of yours: `books/` for the shelves,
+`music/` for the record player, `artwork/` for the walls. The Rust indexer is
+wired: `choose folder…` then `scan` in the desktop app indexes the PDFs and
+EPUBs in `books/` and leaves the other two alone. In the browser build there is
+no filesystem, so the boxes are filled from a **placeholder catalogue** plus one
+real generated PDF (`sample-book.pdf`) so read mode can be tested headlessly.
 
 ## Quick start
 
@@ -44,15 +61,26 @@ Both can run at once — `tauri:dev` reuses a Vite server that is already up.
 | `W` `A` `S` `D` | walk |
 | `shift` | run |
 | `ctrl` | kneel, to read the bottom shelf — held, not toggled |
-| `E` | take the book under the crosshair (off a shelf or out of a box), put it back, or sit in the chair you are looking at |
+| `E` | take the book under the crosshair (off a shelf, out of a box, off a table); put it on the shelf, in the box or on the table you are looking at; sit in a chair; switch a lamp; put a record on; put the coffee on |
+| `Q` | drop what you are holding — it falls, tumbles and stays where it lands |
+| `O` | put it down open, at the page you were on |
+| `G` | empty the box you are looking at onto the shelves |
+| `X` | pick up the moving box you are looking at and carry it; `X` again sets it down |
+| `L` | write a label on the bookcase you are aiming at |
+| `F` | draw the book under the crosshair out to look at its cover |
 | `R` | read the book in your hand |
 | drag | while reading, drag a page across to turn it — let go early and it falls back |
 | `←` `→` | turn pages without dragging; `Esc` closes the book |
 | `B` | put a bookmark in the page you are on, or take it out again |
+| `J` | while reading, go to a page by number |
 
 Bookmarks are slips standing out of the top of the book, placed along its width
-by how far in they are. Click one to open the book there. They are saved with
-the library, so they are still in it next time.
+by how far in they are, and each one is a different colour with a stitched edge
+so several in one book stay tellable apart. Click one to open the book there.
+They are saved with the library, so they are still in it next time.
+
+A book you leave open stays open: it lies there showing the spread you were on,
+and picking it up again and pressing `R` puts you back on that page.
 
 There are no modes to choose. You are walking, or you are reading a book you
 opened — and `Esc` gets you out of the second.
@@ -71,7 +99,7 @@ Individually:
 | `npm run build` | The production bundle builds from the CLI |
 | `npm test` | Headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
 | `npm run test:rust` | Settings persistence round-trips |
-| `npm run scan -- <folder>` | Indexes a folder from the command line, no app needed |
+| `npm run scan -- <folder>` | Indexes a library folder's `books/` from the command line, no app needed |
 | `npm run tauri:build` | A Windows installer builds end to end |
 | `npm run test:desktop` | The *built* app boots, renders in WebView2, and an IPC command round-trips |
 
@@ -91,19 +119,22 @@ your settings.
 src/                front end
   services/         the ONLY place that touches the filesystem
   world/            the library.json document: schema, defaults, geometry,
-                    and what happens to shelved books when the room changes
+                    floor heights and stairs, and what happens to shelved
+                    books when the room changes
   scene/            R3F scene graph — rooms, shelves, books, boxes, furniture,
-                    and the spine atlas that prints titles onto them
+                    the forest outside, the spine atlas that prints titles,
+                    and the little bit of gravity that dropped books fall under
   reader/           read mode: page cache, page mesh, the turn
-  state/            zustand stores: world, library, app, player pose
+  state/            zustand stores: world, library, media, lights, app, player
   data/             placeholder catalogue + book proportions
-  ui/               DOM overlay: crosshair, focus card, panels
-src-tauri/          Rust core: commands, settings, db + format probes
+  ui/               DOM overlay: crosshair, focus cards, panels, typed fields
+src-tauri/          Rust core: commands, settings, db, format + tag probes
 tests/              Playwright harness — smoke tests plus world/layout units
 scripts/            asset generation, icon, test corpus
 spikes/reading/     throwaway spike that de-risked 3D page reading
 docs/plan.md            architecture, phase plan, spike amendments
 docs/library-folder.md  the library folder format, and the reconciliation rules
+docs/custom-maps.md     building your own building: rooms, lofts, stairs, light
 docs/ideas.md           the running wish list
 ```
 

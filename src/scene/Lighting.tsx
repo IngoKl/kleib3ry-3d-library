@@ -1,59 +1,46 @@
 import { useMemo } from 'react'
+import { FurnitureLights } from './Furniture'
 import { roomBounds } from '../world/derive'
 import type { RoomSpec } from '../world/schema'
 import { useWorldStore } from '../state/world'
 
 /**
- * Daylight through the windows plus warm interior fill, per room.
+ * Daylight through the windows plus warm interior fill.
  *
  * Only one directional light casts shadows, for the whole world: a shadow map
  * per room would eat the frame budget the books need, and a single sun angled
  * across the library reads as one building rather than several.
+ *
+ * The lamps themselves are no longer invented per room — they are furniture in
+ * `library.json`, and switching one off is a thing you can do. What is left
+ * here is the light that has no fitting: the sun, the sky, and the wash coming
+ * back off a window reveal. A room that declares no lamps at all still gets one
+ * soft fixture, so that a map somebody is halfway through writing is not pitch
+ * dark while they write it.
  */
 
-/** Ceiling fixtures roughly every this many metres, in each direction. */
-const FIXTURE_SPACING = 3.4
-
-function RoomLights({ room }: { room: RoomSpec }) {
+function RoomFill({ room, unlit }: { room: RoomSpec; unlit: boolean }) {
   const [cx, cz] = room.origin
-  const [width, depth] = room.size
-
-  const fixtures = useMemo(() => {
-    const across = Math.max(1, Math.round(width / FIXTURE_SPACING))
-    const along = Math.max(1, Math.round(depth / FIXTURE_SPACING))
-    const points: [number, number][] = []
-    for (let i = 0; i < across; i++) {
-      for (let j = 0; j < along; j++) {
-        points.push([
-          cx + ((i + 0.5) / across - 0.5) * width,
-          cz + ((j + 0.5) / along - 0.5) * depth,
-        ])
-      }
-    }
-    return points
-  }, [cx, cz, width, depth])
+  const bounds = roomBounds(room)
 
   return (
     <>
-      {/* Warm ceiling fixtures. Intensity is in candela and falls off with the
-          square of distance, so these numbers are larger than they look: at the
-          ~2.4 m from ceiling to shelf face, 8 cd arrives as roughly 1.4. */}
-      {fixtures.map(([x, z], i) => (
+      {unlit && !room.outdoor && (
         <pointLight
-          key={i}
-          position={[x, room.height - 0.4, z]}
-          intensity={8}
-          distance={12}
+          position={[cx, room.elevation + room.height - 0.5, cz]}
+          intensity={7}
+          distance={Math.hypot(room.size[0], room.size[1]) + 2}
           color="#ffd9a8"
         />
-      ))}
+      )}
 
-      {/* Soft bounce off the reveal of each window, back into the room. */}
+      {/* Soft bounce off the reveal of each window, back into the room. An
+          unglazed opening — a balustrade, a porch railing — is not a window and
+          does not light anything. */}
       {room.openings
-        .filter((opening) => opening.kind === 'window')
+        .filter((opening) => opening.kind === 'window' && opening.glazed)
         .map((opening, i) => {
-          const bounds = roomBounds(room)
-          const y = opening.sill + opening.height / 2
+          const y = room.elevation + opening.sill + opening.height / 2
           const inset = 0.8
           const position: [number, number, number] =
             opening.wall === 'north'
@@ -67,7 +54,7 @@ function RoomLights({ room }: { room: RoomSpec }) {
             <pointLight
               key={`win-${i}`}
               position={position}
-              intensity={4}
+              intensity={4.5}
               distance={9}
               color="#dceaf6"
             />
@@ -96,43 +83,59 @@ export function Lighting() {
       maxX = Math.max(maxX, b.maxX)
       minZ = Math.min(minZ, b.minZ)
       maxZ = Math.max(maxZ, b.maxZ)
-      height = Math.max(height, room.height)
+      height = Math.max(height, room.elevation + room.height)
     }
     return { minX, maxX, minZ, maxZ, height }
+  }, [world])
+
+  /** Rooms with no lamp of their own, which get a fallback fixture. */
+  const unlit = useMemo(() => {
+    if (!world) return new Set<string>()
+    const lit = new Set(world.lights.map((lamp) => lamp.roomId))
+    return new Set(world.rooms.map((room) => room.id).filter((id) => !lit.has(id)))
   }, [world])
 
   const spanX = extent.maxX - extent.minX
   const spanZ = extent.maxZ - extent.minZ
   const midX = (extent.minX + extent.maxX) / 2
   const midZ = (extent.minZ + extent.maxZ) / 2
-  const radius = Math.hypot(spanX, spanZ) / 2 + 2
+  const radius = Math.hypot(spanX, spanZ) / 2 + 5
 
   return (
     <>
       {/* Shelves face into the room with their backs to the walls, so they see
           almost none of the window light. Without a generous ambient floor the
           spines read as black and the library is unbrowsable. */}
-      <ambientLight intensity={0.38} />
-      <hemisphereLight args={['#dceaf6', '#7a5f42', 0.45]} />
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={['#d6e6f4', '#7d6a4e', 0.7]} />
 
+      {/* Low and to the north-west, which is where the lake is: afternoon
+          light coming in through the big window rather than noon overhead. */}
       <directionalLight
-        position={[midX - spanX * 0.3, extent.height + radius * 0.8, extent.minZ - radius * 0.6]}
+        position={[midX - spanX * 0.5, extent.height + radius * 0.55, extent.minZ - radius * 0.7]}
         target-position={[midX, 0, midZ]}
-        intensity={2.4}
-        color="#fff2dd"
+        intensity={2.5}
+        color="#ffeccf"
         castShadow
         shadow-mapSize={[2048, 2048]}
+        // Square and generous. The frustum is in the *light's* view space, so a
+        // box sized to the building's plan does not cover the building once the
+        // sun is off-axis — and the edge of the shadow map is a hard vertical
+        // seam of brightness straight up the middle of the room.
         shadow-camera-left={-radius}
         shadow-camera-right={radius}
-        shadow-camera-top={extent.height + 2}
-        shadow-camera-bottom={-2}
+        shadow-camera-top={radius}
+        shadow-camera-bottom={-radius}
         shadow-camera-near={0.5}
         shadow-camera-far={radius * 3 + 20}
         shadow-bias={-0.0006}
         shadow-normalBias={0.02}
       />
 
-      {world?.rooms.map((room) => <RoomLights key={room.id} room={room} />)}
+      {world?.rooms.map((room) => (
+        <RoomFill key={room.id} room={room} unlit={unlit.has(room.id)} />
+      ))}
+      <FurnitureLights />
     </>
   )
 }

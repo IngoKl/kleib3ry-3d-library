@@ -57,12 +57,12 @@ plan:
 | --- | --- | --- |
 | Spike | Prove legible page-by-page reading on a curved 3D mesh | **done** — 60 fps, legible, see [spike README](../spikes/reading/README.md) |
 | 0 | Tauri 2 + Vite + React + TS; R3F renders a lit room; CLI build; headless test harness | **done** |
-| 3 | Walk mode: first-person controls, collisions, pick up a book | **done** — plus kneeling and sitting in a chair; pulled forward ahead of 1 and 2 |
+| 3 | Walk mode: first-person controls, collisions, pick up a book | **done** — plus kneeling, sitting, and stairs to a second storey; pulled forward ahead of 1 and 2 |
 | 1 | Rust indexer walks the library folder, extracts PDF/EPUB covers + metadata into SQLite and a cover cache; front end lists books | **done** — wired to `scan_library` / `list_books` |
 | 2 | Edit mode: place shelves and furniture with grid snap; JSON layout persistence | **part done** — the world is a hand-edited document with live reload ([the library folder](library-folder.md)); the in-app grid-snap editor is still to come |
 | 4 | Read mode: take a book off the shelf, open it, turn pages — port the spike | **done** — page cache, atomic turn commit, drag-to-turn, bookmarks |
 | 5 | EPUB reading: pagination to page images, CFI progress | |
-| 6 | Music: placeable record player, audio folder scan, playlists, positional audio | |
+| 6 | Music: placeable record player, audio folder scan, playlists, positional audio | **part done** — `music/` is scanned, records fill the crates, the deck plays them. Playlists and positional falloff are still to come |
 | 7 | Persistence polish: migrations, rescan reconciliation | |
 | 8 | Packaging: signed installer, auto-update, performance pass | |
 | 9 | Optional: Linux-hosted web build via an HTTP driver | |
@@ -81,7 +81,21 @@ boxes and the player is a vertical cylinder, so
 [`src/scene/collision.ts`](../src/scene/collision.ts) does axis-separated AABB
 sliding in a few dozen lines: deterministic, unit-testable without a browser,
 and no wasm — which also means the desktop CSP does not need `wasm-unsafe-eval`.
-Revisit if books ever need to fall off shelves.
+
+Books can now fall off shelves, and it still holds. What a dropped book needs is
+gravity, a support height and a shove when you walk into it, which is forty
+lines in [`src/scene/drop.ts`](../src/scene/drop.ts) — not a solver. Everything
+still at rest on a shelf or in a box has its position *derived* from an ordering
+as before; only a book you deliberately put down stores coordinates.
+
+**Two storeys, without a navmesh.** A loft is a room with an `elevation` standing
+inside another room's volume, and `floorAt` in
+[`src/world/derive.ts`](../src/world/derive.ts) answers "what am I standing on" —
+a floor slab with the stairwell subtracted from it, or a `stairs` piece treated as
+a ramp. Colliders grew a vertical extent so that a balustrade upstairs is not a
+wall downstairs, and a move is refused unless the floor it lands on is within a
+step of the floor it left. That single rule is both how a staircase works and why
+you cannot walk off the loft, which is a good sign it is the right rule.
 
 **Spines are printed from one atlas.** Each shelved book's title and author are
 drawn into a cell of a single canvas texture, and each instance carries a UV
@@ -99,17 +113,35 @@ because re-rasterising a large collection is expensive enough to be worth
 carrying with it. Only the SQLite index stays in the app's data directory: it is
 keyed to absolute paths and is worthless on another machine.
 
-The asset protocol scope is granted at runtime for whichever cover directory is
-live — it starts empty, and the cache now sits at a path the user chooses, which
-cannot be known at build time. The format, and the rules
-for what happens to a shelved book when the room changes under it, are in
-[the library folder](library-folder.md).
+The asset protocol scope starts empty and is granted at runtime for exactly
+three directories inside the chosen folder — `covers`, `music`, `artwork` — each
+only when something asks for it. None of their paths can be known at build time.
+Audio is why `music/` is a *directory* grant rather than a command to match
+`read_book_file`: a track is streamed while it plays, and pulling a whole FLAC
+through IPC to start it would be slower and a great deal more memory.
+
+The format, and the rules for what happens to a shelved book when the room
+changes under it, are in [the library folder](library-folder.md);
+[building a map](custom-maps.md) is the guide to writing one.
+
+**Nothing the app decides is written into `library.json`.** That is a file a
+person wrote, with their comments in it. Where the boxes have been shoved, what
+is written on a shelf label and which lamps are off all live beside it — in
+`books.json` and `lights.json` — so that switching a light off cannot cost
+somebody their formatting.
 
 The one rule worth repeating here: **the layout is keyed by shelf id, never by
-position**, and reconciliation only ever chooses a home for a book that has
-never been placed. Anything that loses its shelf goes into the moving boxes,
-visibly, and `books.json` keeps remembering where it came from so the edit can
-be undone.
+position**, and the app never puts a book on a shelf — you do. A newly indexed
+library is stacked in the moving boxes with the shelves left empty, because
+arranging a thousand books is a decision it has no business making for you; a
+box empties onto the shelves in one interaction when you want it to. Anything
+that loses its shelf to an edit goes into the boxes too, visibly, and
+`books.json` keeps remembering where it came from so the edit can be undone.
+
+Books live in `<root>/books/`, alongside `music/` and `artwork/`, and a scan
+reads only that folder. A library folder from before the convention — books at
+the top level — is still read whole, so the rule cannot lose anybody's
+collection.
 
 ## The turn
 

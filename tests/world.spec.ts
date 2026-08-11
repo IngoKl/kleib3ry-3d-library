@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { blocked } from '../src/scene/collision'
-import { deriveWorld } from '../src/world/derive'
+import { solidsAt } from '../src/scene/walk'
+import { shelfColliders } from '../src/world/shelf'
+import { STEP_UP, deriveWorld, floorAt } from '../src/world/derive'
 import { parseWorldText, type WorldDocument } from '../src/world/schema'
 import { DEFAULT_WORLD_TEXT } from '../src/world/defaults'
 import { LAYOUT_SCHEMA_VERSION, reconcile } from '../src/world/reconcile'
@@ -48,10 +50,56 @@ function worldWith(edit: (doc: WorldDocument) => void) {
 
 test.describe('world document', () => {
   test('the default the app writes for you actually parses', () => {
-    expect(WORLD.rooms.length).toBe(2)
+    // The cabin: a great room, the loft inside its volume, a reading corner,
+    // a kitchen and a porch.
+    expect(WORLD.rooms.map((r) => r.id)).toEqual(['main', 'loft', 'reading', 'kitchen', 'porch'])
     expect(WORLD.shelves.length).toBeGreaterThan(10)
     expect(WORLD.furniture.some((f) => f.kind === 'box')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'armchair')).toBe(true)
+    expect(WORLD.furniture.some((f) => f.kind === 'recordplayer')).toBe(true)
+  })
+
+  test('the loft is a storey, with a stair and a hole for it to come up', () => {
+    const loft = WORLD.rooms.find((room) => room.id === 'loft')!
+    expect(loft.elevation).toBeGreaterThan(2)
+    expect(loft.holes.length).toBe(1)
+    // Its shelves stand on its floor rather than on the ground.
+    expect(WORLD.shelves.filter((s) => s.roomId === 'loft').every((s) => s.y === loft.elevation))
+      .toBe(true)
+
+    const stair = WORLD.stairs[0]!
+    expect(stair.bottom).toBe(0)
+    expect(stair.top).toBeCloseTo(loft.elevation, 5)
+
+    // The climb is continuous: no step bigger than one, all the way up. The
+    // trace is collected first so a failure names *where* the flight breaks —
+    // "a 0.6 m step two thirds of the way up" is a fixable report and
+    // "expected 0.42" is not.
+    const climb: { z: number; floor: number | null }[] = []
+    let previous = floorAt(WORLD, stair.x, stair.z - stair.run / 2, 0)!
+    for (let t = 0; t <= 1.0001; t += 0.02) {
+      const z = stair.z + (t - 0.5) * stair.run
+      const here = floorAt(WORLD, stair.x, z, previous)
+      climb.push({ z: +z.toFixed(3), floor: here })
+      if (here !== null) previous = here
+    }
+
+    const gaps = climb
+      .map((step, i) => ({ ...step, rise: i === 0 ? 0 : (step.floor ?? NaN) - (climb[i - 1]!.floor ?? NaN) }))
+      .filter((step) => step.floor === null || !(Math.abs(step.rise) <= STEP_UP))
+    expect(gaps, `the flight is not walkable: ${JSON.stringify(gaps)}`).toEqual([])
+
+    // …and you arrive on the loft floor, not under it.
+    expect(previous).toBeCloseTo(loft.elevation, 2)
+  })
+
+  test('you cannot walk off the loft', () => {
+    const loft = WORLD.rooms.find((room) => room.id === 'loft')!
+    const edge = loft.origin[1] + loft.size[1] / 2
+    // A pace past the balustrade there is only the ground floor, two and a half
+    // metres down — which is a fall, so `floorAt` refuses to offer it.
+    expect(floorAt(WORLD, 0, edge + 0.6, loft.elevation)).toBe(0)
+    expect(Math.abs(0 - loft.elevation)).toBeGreaterThan(STEP_UP)
   })
 
   test('comments are allowed, because the file is meant to be read', () => {
@@ -110,14 +158,24 @@ test.describe('world document', () => {
     expect(blocked(world.colliders, { x: -3.06, z: 0 }, 0.28)).toBe(true)
   })
 
-  test('the two default rooms are joined, not sealed off from each other', () => {
-    expect(WORLD.rooms.map((r) => r.id)).toEqual(['main', 'reading'])
-    // Walk the doorway from one room into the other along z = 0.
-    for (let x = 3.0; x <= 7.0; x += 0.05) {
-      expect(
-        blocked(WORLD.colliders, { x, z: 0 }, 0.28),
-        `blocked crossing at x=${x.toFixed(2)}`,
-      ).toBe(false)
+  test('the rooms are joined, not sealed off from each other', () => {
+    // The great room's west door into the reading corner, at z = 0.9. Asked on
+    // the ground floor: the loft's solids sit two metres over this line.
+    const ground = solidsAt([...WORLD.solids, ...shelfColliders(WORLD.shelves)], 0)
+    for (let x = -3.4; x >= -6.0; x -= 0.05) {
+      expect(blocked(ground, { x, z: 0.9 }, 0.28), `blocked crossing at x=${x.toFixed(2)}`).toBe(
+        false,
+      )
+    }
+  })
+
+  test('the porch is walked onto, not stepped over', () => {
+    // The porch is butted flush against the cabin rather than a doorway away,
+    // so the decking and the floorboards meet with no gap to fall through.
+    const ground = solidsAt([...WORLD.solids, ...shelfColliders(WORLD.shelves)], 0)
+    for (let z = 3.0; z <= 5.4; z += 0.05) {
+      expect(floorAt(WORLD, 2.6, z, 0), `no floor at z=${z.toFixed(2)}`).toBe(0)
+      expect(blocked(ground, { x: 2.6, z }, 0.28), `blocked at z=${z.toFixed(2)}`).toBe(false)
     }
   })
 })

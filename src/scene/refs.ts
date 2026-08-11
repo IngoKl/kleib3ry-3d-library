@@ -24,8 +24,22 @@ export const sceneRefs: {
   /** The books piled in the moving boxes, for taking one back out. */
   boxedBooks: THREE.InstancedMesh | null
   boxedIds: string[]
+  /** `boxedOwners[instanceId]` — which box that book is lying in. */
+  boxedOwners: string[]
   /** The boxes themselves — for dropping a book in, or emptying one out. */
   boxes: THREE.Object3D | null
+  /** Tables and counters: what you can set a book down on. */
+  surfaces: THREE.Object3D | null
+  /** Lamps and appliances: what pressing E *operates* rather than picks up. */
+  fixtures: THREE.Object3D | null
+  /** The records in the crates, and which track each instance is. */
+  records: THREE.InstancedMesh | null
+  recordIds: string[]
+  /** Books lying about the room, on tables and on the floor. */
+  looseBooks: THREE.InstancedMesh | null
+  looseIds: string[]
+  /** Books left open. Real meshes rather than instances, so their own group. */
+  openBooks: THREE.Object3D | null
   /** Everything you can sit on. Each mesh carries its furniture id in userData. */
   seats: THREE.Object3D | null
   /** How many shelved books currently hold an atlas cell, i.e. are printed. */
@@ -45,7 +59,15 @@ export const sceneRefs: {
   shelfGroups: [],
   boxedBooks: null,
   boxedIds: [],
+  boxedOwners: [],
   boxes: null,
+  surfaces: null,
+  fixtures: null,
+  records: null,
+  recordIds: [],
+  looseBooks: null,
+  looseIds: [],
+  openBooks: null,
   seats: null,
   printedSpines: 0,
   spinesReprinted: 0,

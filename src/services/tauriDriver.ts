@@ -2,9 +2,12 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import type {
+  IndexedArtwork,
   IndexedBook,
+  IndexedTrack,
   LayoutDocument,
   LibraryService,
+  LightState,
   SavePaths,
   ScanProgress,
   ScanSummary,
@@ -85,6 +88,22 @@ export const tauriDriver: LibraryService = {
 
   async saveLayout(layout) {
     await invoke('save_layout', { layout })
+  },
+
+  async listTracks() {
+    return invoke<IndexedTrack[]>('list_music')
+  },
+
+  async listArtwork() {
+    return invoke<IndexedArtwork[]>('list_artwork')
+  },
+
+  async loadLights() {
+    return invoke<LightState | null>('get_lights')
+  },
+
+  async saveLights(state) {
+    await invoke('save_lights', { state })
   },
 
   assetUrl(path) {

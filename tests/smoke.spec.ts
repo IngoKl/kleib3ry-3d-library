@@ -44,13 +44,15 @@ declare global {
     __app: {
       ready: () => boolean
       stats: () => Stats
-          player: () => {
+      player: () => {
         x: number
         z: number
         yaw: number
         pitch: number
         speed: number
         eye: number
+        /** Height of the floor underfoot. Zero everywhere but the loft. */
+        floor: number
         crouch: number
       }
       focusedBook: () => Book | null
@@ -66,10 +68,31 @@ declare global {
       boxContents: (boxId: string) => string[]
       savedBoxContents: (boxId: string) => string[]
       emptyBoxForTest: (boxId: string) => number
+      boxView: (boxId: string) => { offset: number; shown: number; total: number } | null
+      visibleInBoxes: () => string[]
+      boxIds: () => string[]
+      places: () => {
+        shelves: { id: string; x: number; z: number; rotationY: number; rows: number }[]
+        boxes: { id: string; x: number; z: number; height: number }[]
+      }
       room: () => string | null
       worldText: () => string | null
       editWorld: (text: string) => Promise<string | null>
-      teleport: (x: number, z: number, yaw?: number) => void
+      /** `floor` puts you on a particular storey; omitted, you keep the one you are on. */
+      teleport: (x: number, z: number, yaw?: number, floor?: number) => void
+      looseBooks: () => Record<
+        string,
+        { x: number; y: number; z: number; yaw: number; open: boolean; spread: number }
+      >
+      furniture: () => { id: string; kind: string; room: string; x: number; y: number; z: number }[]
+      packEverythingForTest: () => number
+      labelOf: (shelfId: string) => string | null
+      setLabelForTest: (shelfId: string, text: string) => void
+      lights: () => Record<string, boolean>
+      toggleLightForTest: (id: string) => boolean | null
+      records: () => string[]
+      nowPlaying: () => string | null
+      artwork: () => string[]
       look: (yaw: number, pitch?: number) => void
       reader: () => ReaderStatus
       readForTest: (id: string) => Promise<ReaderStatus>
@@ -85,9 +108,6 @@ async function boot(page: Page) {
   await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
 }
 
-/** The moving boxes the default document puts on the floor of the main room. */
-const BOXES = ['box-1', 'box-2', 'box-3', 'box-4']
-
 /**
  * Unpack every box onto the shelves.
  *
@@ -96,22 +116,48 @@ const BOXES = ['box-1', 'box-2', 'box-3', 'box-4']
  * a bookcase — starts by doing what you would do first in the room.
  */
 async function unpackEverything(page: Page) {
-  const shelved = await page.evaluate(
-    (boxes) => boxes.reduce((total, id) => total + window.__app.emptyBoxForTest(id), 0),
-    BOXES,
+  const shelved = await page.evaluate(() =>
+    window.__app.boxIds().reduce((total, id) => total + window.__app.emptyBoxForTest(id), 0),
   )
   expect(shelved, 'nothing came out of the boxes').toBeGreaterThan(100)
   await page.waitForTimeout(300)
   return shelved
 }
 
-/** Stand in front of the left-hand bookcases, looking at them. */
+/**
+ * Stand in front of a bookcase, looking at a compartment with something in it.
+ *
+ * Derived from the world rather than written down as coordinates: the map is a
+ * document somebody edits, and a test that knows where the bookcases *were* is
+ * a test that fails the day the room is rearranged. Which rows are stocked is
+ * not fixed either — unpacking a box fills empty rows in a shuffled order — so
+ * this sweeps the height of a case until the crosshair finds a book, or, when
+ * carrying one, a shelf to put it on.
+ */
 async function faceTheShelves(page: Page) {
-  await page.evaluate(() => {
-    window.__app.teleport(-1.9, 0.6, Math.PI / 2 + 0.35)
-    window.__app.look(Math.PI / 2 + 0.35, -0.1)
-  })
-  await page.waitForTimeout(500)
+  const shelves = (await page.evaluate(() => window.__app.places())).shelves
+  expect(shelves.length, 'this world has no bookcases').toBeGreaterThan(0)
+
+  for (const shelf of shelves.slice(0, 6)) {
+    for (const pitch of [-0.1, -0.4, 0.2, -0.65, 0.45]) {
+      await page.evaluate(
+        ([shelf, pitch]) => {
+          const s = shelf as { x: number; z: number; rotationY: number }
+          // Standing on the case's open side, looking straight into it.
+          const x = s.x + Math.sin(s.rotationY) * 0.85
+          const z = s.z + Math.cos(s.rotationY) * 0.85
+          window.__app.teleport(x, z, s.rotationY)
+          window.__app.look(s.rotationY, pitch as number)
+        },
+        [shelf, pitch] as const,
+      )
+      await page.waitForTimeout(350)
+      const found = await page.evaluate(
+        () => window.__app.focusedBook() !== null || window.__app.shelfTarget() !== null,
+      )
+      if (found) return
+    }
+  }
 }
 
 test('the room renders and the library arrives in boxes', async ({ page }) => {
@@ -232,9 +278,20 @@ test('a placement survives a reload', async ({ page }) => {
   await faceTheShelves(page)
 
   const moved = await page.evaluate(() => window.__app.focusedBook())
+  expect(moved, 'nothing was under the crosshair to take').not.toBeNull()
   await page.keyboard.press('KeyE')
   await page.waitForTimeout(300)
-  const target = await page.evaluate(() => window.__app.shelfTarget())
+
+  // Holding a book, the crosshair looks for a shelf rather than a book — which
+  // is not always satisfied by the pose that found a book to pick up, since
+  // taking one can leave the crosshair pointing through the gap it left. Re-aim
+  // rather than assume.
+  let target = await page.evaluate(() => window.__app.shelfTarget())
+  if (!target) {
+    await faceTheShelves(page)
+    target = await page.evaluate(() => window.__app.shelfTarget())
+  }
+  expect(target, 'not aiming at a bookcase').not.toBeNull()
   await page.keyboard.press('KeyE')
   // The layout save is debounced; give it time to land.
   await page.waitForTimeout(1200)
@@ -353,19 +410,19 @@ async function editWorld(page: Page, from: string, to: string) {
   )
 }
 
-test('the library opens in two rooms you can walk between', async ({ page }) => {
+test('the library opens in rooms you can walk between', async ({ page }) => {
   await boot(page)
 
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.rooms).toBe(2)
+  expect(stats.rooms).toBe(5)
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 
-  // Through the doorway on the east wall and into the reading corner. Walking
+  // Through the doorway on the west wall and into the reading corner. Walking
   // is timed in simulation steps, and headless runs well under the 20 fps the
   // movement delta is clamped at, so this waits on arrival rather than on a
   // duration that would only be right on this machine.
-  await page.evaluate(() => window.__app.teleport(3.0, 0, -Math.PI / 2))
+  await page.evaluate(() => window.__app.teleport(-3.4, 0.9, Math.PI / 2))
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
   await page.keyboard.down('KeyW')
   try {
@@ -377,12 +434,47 @@ test('the library opens in two rooms you can walk between', async ({ page }) => 
   expect(await page.evaluate(() => window.__app.room())).toBe('reading')
 })
 
+test('the loft is a room you climb to, and cannot fall off', async ({ page }) => {
+  await boot(page)
+
+  // At the foot of the stairs, on the ground floor, facing up the flight. The
+  // flight climbs towards +Z, and a person's yaw of PI faces that way.
+  await page.evaluate(() => window.__app.teleport(4.0, -3.45, Math.PI, 0))
+  await page.waitForTimeout(400)
+  expect((await page.evaluate(() => window.__app.player())).floor).toBeLessThan(0.15)
+
+  await page.locator('canvas').click({ position: { x: 400, y: 400 } })
+  await page.keyboard.down('KeyW')
+  try {
+    await page.waitForFunction(() => window.__app.room() === 'loft', null, { timeout: 25_000 })
+    // …and all the way to the top, rather than stopping part-way up it.
+    await page.waitForFunction(() => window.__app.player().floor > 2.3, null, { timeout: 25_000 })
+  } finally {
+    await page.keyboard.up('KeyW')
+  }
+
+  const upstairs = await page.evaluate(() => window.__app.player())
+  expect(upstairs.floor).toBeGreaterThan(2.3)
+  // Standing on the loft means your eyes are a storey above the great room.
+  expect(upstairs.eye).toBeGreaterThan(3.9)
+
+  // Walk at the open side. The balustrade stops you, so the floor never changes.
+  await page.evaluate(() => window.__app.teleport(0, 0.4, Math.PI, 2.4))
+  await page.waitForTimeout(300)
+  await page.keyboard.down('KeyW')
+  await page.waitForTimeout(2500)
+  await page.keyboard.up('KeyW')
+
+  const after = await page.evaluate(() => window.__app.player())
+  expect(after.floor, 'walked off the loft').toBeGreaterThan(2.3)
+})
+
 test('saving a broken library.json keeps the room you are standing in', async ({ page }) => {
   await boot(page)
   await unpackEverything(page)
   const before = await page.evaluate(() => window.__app.stats())
 
-  const error = await editWorld(page, '"size": [8, 6]', '"size": "enormous"')
+  const error = await editWorld(page, '"size": [9, 7]', '"size": "enormous"')
   expect(error).toContain('rooms[0].size')
 
   const after = await page.evaluate(() => window.__app.stats())
@@ -400,6 +492,7 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
   await boot(page)
   await unpackEverything(page)
   const boxedBefore = await page.evaluate(() => window.__app.stats().boxed)
+  const shelvesBefore = await page.evaluate(() => window.__app.stats().shelves)
 
   const shelf = 'west-0'
   const before = await page.evaluate(
@@ -411,14 +504,14 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
   // Take the whole bookcase out of the document, exactly as a hand edit would.
   const removed = await editWorld(
     page,
-    '{ "id": "west-0", "at": [-3.835, -1.9], "facing": 90, "rows": 5 },',
+    '{ "id": "west-0", "at": [-4.325, -2.9], "facing": 90, "rows": 5, "label": "Fiction" },',
     '',
   )
   expect(removed).toBeNull()
   await page.waitForTimeout(400)
 
   const gone = await page.evaluate(() => window.__app.stats())
-  expect(gone.shelves).toBe(13 + 4 - 1)
+  expect(gone.shelves).toBe(shelvesBefore - 1)
   expect(gone.boxed).toBeGreaterThan(boxedBefore)
   const boxed = await page.evaluate(() => window.__app.boxedBooks())
   for (const id of before) expect(boxed).toContain(id)
@@ -435,7 +528,7 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
   await editWorld(
     page,
     '{ "id": "west-1",',
-    '{ "id": "west-0", "at": [-3.835, -1.9], "facing": 90, "rows": 5 }, { "id": "west-1",',
+    '{ "id": "west-0", "at": [-4.325, -2.9], "facing": 90, "rows": 5, "label": "Fiction" }, { "id": "west-1",',
   )
   await page.waitForTimeout(400)
 
@@ -450,32 +543,10 @@ test('a book can be taken out of a box and shelved', async ({ page }) => {
   const boxed = await page.evaluate(() => window.__app.boxedBooks())
   expect(boxed.length).toBeGreaterThan(0)
 
-  // Stand at the boxes along the south wall and look down into them. Sweep a
-  // few poses rather than hard-coding one: the point of the test is that the
-  // pile is reachable, not that a particular pitch happens to hit it.
-  let focused: { id: string } | null = null
-  for (const [x, z, pitch] of [
-    [-2.1, 1.35, -0.8],
-    [-2.1, 1.35, -0.95],
-    [-1.4, 1.5, -0.85],
-    [-2.7, 1.5, -0.85],
-  ]) {
-    await page.evaluate(
-      ([x, z, pitch]) => {
-        window.__app.teleport(x as number, z as number, Math.PI)
-        window.__app.look(Math.PI, pitch as number)
-      },
-      [x, z, pitch],
-    )
-    await page.waitForTimeout(350)
-    focused = await page.evaluate(() => window.__app.focusedBook())
-    if (focused && (await page.evaluate(() => window.__app.boxedBooks())).includes(focused.id)) {
-      break
-    }
-    focused = null
-  }
-
-  expect(focused, 'no book in the boxes was reachable from any pose').not.toBeNull()
+  // Look down into a box until the crosshair is on one of the books in it.
+  expect(await faceABox(page, 'book'), 'no book in a box was reachable').not.toBeNull()
+  const focused = await page.evaluate(() => window.__app.focusedBook())
+  expect(focused).not.toBeNull()
   expect(boxed).toContain(focused!.id)
 
   await page.keyboard.press('KeyE')
@@ -505,6 +576,87 @@ test('a book can be taken out of a box and shelved', async ({ page }) => {
   expect(row).toContain(held!.id)
 })
 
+/**
+ * Stand over a box and look down into it, wherever the map happens to put it.
+ *
+ * Approached from each side in turn, because a box can be against a wall or
+ * behind a chair; the first approach the crosshair actually reaches it from
+ * wins. Returns the box id, or null if none could be reached at all.
+ */
+async function faceABox(page: Page, want: 'box' | 'book' = 'box') {
+  const boxes = (await page.evaluate(() => window.__app.places())).boxes
+  expect(boxes.length, 'this world has no boxes').toBeGreaterThan(0)
+
+  for (const box of boxes) {
+    for (const bearing of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      for (const distance of [0.62, 0.8]) {
+        await page.evaluate(
+          ([box, bearing, distance]) => {
+            const b = box as { x: number; z: number; height: number }
+            const yaw = bearing as number
+            const away = distance as number
+            // Stand `away` from the box on this bearing and look back down at
+            // it: the pitch is whatever gets the eye onto the top of the pile.
+            const x = b.x - Math.sin(yaw) * away
+            const z = b.z - Math.cos(yaw) * away
+            window.__app.teleport(x, z, yaw)
+            window.__app.look(yaw, -Math.atan2(1.68 - b.height * 0.8, away))
+          },
+          [box, bearing, distance] as const,
+        )
+        await page.waitForTimeout(300)
+        const boxId = await page.evaluate(
+          () => window.__app.focusedBox() ?? window.__app.boxTarget(),
+        )
+        if (!boxId) continue
+        // Looking for a book means the crosshair has to be on one, not merely
+        // on the cardboard it is lying in.
+        if (want === 'book' && (await page.evaluate(() => window.__app.focusedBook())) === null) {
+          continue
+        }
+        return boxId
+      }
+    }
+  }
+  return null
+}
+
+test('a box can be browsed, so a buried book can be brought to the top', async ({ page }) => {
+  await boot(page)
+
+  const boxId = await faceABox(page)
+  expect(boxId, 'no box was reachable from any pose').not.toBeNull()
+
+  const view = await page.evaluate((id) => window.__app.boxView(id as string), boxId!)
+  expect(view, 'the box reported nothing about what it is showing').not.toBeNull()
+  // A box holds far more than it can show — that is what browsing is for.
+  expect(view!.total).toBeGreaterThan(view!.shown)
+  expect(view!.offset).toBe(0)
+  // Whichever card is up: the crosshair may have found the cardboard or a book
+  // lying in it, and browsing is offered either way.
+  await expect(
+    page.getByTestId('box-card').or(page.getByTestId('focus-card')),
+  ).toContainText('browse')
+
+  const onTop = await page.evaluate(() => window.__app.visibleInBoxes())
+  const contents = await page.evaluate((id) => window.__app.boxContents(id as string), boxId!)
+  const buried = contents[view!.shown + 1]!
+  expect(onTop).not.toContain(buried)
+
+  // Riffle down one pileful: books that were buried are now the ones on show.
+  await page.keyboard.press('BracketRight')
+  await page.waitForTimeout(400)
+
+  const after = await page.evaluate((id) => window.__app.boxView(id as string), boxId!)
+  expect(after!.offset).toBe(view!.shown)
+  expect(await page.evaluate(() => window.__app.visibleInBoxes())).toContain(buried)
+
+  // And back up to the top of the pile again.
+  await page.keyboard.press('BracketLeft')
+  await page.waitForTimeout(400)
+  expect((await page.evaluate((id) => window.__app.boxView(id as string), boxId!))!.offset).toBe(0)
+})
+
 test('a book goes back into the box you drop it into, and stays there', async ({ page }) => {
   await boot(page)
   await unpackEverything(page)
@@ -516,27 +668,11 @@ test('a book goes back into the box you drop it into, and stays there', async ({
   const held = await page.evaluate(() => window.__app.heldBook())
   expect(held, 'nothing was picked up').not.toBeNull()
 
-  // Then stand over the boxes and look down into them. Holding a book, the
-  // crosshair offers the box rather than a shelf behind it.
-  let boxId: string | null = null
-  for (const [x, z, pitch] of [
-    [-2.1, 1.35, -0.8],
-    [-2.1, 1.35, -0.95],
-    [-1.4, 1.5, -0.85],
-    [-2.7, 1.5, -0.85],
-  ]) {
-    await page.evaluate(
-      ([x, z, pitch]) => {
-        window.__app.teleport(x as number, z as number, Math.PI)
-        window.__app.look(Math.PI, pitch as number)
-      },
-      [x, z, pitch],
-    )
-    await page.waitForTimeout(350)
-    boxId = await page.evaluate(() => window.__app.boxTarget())
-    if (boxId) break
-  }
+  // Then stand over a box and look down into it. Holding a book, the crosshair
+  // offers the box rather than a shelf behind it.
+  const boxId = await faceABox(page)
   expect(boxId, 'no box was reachable from any pose').not.toBeNull()
+  expect(await page.evaluate(() => window.__app.boxTarget())).toBe(boxId)
   await expect(page.getByTestId('held-card')).toContainText('drop in the box')
 
   await page.keyboard.press('KeyE')
@@ -556,29 +692,39 @@ test('a book goes back into the box you drop it into, and stays there', async ({
   )
 })
 
-test('emptying one box shelves its books and leaves the others alone', async ({ page }) => {
+test('looking into a box and pressing G unpacks it, and only it', async ({ page }) => {
   await boot(page)
 
-  const before = await page.evaluate((id) => window.__app.boxContents(id as string), BOXES[0]!)
+  // Stand over a box. Looking into a full one finds a book — and the book
+  // brings its box with it, so the crosshair offers both.
+  const boxId = await faceABox(page)
+  expect(boxId, 'no box was reachable from any pose').not.toBeNull()
+  expect(await page.evaluate(() => window.__app.focusedBox())).toBe(boxId)
+
+  const before = await page.evaluate((id) => window.__app.boxContents(id as string), boxId!)
   const others = await page.evaluate(
-    (boxes) => (boxes as string[]).slice(1).map((id) => window.__app.boxContents(id)),
-    BOXES,
+    (mine) =>
+      window.__app
+        .boxIds()
+        .filter((id) => id !== mine)
+        .map((id) => [id, window.__app.boxContents(id)] as const),
+    boxId!,
   )
   expect(before.length).toBeGreaterThan(0)
 
-  const shelved = await page.evaluate(
-    (id) => window.__app.emptyBoxForTest(id as string),
-    BOXES[0]!,
-  )
-  expect(shelved).toBe(before.length)
-  await page.waitForTimeout(300)
+  await page.keyboard.press('KeyG')
+  await page.waitForTimeout(400)
 
   // That box is empty, the others are untouched, and its books are on shelves.
-  expect(await page.evaluate((id) => window.__app.boxContents(id as string), BOXES[0]!)).toEqual([])
+  expect(await page.evaluate((id) => window.__app.boxContents(id as string), boxId!)).toEqual([])
   expect(
     await page.evaluate(
-      (boxes) => (boxes as string[]).slice(1).map((id) => window.__app.boxContents(id)),
-      BOXES,
+      (mine) =>
+        window.__app
+          .boxIds()
+          .filter((id) => id !== mine)
+          .map((id) => [id, window.__app.boxContents(id)] as const),
+      boxId!,
     ),
   ).toEqual(others)
 
@@ -586,12 +732,14 @@ test('emptying one box shelves its books and leaves the others alone', async ({ 
   expect(stats.shelved).toBe(before.length)
 
   // Spread around the room rather than stacked into the first case by the door.
-  const cases = await page.evaluate(
-    (ids) =>
-      (ids as string[]).filter((shelfId) =>
-        [0, 1, 2, 3, 4].some((row) => window.__app.rowsOf(shelfId, row).length > 0),
+  const cases = await page.evaluate(() =>
+    window.__app
+      .places()
+      .shelves.filter((shelf) =>
+        Array.from({ length: shelf.rows }, (_, row) => row).some(
+          (row) => window.__app.rowsOf(shelf.id, row).length > 0,
+        ),
       ),
-    ['west-0', 'west-4', 'east-0', 'north-3', 'reading-n0', 'reading-s1'],
   )
   expect(cases.length).toBeGreaterThan(1)
 })
@@ -621,12 +769,34 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
 
   // Stand in front of the chair in the reading corner and look down at it — an
   // armchair is under a metre tall, so a level crosshair sails over the back.
-  await page.evaluate(() => {
-    window.__app.teleport(7.0, 0.25, -Math.PI / 2)
-    window.__app.look(-Math.PI / 2, -0.62)
-  })
-  await page.waitForTimeout(600)
-  expect(await page.evaluate(() => window.__app.focusedSeat())).toBe('chair')
+  // Where the chair *is* comes from the world rather than from a coordinate
+  // written down here, so rearranging the room does not break this.
+  const chair = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.id === 'chair',
+  )
+  expect(chair, 'the reading corner has no armchair called "chair"').toBeDefined()
+
+  let seen: string | null = null
+  for (const [away, pitch] of [
+    [0.95, -0.62],
+    [0.85, -0.75],
+    [1.1, -0.5],
+    [0.75, -0.9],
+  ]) {
+    await page.evaluate(
+      ([chair, away, pitch]) => {
+        const c = chair as { x: number; z: number }
+        // Approach from the west, which is the open side of this one.
+        window.__app.teleport(c.x - (away as number), c.z, -Math.PI / 2)
+        window.__app.look(-Math.PI / 2, pitch as number)
+      },
+      [chair, away, pitch] as const,
+    )
+    await page.waitForTimeout(450)
+    seen = await page.evaluate(() => window.__app.focusedSeat())
+    if (seen === 'chair') break
+  }
+  expect(seen, 'the armchair was not reachable from any pose').toBe('chair')
   await expect(page.getByTestId('seat-card')).toContainText('sit down')
 
   await page.keyboard.press('KeyE')
@@ -638,7 +808,7 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   // Seated: lower than standing, at the chair, and walking does not move you.
   const seated = await page.evaluate(() => window.__app.player())
   expect(seated.eye).toBeLessThan(1.3)
-  expect(Math.hypot(seated.x - 8.29, seated.z - 0.25)).toBeLessThan(0.4)
+  expect(Math.hypot(seated.x - chair!.x, seated.z - chair!.z)).toBeLessThan(0.4)
 
   await page.keyboard.down('KeyW')
   await page.waitForTimeout(900)
@@ -653,7 +823,13 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   await page.waitForFunction(() => window.__app.player().eye > 1.6, null, { timeout: 10_000 })
 })
 
-/** Drag across the page from `fromFraction` to `toFraction` of the viewport. */
+/**
+ * Drag across the page from `fromFraction` to `toFraction` of the viewport.
+ *
+ * Keep `fromFraction` off the right-hand edge: the panel is a real bit of UI
+ * sitting over the canvas there, and a pointer down on it is a click on the
+ * panel, not a grab of the page. The book fills the middle of the screen.
+ */
 async function dragPage(page: Page, fromFraction: number, toFraction: number, steps = 12) {
   const box = (await page.locator('canvas').boundingBox())!
   const y = box.y + box.height * 0.5
@@ -686,7 +862,7 @@ test('a page can be dragged across, and half a drag is only a peek', async ({ pa
   ).toBe(0)
 
   // Carried most of the way across, it goes.
-  await dragPage(page, 0.78, 0.24)
+  await dragPage(page, 0.72, 0.24)
   await page.waitForFunction(() => window.__app.reader().spread === 1, null, { timeout: 20_000 })
   expect(await page.evaluate(() => window.__app.reader().showing)).toEqual([2, 3])
 
@@ -701,7 +877,7 @@ test('the leaf follows the pointer rather than a clock', async ({ page }) => {
 
   const box = (await page.locator('canvas').boundingBox())!
   const y = box.y + box.height * 0.5
-  await page.mouse.move(box.x + box.width * 0.78, y)
+  await page.mouse.move(box.x + box.width * 0.72, y)
   await page.mouse.down()
   await page.mouse.move(box.x + box.width * 0.62, y)
   await page.waitForTimeout(300)
@@ -726,7 +902,7 @@ test('a bookmark is set, survives a reload, and takes you back to its page', asy
   await page.evaluate(() => window.__app.readForTest('sample-book'))
 
   // Get to a spread worth marking.
-  await dragPage(page, 0.78, 0.24)
+  await dragPage(page, 0.72, 0.24)
   await page.waitForFunction(() => window.__app.reader().spread === 1, null, { timeout: 20_000 })
 
   await page.keyboard.press('KeyB')
@@ -797,21 +973,51 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
   expect(near.printed).toBeLessThanOrEqual(near.slots)
 
   // Every book in the library is still one draw call, which is the whole point
-  // of an atlas rather than a text mesh per spine.
+  // of an atlas rather than a text mesh per spine. The ceiling is deliberately
+  // loose, because it is not the books that set it: the cabin is a few hundred
+  // boxes and cylinders of furniture, and that is what the number tracks. What
+  // it rules out is a shelved book costing anything at all — see the test below
+  // it, which is the one that actually guards that.
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.drawCalls).toBeLessThan(120)
+  expect(stats.drawCalls).toBeLessThan(600)
 
   // Standing still costs nothing: no cell changes hands.
   const settled = near.reprinted
   await page.waitForTimeout(900)
   expect(await page.evaluate(() => window.__app.spines().reprinted)).toBe(settled)
 
-  // Move to another room and the cells are recycled onto what is in front of
-  // you now, rather than the atlas filling up and giving out.
-  await page.evaluate(() => window.__app.teleport(7.4, 1.4, Math.PI))
+  // Move to another room with bookcases in it and the cells are recycled onto
+  // what is in front of you now, rather than the atlas filling up and giving
+  // out. Somewhere with no books would prove nothing: no cell would be drawn.
+  await page.evaluate(() => window.__app.teleport(-6.94, 0.9, 0))
   await settle()
   const moved = await page.evaluate(() => window.__app.spines())
   expect(moved.reprinted).toBeGreaterThan(settled)
   expect(moved.printed).toBeLessThanOrEqual(moved.slots)
   expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
+test('shelving the whole library costs nothing to draw', async ({ page }) => {
+  await boot(page)
+  await page.waitForTimeout(1500)
+  const boxed = await page.evaluate(() => window.__app.stats())
+
+  await unpackEverything(page)
+  await page.waitForTimeout(1500)
+  const shelved = await page.evaluate(() => window.__app.stats())
+
+  expect(shelved.shelved).toBeGreaterThan(100)
+  expect(boxed.shelved).toBe(0)
+  /**
+   * Seventeen hundred books just moved out of the boxes and onto the shelves,
+   * from one instanced mesh into another, without the camera moving. The frame
+   * should therefore cost the same either way.
+   *
+   * This is the assertion that actually guards the atlas. A hard ceiling on
+   * draw calls tracks how much furniture is in the room, which is a decision
+   * about the map; this tracks whether a book costs anything, which is a
+   * decision about the renderer — and if it ever fails by hundreds, something
+   * has started drawing books one at a time.
+   */
+  expect(Math.abs(shelved.drawCalls - boxed.drawCalls)).toBeLessThan(20)
 })

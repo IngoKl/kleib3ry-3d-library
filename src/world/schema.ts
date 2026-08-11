@@ -7,13 +7,15 @@
  * *rejected whole*: the room already on screen keeps running and the error goes
  * to the HUD. Half-applying an edit would be a good way to lose a library.
  *
- * What is deliberately NOT in here: which book sits on which shelf. That lives
- * in `books.json` beside it, keyed by shelf id, because nobody wants 1,700 book
- * ids in the file they are hand-editing. See `reconcile.ts` for what happens to
- * those books when this document changes underneath them.
+ * What is deliberately NOT in here: which book sits on which shelf, which books
+ * are lying on the table, where the moving boxes have been pushed to, or which
+ * lamps are on. All of that is machine-written state and lives beside this file
+ * — see `reconcile.ts` for what happens to it when this document changes
+ * underneath it. The rule is that nothing the app writes ever lands in the file
+ * you are editing.
  */
 
-export const WORLD_SCHEMA_VERSION = 1
+export const WORLD_SCHEMA_VERSION = 2
 
 /** Which wall of a room an opening sits in. +Z is south, -Z is north. */
 export type Wall = 'north' | 'south' | 'east' | 'west'
@@ -27,6 +29,12 @@ export type Opening = {
   /** Height of the bottom edge above the floor. A door sits at 0. */
   sill: number
   kind: 'door' | 'window'
+  /**
+   * Whether a pane is fitted. Windows are glazed; a loft balustrade and a
+   * porch railing are the same shape — a waist-high apron you can see over and
+   * cannot walk through — with nothing in the hole.
+   */
+  glazed: boolean
 }
 
 export type ShelfSpec = {
@@ -40,33 +48,109 @@ export type ShelfSpec = {
   /** Degrees clockwise about Y. 0 faces +Z (south); the front is the open side. */
   facing: number
   rows: number
+  /**
+   * A starting label for the case, written on a card on its top edge. You can
+   * relabel a shelf in the app, and that overrides this — the app's labels live
+   * in `books.json` so that hand edits and app edits never fight over a file.
+   */
+  label?: string
 }
 
+/**
+ * Everything that stands in a room.
+ *
+ * The list has grown past "a chair and a rug" because a library you want to be
+ * in is not only bookcases: the kitchen, the record player and the picture on
+ * the wall are what make it somewhere rather than a warehouse. Each kind is a
+ * few boxes and cylinders in `Furniture.tsx` — nothing here is a model file, so
+ * the repo stays text and the proportions stay arguable.
+ */
 export type FurnitureKind =
+  // seating and surfaces
   | 'armchair'
+  | 'sofa'
+  | 'diningchair'
+  | 'bench'
   | 'footstool'
   | 'sidetable'
-  | 'rug'
-  | 'floorlamp'
+  | 'table'
+  // storage
   | 'box'
+  | 'recordshelf'
+  | 'kitchencounter'
+  // things that do something
+  | 'recordplayer'
+  | 'coffeemaker'
+  | 'fireplace'
+  // light
+  | 'floorlamp'
+  | 'pendant'
+  // dressing
+  | 'rug'
+  | 'plant'
+  | 'picture'
+  // structure
+  | 'stairs'
 
 export type FurnitureSpec = {
   id: string
   kind: FurnitureKind
   at: [number, number]
   facing: number
-  /** Rugs are the only thing whose footprint is worth varying. */
+  /**
+   * Footprint override, in metres. For a `picture` this is the framed size —
+   * width by *height* — because a picture has no depth worth naming.
+   */
   size?: [number, number]
+  /** Height override, for the kinds where it is worth varying (tables, counters). */
+  height?: number
+  /** Centre height above the floor. Only pictures hang. */
+  y?: number
+  /**
+   * Which file in `artwork/` a picture shows. Omitted, pictures are dealt out
+   * of the folder in document order, so dropping images in is enough.
+   */
+  source?: string
+  /** How far a flight of stairs climbs. Its `size` is [width, run]. */
+  rise?: number
+  /**
+   * Whether a lamp starts lit. You can switch lights in the app, and that is
+   * remembered in `.library/lights.json` — this is only the initial state.
+   */
+  on?: boolean
 }
+
+/** A rectangle cut out of a room's floor, for a stairwell. */
+export type FloorHole = {
+  at: [number, number]
+  size: [number, number]
+}
+
+export type FloorFinish = 'boards' | 'deck' | 'stone'
 
 export type RoomSpec = {
   id: string
   name: string
-  /** Room centre in world metres. Rooms are axis-aligned and must not overlap. */
+  /** Room centre in world metres. Rooms are axis-aligned. */
   origin: [number, number]
   /** Width along X, depth along Z. */
   size: [number, number]
   height: number
+  /**
+   * Height of this room's floor above the world's ground plane. A loft is a
+   * room with an elevation, standing over another room's plan — which is why
+   * rooms may overlap now, as long as they are on different levels.
+   */
+  elevation: number
+  /** Which walls are built. A porch has none; a loft has three and a balustrade. */
+  walls: Wall[]
+  /** False for a room whose ceiling is the floor of the room above it. */
+  ceiling: boolean
+  /** Rectangles missing from the floor, so a stair can come up through it. */
+  holes: FloorHole[]
+  floor: FloorFinish
+  /** True for a porch: no interior lighting, and it is not "inside". */
+  outdoor: boolean
   openings: Opening[]
   shelves: ShelfSpec[]
   furniture: FurnitureSpec[]
@@ -120,6 +204,16 @@ function str(source: Json, key: string, path: string): string {
   return value as string
 }
 
+/** An optional string, for the fields that simply may not be there. */
+function optionalStr(source: Json, key: string, path: string): string | undefined {
+  const value = source[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    fail(`${path}.${key}`, `expected a non-empty string, found ${describe(value)}`)
+  }
+  return value as string
+}
+
 /**
  * An id, which is used as part of a `shelfId:row` key in the book layout — so a
  * colon in one would make that key ambiguous and quietly misplace books.
@@ -139,6 +233,23 @@ function num(source: Json, key: string, path: string, fallback?: number): number
     fail(`${path}.${key}`, `expected a number, found ${describe(value)}`)
   }
   return value as number
+}
+
+function optionalNum(source: Json, key: string, path: string): number | undefined {
+  return source[key] === undefined ? undefined : num(source, key, path)
+}
+
+function bool(source: Json, key: string, path: string, fallback: boolean): boolean {
+  const value = source[key]
+  if (value === undefined) return fallback
+  if (typeof value !== 'boolean') {
+    fail(`${path}.${key}`, `expected true or false, found ${describe(value)}`)
+  }
+  return value as boolean
+}
+
+function optionalBool(source: Json, key: string, path: string): boolean | undefined {
+  return source[key] === undefined ? undefined : bool(source, key, path, false)
 }
 
 function positive(source: Json, key: string, path: string, fallback?: number): number {
@@ -182,13 +293,28 @@ function oneOf<T extends string>(
 }
 
 const WALLS = ['north', 'south', 'east', 'west'] as const
-const FURNITURE_KINDS = [
+const FLOORS = ['boards', 'deck', 'stone'] as const
+
+export const FURNITURE_KINDS = [
   'armchair',
+  'sofa',
+  'diningchair',
+  'bench',
   'footstool',
   'sidetable',
-  'rug',
-  'floorlamp',
+  'table',
   'box',
+  'recordshelf',
+  'kitchencounter',
+  'recordplayer',
+  'coffeemaker',
+  'fireplace',
+  'floorlamp',
+  'pendant',
+  'rug',
+  'plant',
+  'picture',
+  'stairs',
 ] as const
 
 function parseOpening(raw: unknown, path: string): Opening {
@@ -201,6 +327,7 @@ function parseOpening(raw: unknown, path: string): Opening {
     height: positive(source, 'height', path, kind === 'door' ? 2.05 : 1.5),
     sill: num(source, 'sill', path, kind === 'door' ? 0 : 0.9),
     kind,
+    glazed: bool(source, 'glazed', path, kind === 'window'),
   }
 }
 
@@ -208,12 +335,15 @@ function parseShelf(raw: unknown, path: string): ShelfSpec {
   const source = object(raw, path)
   const rows = positive(source, 'rows', path, 5)
   if (!Number.isInteger(rows)) fail(`${path}.rows`, `expected a whole number, found ${rows}`)
-  return {
+  const shelf: ShelfSpec = {
     id: identifier(source, 'id', path),
     at: pair(source, 'at', path),
     facing: num(source, 'facing', path, 0),
     rows,
   }
+  const label = optionalStr(source, 'label', path)
+  if (label !== undefined) shelf.label = label
+  return shelf
 }
 
 function parseFurniture(raw: unknown, path: string): FurnitureSpec {
@@ -225,7 +355,44 @@ function parseFurniture(raw: unknown, path: string): FurnitureSpec {
     facing: num(source, 'facing', path, 0),
   }
   if (source.size !== undefined) spec.size = pair(source, 'size', path)
+
+  const height = optionalNum(source, 'height', path)
+  if (height !== undefined) spec.height = height
+  const y = optionalNum(source, 'y', path)
+  if (y !== undefined) spec.y = y
+  const rise = optionalNum(source, 'rise', path)
+  if (rise !== undefined) spec.rise = rise
+  const source_ = optionalStr(source, 'source', path)
+  if (source_ !== undefined) spec.source = source_
+  const on = optionalBool(source, 'on', path)
+  if (on !== undefined) spec.on = on
+
   return spec
+}
+
+function parseHole(raw: unknown, path: string): FloorHole {
+  const source = object(raw, path)
+  const size = pair(source, 'size', path)
+  if (size[0] <= 0 || size[1] <= 0) {
+    fail(`${path}.size`, `expected a positive width and depth, found [${size[0]}, ${size[1]}]`)
+  }
+  return { at: pair(source, 'at', path), size }
+}
+
+/**
+ * Which walls to build. Omitted means all four, because that is what a room is;
+ * an explicit empty list is a porch, and is deliberately allowed.
+ */
+function parseWalls(source: Json, path: string): Wall[] {
+  const value = source.walls
+  if (value === undefined) return [...WALLS]
+  if (!Array.isArray(value)) fail(`${path}.walls`, `expected a list, found ${describe(value)}`)
+  return (value as unknown[]).map((item, i) => {
+    if (typeof item !== 'string' || !WALLS.includes(item as Wall)) {
+      fail(`${path}.walls[${i}]`, `expected one of ${WALLS.join(', ')} — found ${JSON.stringify(item)}`)
+    }
+    return item as Wall
+  })
 }
 
 function parseRoom(raw: unknown, path: string): RoomSpec {
@@ -235,6 +402,7 @@ function parseRoom(raw: unknown, path: string): RoomSpec {
   if (size[0] <= 0 || size[1] <= 0) {
     fail(`${path}.size`, `expected positive width and depth, found [${size[0]}, ${size[1]}]`)
   }
+  const outdoor = bool(source, 'outdoor', path, false)
 
   return {
     id,
@@ -242,6 +410,12 @@ function parseRoom(raw: unknown, path: string): RoomSpec {
     origin: pair(source, 'origin', path),
     size,
     height: positive(source, 'height', path, 3.2),
+    elevation: num(source, 'elevation', path, 0),
+    walls: parseWalls(source, path),
+    ceiling: bool(source, 'ceiling', path, true),
+    holes: list(source, 'holes', path).map((item, i) => parseHole(item, `${path}.holes[${i}]`)),
+    floor: oneOf(source, 'floor', path, FLOORS, outdoor ? 'deck' : 'boards'),
+    outdoor,
     openings: list(source, 'openings', path).map((item, i) =>
       parseOpening(item, `${path}.openings[${i}]`),
     ),

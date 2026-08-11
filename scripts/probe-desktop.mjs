@@ -171,6 +171,11 @@ try {
   const books = await invoke('list_books')
   check('books listed with titles', books.length > 0 && books.every((b) => b.title), `${books.length} books`)
 
+  // The generated library keeps a PDF in `music/` precisely so this can fail:
+  // a scan reads `books/` and leaves the rest of the folder alone.
+  const strays = books.filter((b) => /[\\/](music|artwork)[\\/]/i.test(b.path))
+  check('only the books folder was indexed', strays.length === 0, strays.map((b) => b.path).join(', '))
+
   const epubs = books.filter((b) => b.format === 'epub')
   const withCovers = epubs.filter((b) => b.cover)
   check(
@@ -186,7 +191,22 @@ try {
   await cdp.json('window.__app.reloadLibrary()')
   await sleep(1500)
   const after = await cdp.json('window.__app.stats()')
-  check('real books reached the shelves', after.shelved > 0, `${after.shelved} shelved of ${after.books}`)
+  check(
+    'real books arrived in the boxes',
+    after.books > 0 && after.boxed === after.books,
+    `${after.boxed} boxed of ${after.books}`,
+  )
+
+  // A library arrives boxed; unpacking one is what puts books on the shelves.
+  const boxes = await cdp.json('window.__app.boxIds()')
+  await cdp.json(`window.__app.emptyBoxForTest(${JSON.stringify(boxes?.[0] ?? '')})`)
+  await sleep(800)
+  const unpacked = await cdp.json('window.__app.stats()')
+  check(
+    'unpacking a box puts real books on the shelves',
+    unpacked.shelved > 0,
+    `${unpacked.shelved} shelved of ${unpacked.books}`,
+  )
 
   // --- reading ----------------------------------------------------------
   const pdf = books.find((b) => b.format === 'pdf')

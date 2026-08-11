@@ -46,3 +46,17 @@ For the default map:
 
 - Update the docs, the Readme, and CLAUDE.md
 - Create more documenation for building custom maps
+
+## Batch 3
+
+- The geometry and the placement of the bookshelves and stairs is bad; make everything a bit more spacious and less crammed
+- Make sure that the CLI scan command also scans artwork and music
+- The buttons for browsing a box [ ] are bad.
+- The artwork is black
+- Opened books show a black page
+- The lighting is very aggressive
+- Allow day/night switching
+- Rework the textures and models to fit the "modern cabin in the woods" vibe
+- When picking up a book for the first time, the cover is black
+- Dropping a book places it in mid air
+- There is on random label "Poetry" on the first floor

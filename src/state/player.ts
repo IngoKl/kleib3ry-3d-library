@@ -9,8 +9,14 @@ export const player = {
   pitch: 0,
   /** Metres per second, for head bob and the HUD. */
   speed: 0,
-  /** Current eye height. Moves between standing, kneeling and sitting. */
+  /** Current eye height, in world metres. Includes whichever floor you are on. */
   eye: 1.68,
+  /**
+   * Height of the floor under your feet. Zero everywhere until a library has a
+   * loft; the walk controller will not let it change by more than a step
+   * without a staircase to do it on.
+   */
+  floor: 0,
   /** 0 standing, 1 fully down. Kept here so the HUD can read it. */
   crouch: 0,
 }
@@ -26,8 +32,12 @@ export const KNEEL_HEIGHT = 0.92
 export const SEATED_EYE = 1.14
 export const PLAYER_RADIUS = 0.28
 
-export function teleport(x: number, z: number, yaw = player.yaw) {
+export function teleport(x: number, z: number, yaw = player.yaw, floor?: number) {
   player.x = x
   player.z = z
   player.yaw = yaw
+  if (floor !== undefined) {
+    player.floor = floor
+    player.eye = floor + EYE_HEIGHT
+  }
 }

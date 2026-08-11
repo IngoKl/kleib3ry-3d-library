@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { aabbFromCentre, blocked, overlapsCircle, resolveMove } from '../src/scene/collision'
+import { solidsAt } from '../src/scene/walk'
 import { SHELF, rowFromLocalY, rowMetrics, shelfColliders } from '../src/world/shelf'
 import {
   INTERIOR_WIDTH,
@@ -55,8 +56,20 @@ test.describe('collision', () => {
   })
 
   test('nothing is sitting on the player spawn', () => {
-    const colliders = [...WORLD.colliders, ...shelfColliders(WORLD.shelves)]
-    expect(blocked(colliders, { x: WORLD.spawn.x, z: WORLD.spawn.z }, 0.28)).toBe(false)
+    // Asked at the spawn's own *level*. `WORLD.colliders` is every solid in the
+    // building flattened, which since the loft includes a balustrade two and a
+    // half metres over the spawn point — something you walk under, not into.
+    const solids = [...WORLD.solids, ...shelfColliders(WORLD.shelves)]
+    const here = solidsAt(solids, WORLD.spawn.y)
+    expect(blocked(here, { x: WORLD.spawn.x, z: WORLD.spawn.z }, 0.28)).toBe(false)
+  })
+
+  test('a solid upstairs is not a wall downstairs', () => {
+    const solids = [...WORLD.solids, ...shelfColliders(WORLD.shelves)]
+    const loft = WORLD.rooms.find((room) => room.elevation > 0)!
+    // The same query one floor up finds more, because that is where the loft is.
+    expect(solidsAt(solids, loft.elevation).length).toBeGreaterThan(0)
+    expect(solidsAt(solids, 0).length).not.toBe(solidsAt(solids, loft.elevation).length)
   })
 })
 

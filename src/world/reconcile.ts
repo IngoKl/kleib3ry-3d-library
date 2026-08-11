@@ -38,14 +38,23 @@ export type BookLayout = {
   rows: Record<RowKey, string[]>
   /** Furniture id of a box -> the books in it, bottom of the pile first. */
   boxes?: Record<string, string[]>
+  /**
+   * Books put down in the room rather than shelved or boxed. Only the ids
+   * matter here — where each one is lying is the layout's business, not
+   * reconciliation's. What reconciliation needs to know is that a book on the
+   * table has been placed, so a rescan must not sweep it into a box.
+   */
+  loose?: Record<string, unknown>
 }
 
 /**
  * 2 rekeyed rows from shelf index to shelf id; 3 added bookmarks; 4 added which
- * box a book is in, and stopped shelving newly indexed books automatically.
- * Older documents still load — every field added since has been optional.
+ * box a book is in, and stopped shelving newly indexed books automatically; 5
+ * added books put down in the room, reading progress, shelf labels, and where
+ * the boxes have been shoved to. Older documents still load — every field added
+ * since has been optional.
  */
-export const LAYOUT_SCHEMA_VERSION = 4
+export const LAYOUT_SCHEMA_VERSION = 5
 
 export type Reconciliation = {
   rows: Record<RowKey, string[]>
@@ -134,6 +143,12 @@ export function reconcile(
     }
     if (kept.length) rows[key] = kept
   }
+
+  // A book lying on the table has been put somewhere, deliberately — so it
+  // counts as placed, and a rescan does not tidy the room. Marked before the
+  // boxes are read, so that if a document somehow claims both, where you last
+  // put it down wins over the box it used to be in.
+  for (const id of Object.keys(saved?.loose ?? {})) wasPlaced.add(id)
 
   // Which books are in which box. A box that has been taken out of the document
   // tips its books into the ones that are left, rather than losing them.

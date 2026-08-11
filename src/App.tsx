@@ -2,12 +2,17 @@ import { useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Lighting } from './scene/Lighting'
+import { Outside } from './scene/Outside'
 import { Rooms } from './scene/Rooms'
 import { Furniture } from './scene/Furniture'
 import { Bookshelves } from './scene/Bookshelves'
+import { ShelfLabels } from './scene/ShelfLabels'
 import { Books } from './scene/Books'
 import { BoxedBooks } from './scene/BoxedBooks'
+import { LooseBooks } from './scene/LooseBooks'
+import { Records } from './scene/Records'
 import { Interaction } from './scene/Interaction'
+import { Handling } from './scene/Handling'
 import { PlacementGhost } from './scene/PlacementGhost'
 import { Player } from './scene/Player'
 import { HeldBook } from './scene/HeldBook'
@@ -19,10 +24,14 @@ import { metrics } from './state/metrics'
 import { EYE_HEIGHT, player, teleport } from './state/player'
 import { useAppStore } from './state/store'
 import { useLibraryStore } from './state/library'
+import { useLightStore } from './state/lights'
+import { useMediaStore } from './state/media'
 import { useWorldStore } from './state/world'
+import { warmCovers } from './state/covers'
 import { library } from './services'
 import { setWorldText } from './services/browserDriver'
 import { roomAt } from './world/derive'
+import { boxesIn } from './world/boxes'
 import { sceneRefs } from './scene/refs'
 import { ASSIGNABLE_SLOTS } from './scene/spineAtlas'
 
@@ -35,15 +44,25 @@ export default function App() {
   const watchWorld = useWorldStore((s) => s.watch)
   const worldLoaded = useWorldStore((s) => s.loaded)
 
+  const loadLights = useLightStore((s) => s.load)
+  const loadMedia = useMediaStore((s) => s.load)
+
   // The world has to be up before the library, or there are no shelves to
   // reconcile against and every book would look like it had nowhere to go.
+  // The records, the pictures and the light switches all hang off the library
+  // folder too, so they come along behind it.
   useEffect(() => {
     void (async () => {
       await loadWorld()
       await loadRoot()
       await loadLibrary()
+      await Promise.all([loadLights(), loadMedia()])
+      // Start the cover sweep only once everything else is up: it is a long,
+      // low-priority walk through the whole catalogue, and it must never be
+      // what the first frame is waiting on.
+      warmCovers(useLibraryStore.getState().books)
     })()
-  }, [loadWorld, loadRoot, loadLibrary])
+  }, [loadWorld, loadRoot, loadLibrary, loadLights, loadMedia])
 
   useEffect(() => watchWorld(), [watchWorld])
 
@@ -54,7 +73,7 @@ export default function App() {
     const world = useWorldStore.getState().world
     if (!world || spawned.current) return
     spawned.current = true
-    teleport(world.spawn.x, world.spawn.z, world.spawn.yaw)
+    teleport(world.spawn.x, world.spawn.z, world.spawn.yaw, world.spawn.y)
   }, [worldLoaded])
 
   // Verification surface. Pointer lock is unavailable to a headless driver, so
@@ -85,7 +104,9 @@ export default function App() {
       /** Which room the player is standing in, by id. */
       room: () => {
         const world = useWorldStore.getState().world
-        return world ? (roomAt(world, player.x, player.z)?.id ?? null) : null
+        // Which storey you are on matters: the loft stands inside the great
+        // room's plan, so a position alone does not name a room.
+        return world ? (roomAt(world, player.x, player.z, player.floor)?.id ?? null) : null
       },
       focusedBook: () => {
         const { focusedBook } = useAppStore.getState()
@@ -99,6 +120,10 @@ export default function App() {
       focusedSeat: () => useAppStore.getState().focusedSeat,
       focusedBox: () => useAppStore.getState().focusedBox,
       boxTarget: () => useAppStore.getState().boxTarget,
+      /** What a box is showing of what it holds: `{ offset, shown, total }`. */
+      boxView: (boxId: string) => useAppStore.getState().boxViews[boxId] ?? null,
+      /** The book ids currently visible on top of the piles. */
+      visibleInBoxes: () => [...sceneRefs.boxedIds],
       seat: () => useAppStore.getState().seat,
       drawn: () => useAppStore.getState().drawn,
       rowsOf: (shelfId: string, row: number) =>
@@ -106,6 +131,33 @@ export default function App() {
       savedRowsOf: (shelfId: string, row: number) =>
         useLibraryStore.getState().savedRows[`${shelfId}:${row}`] ?? [],
       boxedBooks: () => [...useLibraryStore.getState().boxed],
+      /** The moving boxes this world has, in document order. */
+      boxIds: () => {
+        const world = useWorldStore.getState().world
+        return world ? boxesIn(world).map((box) => box.id) : []
+      },
+      /**
+       * Where the furniture actually is, so a test can stand in front of
+       * something rather than at a coordinate that was true of one map.
+       */
+      places: () => {
+        const world = useWorldStore.getState().world
+        return {
+          shelves: (world?.shelves ?? []).map((shelf) => ({
+            id: shelf.id,
+            x: shelf.x,
+            z: shelf.z,
+            rotationY: shelf.rotationY,
+            rows: shelf.rows,
+          })),
+          boxes: (world ? boxesIn(world) : []).map((box) => ({
+            id: box.id,
+            x: box.x,
+            z: box.z,
+            height: box.height,
+          })),
+        }
+      },
       boxContents: (boxId: string) => [...(useLibraryStore.getState().boxes[boxId] ?? [])],
       savedBoxContents: (boxId: string) => [
         ...(useLibraryStore.getState().savedBoxes[boxId] ?? []),
@@ -117,6 +169,40 @@ export default function App() {
        */
       emptyBoxForTest: (boxId: string) =>
         useLibraryStore.getState().emptyBoxOntoShelves(boxId),
+      /** Books lying about the room, and where each one came to rest. */
+      looseBooks: () => ({ ...useLibraryStore.getState().loose }),
+      /** Every piece of furniture, where it actually is — boxes get shoved. */
+      furniture: () =>
+        (useWorldStore.getState().world?.furniture ?? []).map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          room: item.roomId,
+          x: item.x,
+          y: item.y,
+          z: item.z,
+        })),
+      /** Strip every shelf and repack the library into the boxes. */
+      packEverythingForTest: () => useLibraryStore.getState().packEverything(),
+      labelOf: (shelfId: string) => useLibraryStore.getState().labelOf(shelfId),
+      setLabelForTest: (shelfId: string, text: string) =>
+        useLibraryStore.getState().setLabel(shelfId, text),
+      /** Which lamps are lit, by furniture id. */
+      lights: () => {
+        const world = useWorldStore.getState().world
+        const lights = useLightStore.getState()
+        return Object.fromEntries(
+          (world?.lights ?? []).map((lamp) => [lamp.id, lights.isOn(lamp.id, lamp.defaultOn)]),
+        )
+      },
+      toggleLightForTest: (id: string) => {
+        const world = useWorldStore.getState().world
+        const lamp = world?.lights.find((candidate) => candidate.id === id)
+        return lamp ? useLightStore.getState().toggle(id, lamp.defaultOn) : null
+      },
+      /** The records the music folder produced, and what is on the deck. */
+      records: () => useMediaStore.getState().tracks.map((track) => track.id),
+      nowPlaying: () => useMediaStore.getState().playing,
+      artwork: () => useMediaStore.getState().artwork.map((picture) => picture.id),
       spines: () => ({
         printed: sceneRefs.printedSpines,
         slots: ASSIGNABLE_SLOTS,
@@ -169,18 +255,26 @@ export default function App() {
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
         }}
-        camera={{ fov: 72, near: 0.05, far: 60, position: [player.x, EYE_HEIGHT, player.z] }}
+        // Far enough to see the far shore now that there is one. The fog does
+        // the actual work of hiding the edge of the world; this only has to
+        // reach past the sky dome.
+        camera={{ fov: 72, near: 0.05, far: 400, position: [player.x, EYE_HEIGHT, player.z] }}
       >
-        <color attach="background" args={['#0e0c0a']} />
+        <color attach="background" args={['#9dc0dc']} />
         <Probe />
         <Lighting />
+        <Outside />
         <Rooms />
         <Furniture />
         <Bookshelves />
+        <ShelfLabels />
         <Books />
         <BoxedBooks />
+        <LooseBooks />
+        <Records />
         <PlacementGhost />
         <Interaction />
+        <Handling />
         <Player />
         <HeldBook />
         <Reader />

@@ -1,5 +1,6 @@
 pub mod db;
 pub mod index;
+pub mod media;
 pub mod probe;
 
 use std::fs;
@@ -127,6 +128,10 @@ pub const CONFIG_DIR: &str = ".library";
 struct SaveFiles {
     world: PathBuf,
     layout: PathBuf,
+    /// Which lamps are switched on. Its own file because it is about the room
+    /// rather than about the books, and because deleting it is a sensible way
+    /// to turn every light in the library back on.
+    lights: PathBuf,
 }
 
 /// Where rendered and extracted covers are cached.
@@ -177,7 +182,30 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
     Ok(SaveFiles {
         world: base.join("library.json"),
         layout: base.join("books.json"),
+        lights: base.join("lights.json"),
     })
+}
+
+/// Let the WebView load one of the library folder's own media directories.
+///
+/// The asset scope starts empty and stays that way apart from three named
+/// directories — covers, music, artwork — each granted only when something
+/// actually asks for it. Audio is the reason this exists rather than a
+/// `read_music_file` command to match `read_book_file`: a track is streamed
+/// while it plays, and pulling a whole FLAC through IPC to play it would be
+/// both slower and a great deal more memory than letting the WebView fetch it.
+fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
+    let root = match root_of(app) {
+        Ok(root) => root,
+        Err(Error::NoLibraryRoot) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let dir = root.join(name);
+    if !dir.is_dir() {
+        return Ok(None);
+    }
+    app.asset_protocol_scope().allow_directory(&dir, true)?;
+    Ok(Some(dir))
 }
 
 /// Changed-ness of the world file, cheaply: modified time and length.
@@ -373,6 +401,52 @@ fn save_layout(app: AppHandle, layout: serde_json::Value) -> Result<()> {
     Ok(())
 }
 
+/// Every record in `<library>/music`, with the folder opened to the WebView so
+/// the player can stream them.
+///
+/// Returns an empty list rather than an error when there is no music folder, or
+/// no library folder at all: a library nobody has put music in is a normal
+/// library, and the record shelf simply stands empty.
+#[tauri::command(async)]
+fn list_music(app: AppHandle) -> Result<Vec<media::Track>> {
+    let Some(dir) = allow_media(&app, media::MUSIC_DIR)? else {
+        return Ok(Vec::new());
+    };
+    // `list_tracks` takes the library root and looks for `music/` itself, so
+    // hand it the parent of the directory just authorised.
+    Ok(media::list_tracks(dir.parent().unwrap_or(&dir)))
+}
+
+/// Every picture in `<library>/artwork`, for hanging on the walls.
+#[tauri::command(async)]
+fn list_artwork(app: AppHandle) -> Result<Vec<media::Artwork>> {
+    let Some(dir) = allow_media(&app, media::ARTWORK_DIR)? else {
+        return Ok(Vec::new());
+    };
+    Ok(media::list_artwork(dir.parent().unwrap_or(&dir)))
+}
+
+/// Which lamps are on. A missing file means "as `library.json` says", which is
+/// also what you get by deleting it.
+#[tauri::command]
+fn get_lights(app: AppHandle) -> Result<Option<serde_json::Value>> {
+    match fs::read_to_string(&save_files(&app)?.lights) {
+        Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+#[tauri::command]
+fn save_lights(app: AppHandle, state: serde_json::Value) -> Result<()> {
+    let file = save_files(&app)?.lights;
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&file, serde_json::to_string_pretty(&state)?)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -390,6 +464,10 @@ pub fn run() {
             save_paths,
             get_layout,
             save_layout,
+            list_music,
+            list_artwork,
+            get_lights,
+            save_lights,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

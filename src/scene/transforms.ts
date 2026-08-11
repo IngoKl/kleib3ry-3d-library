@@ -24,8 +24,12 @@ export function shelfTransforms(world: DerivedWorld): ShelfTransform[] {
     const quaternion = new THREE.Quaternion().setFromAxisAngle(Y_AXIS, shelf.rotationY)
     return {
       quaternion,
+      // `shelf.y` is the floor the case stands on, which is 0 for every room
+      // until a library has a loft — and everything that places something
+      // against a shelf goes through this matrix, so it only has to be right
+      // in one place.
       matrix: new THREE.Matrix4().compose(
-        new THREE.Vector3(shelf.x, 0, shelf.z),
+        new THREE.Vector3(shelf.x, shelf.y, shelf.z),
         quaternion,
         new THREE.Vector3(1, 1, 1),
       ),

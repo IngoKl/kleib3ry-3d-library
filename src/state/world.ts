@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { library } from '../services'
 import type { SavePaths } from '../services/types'
 import { DEFAULT_WORLD_TEXT } from '../world/defaults'
-import { deriveWorld, type DerivedWorld } from '../world/derive'
+import { deriveWorld, type DerivedWorld, type FurnitureOverride } from '../world/derive'
 import { WorldError, parseWorldText } from '../world/schema'
 
 /**
@@ -27,10 +27,21 @@ type WorldState = {
   paths: SavePaths | null
   /** Bumped whenever a new document is applied; the layout watches this. */
   revision: number
+  /**
+   * Where furniture has been shoved to, overriding the document.
+   *
+   * Only the moving boxes can be shoved, and the reason this lives here rather
+   * than in `library.json` is that `library.json` is a file a person wrote:
+   * pushing a box across the room must not rewrite their comments. The book
+   * layout owns the persistence; this store only owns the effect.
+   */
+  placements: Record<string, FurnitureOverride>
 
   load: () => Promise<void>
   /** Re-read the file and apply it if it parses. Returns true if it changed. */
   refresh: () => Promise<boolean>
+  /** Re-derive with a new set of furniture overrides. */
+  setPlacements: (placements: Record<string, FurnitureOverride>) => void
   watch: () => () => void
 }
 
@@ -38,7 +49,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
   /** Parse and apply, or record why not. Never partially applies. */
   const apply = (text: string): boolean => {
     try {
-      const world = deriveWorld(parseWorldText(text))
+      const world = deriveWorld(parseWorldText(text), get().placements)
       set((state) => ({
         world,
         text,
@@ -69,6 +80,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     error: null,
     paths: null,
     revision: 0,
+    placements: {},
 
     load: async () => {
       try {
@@ -103,6 +115,17 @@ export const useWorldStore = create<WorldState>((set, get) => {
       const text = await library.loadWorld()
       if (text === null || text === get().text) return false
       return apply(text)
+    },
+
+    setPlacements: (placements) => {
+      const text = get().text
+      set({ placements })
+      // Re-derive from the same text: a shoved box changes where things are,
+      // not what the document says, and the document is still the only source.
+      if (text !== null) {
+        set({ world: deriveWorld(parseWorldText(text), placements) })
+        set((state) => ({ revision: state.revision + 1 }))
+      }
     },
 
     watch: () => {

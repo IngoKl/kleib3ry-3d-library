@@ -27,6 +27,13 @@ function furnitureIdOf(hit: THREE.Intersection | undefined): string | null {
   while (node && node.userData.furnitureId === undefined) node = node.parent
   return (node?.userData.furnitureId as string | undefined) ?? null
 }
+
+/** The same, for a book left open on a table — its own group of meshes. */
+function bookIdOf(hit: THREE.Intersection | undefined): string | null {
+  let node: THREE.Object3D | null = hit?.object ?? null
+  while (node && node.userData.bookId === undefined) node = node.parent
+  return (node?.userData.bookId as string | undefined) ?? null
+}
 export function Interaction() {
   const camera = useThree((s) => s.camera)
   const mode = useAppStore((s) => s.mode)
@@ -48,6 +55,23 @@ export function Interaction() {
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
       store.setBoxTarget(null)
+      store.setFocusedFixture(null)
+      store.setFocusedRecord(null)
+      store.setSurfaceTarget(null)
+      return
+    }
+
+    // Carrying a moving box fills your arms: nothing else is offered, because
+    // everything else needs a hand you have not got.
+    if (store.carriedBox !== null) {
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedSeat(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedFixture(null)
+      store.setFocusedRecord(null)
+      store.setSurfaceTarget(null)
       return
     }
 
@@ -60,11 +84,17 @@ export function Interaction() {
     if (store.held === null) {
       store.setShelfTarget(null)
       store.setBoxTarget(null)
+      store.setSurfaceTarget(null)
 
-      // Whichever is nearer: a book on a shelf, or one in a box.
-      let best: { distance: number; id: string } | null = null
+      // Whichever is nearer: a book on a shelf, or one in a box. A book in a
+      // box carries that box with it, so looking into a pile offers both the
+      // one book (E) and the boxful (G) without having to find the cardboard.
+      let best: { distance: number; id: string; inBox?: string } | null = null
       let seat: { distance: number; id: string } | null = null
       let box: { distance: number; id: string } | null = null
+      /** A lamp to switch, a deck to start, a coffee maker to fill. */
+      let fixture: { distance: number; id: string } | null = null
+      let record: { distance: number; id: string } | null = null
 
       // A chair, if one is nearer than whatever book is behind it. Recursive,
       // because a chair is a handful of meshes under one group.
@@ -96,8 +126,42 @@ export function Interaction() {
         const hit = raycaster.intersectObject(inBoxes, false)[0]
         const id = hit?.instanceId === undefined ? undefined : sceneRefs.boxedIds[hit.instanceId]
         if (hit && id && (!best || hit.distance < best.distance)) {
+          const owner = hit.instanceId === undefined ? undefined : sceneRefs.boxedOwners[hit.instanceId]
+          best = { distance: hit.distance, id, inBox: owner }
+        }
+      }
+
+      // Books put down about the room: closed ones are instanced, open ones
+      // are their own meshes, and both are picked up exactly like a shelved one.
+      const lying = sceneRefs.looseBooks
+      if (lying) {
+        const hit = raycaster.intersectObject(lying, false)[0]
+        const id = hit?.instanceId === undefined ? undefined : sceneRefs.looseIds[hit.instanceId]
+        if (hit && id && (!best || hit.distance < best.distance)) {
           best = { distance: hit.distance, id }
         }
+      }
+      const open = sceneRefs.openBooks
+      if (open) {
+        const hit = raycaster.intersectObject(open, true)[0]
+        const id = bookIdOf(hit)
+        if (hit && id && (!best || hit.distance < best.distance)) {
+          best = { distance: hit.distance, id }
+        }
+      }
+
+      const crate = sceneRefs.records
+      if (crate) {
+        const hit = raycaster.intersectObject(crate, false)[0]
+        const id = hit?.instanceId === undefined ? undefined : sceneRefs.recordIds[hit.instanceId]
+        if (hit && id) record = { distance: hit.distance, id }
+      }
+
+      const operable = sceneRefs.fixtures
+      if (operable) {
+        const hit = raycaster.intersectObject(operable, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id) fixture = { distance: hit.distance, id }
       }
 
       // A book wins a tie: you are far more often reaching for one than for
@@ -106,12 +170,26 @@ export function Interaction() {
         store.setFocusedBook(null)
         store.setFocusedSeat(seat.id)
         store.setFocusedBox(null)
+        store.setFocusedFixture(null)
+        store.setFocusedRecord(null)
       } else {
         store.setFocusedBook(best?.id ?? null)
         store.setFocusedSeat(null)
-        // The box only offers itself when nothing in it is under the crosshair,
-        // so reaching for one book cannot turn into emptying the whole box.
-        store.setFocusedBox(box && (!best || box.distance < best.distance) ? box.id : null)
+        // The box holding the book under the crosshair, or — with nothing in
+        // the way — the cardboard itself.
+        const cardboard = box && (!best || box.distance < best.distance) ? box.id : null
+        store.setFocusedBox(best?.inBox ?? cardboard)
+
+        // A record and a lamp are only offered when nothing readable is nearer,
+        // so reaching past the crate for a book cannot start the music.
+        const nearer = (candidate: { distance: number } | null) =>
+          candidate !== null && (!best || candidate.distance < best.distance)
+        store.setFocusedRecord(nearer(record) ? record!.id : null)
+        store.setFocusedFixture(
+          nearer(fixture) && (!record || fixture!.distance < record.distance)
+            ? fixture!.id
+            : null,
+        )
       }
       return
     }
@@ -121,10 +199,17 @@ export function Interaction() {
     store.setFocusedBook(null)
     store.setFocusedSeat(null)
     store.setFocusedBox(null)
+    store.setFocusedFixture(null)
+    store.setFocusedRecord(null)
 
     const crates = sceneRefs.boxes
     const boxHit = crates ? raycaster.intersectObject(crates, true)[0] : undefined
     const boxId = furnitureIdOf(boxHit)
+
+    // A table top, which takes a book anywhere on it rather than in a slot.
+    const tops = sceneRefs.surfaces
+    const topHit = tops ? raycaster.intersectObject(tops, true)[0] : undefined
+    const topId = furnitureIdOf(topHit)
 
     let nearest: { distance: number; shelf: number; point: THREE.Vector3 } | null = null
     for (const group of sceneRefs.shelfGroups) {
@@ -143,9 +228,26 @@ export function Interaction() {
     if (boxHit && boxId && (!nearest || boxHit.distance < nearest.distance)) {
       store.setBoxTarget(boxId)
       store.setShelfTarget(null)
+      store.setSurfaceTarget(null)
       return
     }
     store.setBoxTarget(null)
+
+    // The same for a table: closer than the bookcase behind it means you are
+    // putting the book down, not shelving it. Only an upward-facing hit counts
+    // — the side of a counter is not somewhere a book can go.
+    const upward = topHit?.normal !== undefined && topHit.normal.y > 0.5
+    if (topHit && topId && upward && (!nearest || topHit.distance < nearest.distance)) {
+      store.setSurfaceTarget({
+        furnitureId: topId,
+        x: topHit.point.x,
+        y: topHit.point.y,
+        z: topHit.point.z,
+      })
+      store.setShelfTarget(null)
+      return
+    }
+    store.setSurfaceTarget(null)
 
     const transform = nearest ? transforms[nearest.shelf] : undefined
     const shelf = nearest ? world.shelves[nearest.shelf] : undefined

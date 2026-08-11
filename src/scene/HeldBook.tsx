@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useLibraryStore } from '../state/library'
 import { useAppStore } from '../state/store'
-import { coverFor } from '../state/covers'
+import { coverFor, coverImageFor, onCoverReady, peekCoverImage } from '../state/covers'
 
 /**
  * The book currently in hand, floating just below the line of sight. It rides
@@ -21,26 +21,52 @@ export function HeldBook() {
 
   const [cover, setCover] = useState<THREE.Texture | null>(null)
 
-  // Fetch (or render) the cover for whatever is in hand.
+  /**
+   * Fetch (or render) the cover for whatever is in hand.
+   *
+   * Two paths into the same result, deliberately. The first time a PDF is
+   * picked up its cover has to be rasterised, which takes a second or two —
+   * long enough that a book used to be put back down before its artwork ever
+   * arrived. So: take whatever the shared cache already has *synchronously*,
+   * ask for it urgently if it has not, and listen for it landing. Nothing here
+   * waits on a promise that was started for a different reason.
+   */
   useEffect(() => {
     let cancelled = false
+
+    const show = (source: HTMLImageElement | string) => {
+      if (cancelled) return
+      const texture =
+        typeof source === 'string' ? new THREE.TextureLoader().load(source) : new THREE.Texture(source)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.needsUpdate = true
+      setCover(texture)
+    }
+
     setCover(null)
     if (!book) return
 
-    void coverFor(book).then((url) => {
-      if (cancelled || !url) return
-      new THREE.TextureLoader().load(url, (texture) => {
-        if (cancelled) {
-          texture.dispose()
-          return
-        }
-        texture.colorSpace = THREE.SRGBColorSpace
-        setCover(texture)
+    const already = peekCoverImage(book.id)
+    if (already) {
+      show(already)
+    } else {
+      // Jump the background sweep: this is the book somebody is holding.
+      coverImageFor(book)
+      void coverFor(book).then((url) => {
+        if (!cancelled && url) show(url)
       })
-    })
+    }
+
+    const listener = (id: string) => {
+      if (id !== book.id) return
+      const arrived = peekCoverImage(id)
+      if (arrived) show(arrived)
+    }
+    onCoverReady.add(listener)
 
     return () => {
       cancelled = true
+      onCoverReady.delete(listener)
     }
   }, [book])
 

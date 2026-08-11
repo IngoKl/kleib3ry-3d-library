@@ -77,6 +77,19 @@ const FLICK_SPEED = 1.1
  */
 const NO_BOOKMARKS: readonly number[] = Object.freeze([])
 
+/**
+ * Ribbon colours, dealt out in order.
+ *
+ * Several slips in one book used to be several identical red tabs, which told
+ * you how many bookmarks you had and nothing about which was which. Dealing
+ * from a fixed palette in bookmark order means the third one is always the same
+ * colour as long as the first two are still in — so "the green one, about a
+ * third of the way in" becomes a thing you can remember.
+ */
+const RIBBONS = ['#a8384a', '#3f6b8a', '#4b7a4a', '#a87a2e', '#6b4a7a', '#2f6b6b']
+/** The stitched edge of a slip: the same colour, darker. */
+const RIBBON_EDGE = ['#6d2130', '#27455a', '#2f4e2f', '#6d4d18', '#452f4f', '#1c4444']
+
 /** Leaf s has recto 2s+1 and verso 2s+2, so spread s shows 2s and 2s+1. */
 const leftPage = (spread: number) => 2 * spread
 const rightPage = (spread: number) => 2 * spread + 1
@@ -237,7 +250,41 @@ export function Reader() {
     reading ? (s.bookmarks[reading] ?? NO_BOOKMARKS) : NO_BOOKMARKS,
   )
   const toggleBookmark = useLibraryStore((s) => s.toggleBookmark)
+  const setProgress = useLibraryStore((s) => s.setProgress)
   const spreadCount = doc ? Math.ceil(doc.numPages / 2) : 0
+
+  /**
+   * Remember the page, so putting the book down open puts it down *here*.
+   *
+   * Written on every spread change rather than on close, because "close" is
+   * `Esc`, closing the window, or walking away, and only the first of those is
+   * something the reader would get to hear about.
+   */
+  useEffect(() => {
+    if (reading) setProgress(reading, spread)
+  }, [reading, spread, setProgress])
+
+  /**
+   * Jump to a page somebody typed.
+   *
+   * Deliberately a jump and not a flurry of turns: "go to page 400" means open
+   * it there, the way you would with a thumb, not leaf through two hundred
+   * spreads. Any leaf in flight is put away first, exactly as grabbing a ribbon
+   * does — a turn landing after the jump would undo it.
+   */
+  const jumpRequest = useAppStore((s) => s.jumpTo)
+  const clearJump = useAppStore((s) => s.requestJump)
+  useEffect(() => {
+    if (jumpRequest === null || !doc) return
+    const target = Math.max(0, Math.min(spreadCount - 1, jumpRequest))
+    if (turnRef.current) {
+      turnRef.current = null
+      sheets.turning.mesh.visible = false
+      readerStatus.turning = false
+    }
+    setSpread(target)
+    clearJump(null)
+  }, [jumpRequest, doc, spreadCount, sheets, clearJump])
 
   useEffect(() => {
     if (!reading) return
@@ -274,6 +321,14 @@ export function Reader() {
     }
 
     const onKey = (e: KeyboardEvent) => {
+      // While the page field is open, every key is a keystroke in it.
+      if (useAppStore.getState().jumping) return
+
+      if (e.code === 'KeyJ') {
+        e.preventDefault()
+        useAppStore.getState().setJumping(true)
+        return
+      }
       if (e.key === 'ArrowRight' || e.code === 'Space') {
         e.preventDefault()
         lift(1, false)
@@ -503,25 +558,39 @@ export function Reader() {
             along the width by how far into the book they are — so the shape of
             where you have been is visible without opening anything. */}
         <group ref={ribbons}>
-          {bookmarks.map((mark) => {
+          {bookmarks.map((mark, index) => {
             const t = spreadCount > 1 ? mark / (spreadCount - 1) : 0.5
             const x = (t - 0.5) * width * 1.9
             const here = mark === spread
+            const colour = RIBBONS[index % RIBBONS.length]!
+            const edge = RIBBON_EDGE[index % RIBBON_EDGE.length]!
             return (
-              <mesh
+              <group
                 key={mark}
                 // Half in, half out: a slip tucked between the pages with a tab
                 // showing, rather than a flag planted on top of the book.
                 position={[x, PAGE_HEIGHT / 2, -rise - BOOK_THICKNESS / 4]}
                 userData={{ spread: mark }}
               >
-                <boxGeometry args={[0.016, RIBBON_PROUD * 2, BOOK_THICKNESS / 2]} />
-                <meshStandardMaterial
-                  color={here ? '#e8c46a' : '#a8384a'}
-                  roughness={0.85}
-                  emissive={here ? '#3a2c0c' : '#000000'}
-                />
-              </mesh>
+                {/* A darker slip behind the coloured one, a whisker larger on
+                    every side. Two ribbons of similar colour sitting next to
+                    each other read as one wide ribbon without it. */}
+                <mesh userData={{ spread: mark }}>
+                  <boxGeometry args={[0.021, RIBBON_PROUD * 2 + 0.003, BOOK_THICKNESS / 2 + 0.001]} />
+                  <meshStandardMaterial color={edge} roughness={0.9} />
+                </mesh>
+                <mesh position={[0, 0, 0.0012]} userData={{ spread: mark }}>
+                  <boxGeometry args={[0.016, RIBBON_PROUD * 2, BOOK_THICKNESS / 2]} />
+                  <meshStandardMaterial
+                    color={colour}
+                    roughness={0.85}
+                    // The one you are on glows rather than changing colour, so
+                    // it keeps the identity you learned it by.
+                    emissive={here ? colour : '#000000'}
+                    emissiveIntensity={here ? 0.55 : 0}
+                  />
+                </mesh>
+              </group>
             )
           })}
         </group>

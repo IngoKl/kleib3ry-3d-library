@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
 import { useShelfTransforms } from './transforms'
-import { ASSIGNABLE_SLOTS, CELL_REGIONS, FIRST_ASSIGNABLE, makeBookAtlas } from './spineAtlas'
+import { ASSIGNABLE_SLOTS, FIRST_ASSIGNABLE, makeBookAtlas } from './spineAtlas'
+import { makeBookGeometry, makeBookMaterial } from './bookMaterial'
 import { useLibraryStore } from '../state/library'
 import { useAppStore } from '../state/store'
 import { coverImageFor, onCoverReady, peekCoverColour, peekCoverImage } from '../state/covers'
@@ -38,43 +39,6 @@ const REPRINT_EVERY = 6
  */
 const REPRINTS_PER_PASS = 24
 
-/**
- * A unit cube whose *spine* face carries the atlas cell and whose other faces
- * take a single plain point from inside that same cell.
- *
- * The spine is the +Z face — books stand with their thickness along X and their
- * depth into the shelf along Z — and it is the only face you can see once a
- * book has neighbours. Mapping the rest to one cloth-coloured texel keeps them
- * looking like cloth instead of like five more copies of the title.
- */
-function makeBookGeometry(): THREE.BufferGeometry {
-  const geometry = new THREE.BoxGeometry(1, 1, 1)
-  const uv = geometry.attributes.uv as THREE.BufferAttribute
-  // BoxGeometry emits +X, -X, +Y, -Y, +Z, -Z, four vertices each. +Z is the
-  // spine, +X is the front board — the face a book turns towards you.
-  const face = (first: number, [rx, ry, rw, rh]: readonly [number, number, number, number]) => {
-    for (let i = 0; i < 4; i++) {
-      const u = uv.getX(first + i)
-      const v = uv.getY(first + i)
-      uv.setXY(first + i, rx + u * rw, ry + v * rh)
-    }
-  }
-
-  // Everything starts on plain cloth; the two faces you can see get regions.
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, CELL_REGIONS.cloth[0], CELL_REGIONS.cloth[1])
-  const box = new THREE.BoxGeometry(1, 1, 1)
-  const source = box.attributes.uv as THREE.BufferAttribute
-  for (const first of [0, 16]) {
-    for (let i = 0; i < 4; i++) uv.setXY(first + i, source.getX(first + i), source.getY(first + i))
-  }
-  face(0, CELL_REGIONS.cover)
-  face(16, CELL_REGIONS.spine)
-  box.dispose()
-
-  uv.needsUpdate = true
-  return geometry
-}
-
 export function Books() {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const camera = useThree((s) => s.camera)
@@ -102,30 +66,7 @@ export function Books() {
   }, [capacity])
   useEffect(() => () => geometry.dispose(), [geometry])
 
-  /**
-   * The atlas is sampled through a per-instance rectangle, which three has no
-   * built-in for — so `map` is set to get the uv plumbing and the sampling is
-   * then replaced with one that uses our own varying.
-   */
-  const material = useMemo(() => {
-    const created = new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0 })
-    created.map = atlas.texture
-    created.onBeforeCompile = (shader) => {
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          '#include <common>\nattribute vec4 aUvRect;\nvarying vec2 vAtlasUv;',
-        )
-        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvAtlasUv = aUvRect.xy + uv * aUvRect.zw;')
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec2 vAtlasUv;')
-        .replace(
-          '#include <map_fragment>',
-          'diffuseColor *= texture2D( map, vAtlasUv );',
-        )
-    }
-    return created
-  }, [atlas])
+  const material = useMemo(() => makeBookMaterial(atlas), [atlas])
   useEffect(() => () => material.dispose(), [material])
 
   const resolved = useMemo(
@@ -253,10 +194,20 @@ export function Books() {
   const held = useAppStore((s) => s.held)
   useEffect(rewriteAll, [held]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A cover that has finished loading changes both the front board and the
-  // colour of the binding, so the cell has to be drawn again.
+  /**
+   * A cover that has finished loading changes both the front board and the
+   * colour of the binding, so the cell has to be drawn again.
+   *
+   * Only if the book *has* a cell. Covers are warmed for the whole library in
+   * the background now, which means artwork arrives for books nowhere near you
+   * — and giving up a cell for one of those would mean the atlas churning
+   * quietly for minutes while you stand still. A book with no cell will be
+   * drawn with its cover the first time it earns one.
+   */
   useEffect(() => {
-    const listener = (id: string) => sceneRefs.spineDirty.add(id)
+    const listener = (id: string) => {
+      if (cellOwner.current.includes(id)) sceneRefs.spineDirty.add(id)
+    }
     onCoverReady.add(listener)
     return () => {
       onCoverReady.delete(listener)

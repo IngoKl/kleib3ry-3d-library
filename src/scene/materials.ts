@@ -6,11 +6,17 @@ import * as THREE from 'three'
  * about what a library looks like rather than about your library.
  */
 export const MATERIALS = {
-  wall: '#e6ddcd',
-  ceiling: '#f3eee4',
-  skirting: '#d6cbb6',
+  /** Limewashed boards rather than plaster: this is a cabin, not a gallery. */
+  wall: '#e3d8c4',
+  ceiling: '#efe6d5',
+  skirting: '#c9b494',
+  /** Exposed rafters and the lintel over an opening. */
+  timber: '#6d4b2e',
   daylight: '#cfe2f2',
   carcass: '#8a6039',
+  /** Deck boards on the porch, weathered a shade greyer than indoors. */
+  deck: '#8b7358',
+  stone: '#9a948b',
 } as const
 
 /** One texture tile covers this many metres of floor in each direction. */
@@ -29,12 +35,33 @@ function mulberry32(seed: number) {
 }
 
 /**
+ * The three floors a room can have, as base colour plus how far the boards vary.
+ *
+ * Decking is the same drawing with a wider board, a greyer tone and a gap
+ * between the boards, because that is genuinely what the difference looks like
+ * from standing height — and a porch that reads as indoor flooring undoes the
+ * point of having gone outside.
+ */
+const FINISHES = {
+  boards: { r: 138, g: 100, b: 64, plank: PLANK_WIDTH_M, seam: 'rgba(40, 24, 12, 0.5)' },
+  deck: { r: 128, g: 110, b: 86, plank: 0.22, seam: 'rgba(30, 24, 16, 0.75)' },
+  stone: { r: 150, g: 145, b: 136, plank: 0.6, seam: 'rgba(60, 58, 54, 0.55)' },
+} as const
+
+export type FloorFinishName = keyof typeof FINISHES
+
+/**
  * Oak planks, drawn once into a canvas rather than shipped as an asset: it
  * keeps the repo text-only and the parameters legible.
  */
-export function makeFloorTexture(width: number, depth: number): THREE.CanvasTexture {
+export function makeFloorTexture(
+  width: number,
+  depth: number,
+  finish: FloorFinishName = 'boards',
+): THREE.CanvasTexture {
   const size = 1024
-  const planks = Math.round(FLOOR_TILE_M / PLANK_WIDTH_M)
+  const style = FINISHES[finish]
+  const planks = Math.max(2, Math.round(FLOOR_TILE_M / style.plank))
   const plankHeight = size / planks
   const random = mulberry32(0x1b7a)
 
@@ -43,7 +70,7 @@ export function makeFloorTexture(width: number, depth: number): THREE.CanvasText
   canvas.height = size
   const ctx = canvas.getContext('2d')!
 
-  ctx.fillStyle = '#8a6440'
+  ctx.fillStyle = `rgb(${style.r}, ${style.g}, ${style.b})`
   ctx.fillRect(0, 0, size, size)
 
   type Board = { x: number; y: number; w: number }
@@ -58,7 +85,7 @@ export function makeFloorTexture(width: number, depth: number): THREE.CanvasText
       boards.push({ x, y, w })
       // Keep the tint range tight; large jumps read as a checkerboard.
       const shade = 0.93 + random() * 0.12
-      ctx.fillStyle = `rgb(${(138 * shade) | 0}, ${(100 * shade) | 0}, ${(64 * shade) | 0})`
+      ctx.fillStyle = `rgb(${(style.r * shade) | 0}, ${(style.g * shade) | 0}, ${(style.b * shade) | 0})`
       ctx.fillRect(x, y, w, plankHeight)
       x += w
     }
@@ -80,7 +107,7 @@ export function makeFloorTexture(width: number, depth: number): THREE.CanvasText
   ctx.globalAlpha = 1
 
   // Seams: between rows, and at every end joint.
-  ctx.strokeStyle = 'rgba(40, 24, 12, 0.5)'
+  ctx.strokeStyle = style.seam
   ctx.lineWidth = 1.5
   for (let row = 0; row <= planks; row++) {
     const y = row * plankHeight

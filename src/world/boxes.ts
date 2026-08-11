@@ -25,15 +25,27 @@ export type BoxedBook = {
   y: number
   z: number
   rotationY: number
-  /** Metres. Lying flat: width across the box, depth into it, thickness upward. */
+  /** Metres, in the book's own axes: thickness, height, depth. */
   size: [number, number, number]
   colour: string
+}
+
+/** What one box is showing of what it holds, so you can page through the rest. */
+export type BoxView = {
+  /** Index of the first book on show. */
+  offset: number
+  /** How many are on show from there. */
+  shown: number
+  /** How many the box holds altogether. */
+  total: number
 }
 
 export type BoxPacking = {
   placed: BoxedBook[]
   /** Books in a box that the box has no room to show. Still in it, all the same. */
   hidden: string[]
+  /** Box id -> which slice of it is visible. */
+  views: Record<string, BoxView>
   boxes: number
 }
 
@@ -63,16 +75,22 @@ export function packBoxes(
   world: DerivedWorld,
   contents: Record<string, readonly string[]>,
   dims: (id: string) => BookDimensions | undefined,
+  offsets: Record<string, number> = {},
 ): BoxPacking {
   const boxes = boxesIn(world)
   const placed: BoxedBook[] = []
   const hidden: string[] = []
+  const views: Record<string, BoxView> = {}
 
   /** Runs across every box, so neighbouring books never get the same scatter. */
   let nth = 0
 
   for (const box of boxes) {
-    const ids = contents[box.id] ?? []
+    const all = contents[box.id] ?? []
+    // Browsing a box is a slice of it: the pile you can see is the top of what
+    // it holds, and paging moves the slice rather than the books.
+    const offset = Math.max(0, Math.min(Math.floor(offsets[box.id] ?? 0), Math.max(0, all.length - 1)))
+    const ids = all.slice(offset)
     const columns = columnsIn(box)
     const ceiling = box.height * FILL
     const inner = box.depth - 2 * WALL
@@ -104,10 +122,14 @@ export function packBoxes(
           id,
           boxId: box.id,
           x: box.x + localX * cos + localZ * sin,
-          y: stack + size.thickness / 2,
+          // `box.y` is the floor it stands on — a box carried up to the loft
+          // has its pile up there with it.
+          y: box.y + stack + size.thickness / 2,
           z: box.z - localX * sin + localZ * cos,
           rotationY: box.rotationY + spin,
-          size: [size.height, size.thickness, size.depth],
+          // The book's own axes. It is laid on its side by the renderer, which
+          // is what puts its cover up and its printed spine out.
+          size: [size.thickness, size.height, size.depth],
           colour: size.colour,
         })
         stack += size.thickness
@@ -116,8 +138,9 @@ export function packBoxes(
       }
     }
 
-    hidden.push(...ids.slice(cursor))
+    hidden.push(...all.slice(0, offset), ...ids.slice(cursor))
+    views[box.id] = { offset, shown: cursor, total: all.length }
   }
 
-  return { placed, hidden, boxes: boxes.length }
+  return { placed, hidden, views, boxes: boxes.length }
 }

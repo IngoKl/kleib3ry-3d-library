@@ -234,6 +234,59 @@ button:disabled {
   color: var(--dim);
 }
 
+/*
+ * The two places the app asks you to type: a shelf label, and a page number.
+ *
+ * Centred and modal-feeling on purpose. Both take the keyboard away from the
+ * walk controller entirely while they are open, and the field being obviously
+ * *in front of* the room is what makes that read as deliberate rather than as
+ * the controls having stopped working.
+ */
+.field-card {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translateX(-50%);
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: rgba(16, 13, 11, 0.94);
+  border: 1px solid rgba(236, 229, 216, 0.22);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  min-width: 260px;
+}
+
+.field-label {
+  margin: 0 0 7px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.field-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: rgba(236, 229, 216, 0.08);
+  border: 1px solid rgba(236, 229, 216, 0.24);
+  border-radius: 6px;
+  outline: none;
+}
+
+.field-card input:focus {
+  border-color: rgba(243, 217, 160, 0.6);
+}
+
+.field-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--dim);
+}
+
 .lock-hint {
   position: fixed;
   bottom: 22px;

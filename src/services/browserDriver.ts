@@ -1,10 +1,19 @@
 import { buildCatalogue } from '../data/catalogue'
-import { UnsupportedOperation, type IndexedBook, type LayoutDocument, type LibraryService } from './types'
+import {
+  UnsupportedOperation,
+  type IndexedArtwork,
+  type IndexedBook,
+  type IndexedTrack,
+  type LayoutDocument,
+  type LibraryService,
+  type LightState,
+} from './types'
 
 const ROOT_KEY = 'library3d.root'
 const LAYOUT_KEY = 'library3d.layout'
 const WORLD_KEY = 'library3d.world'
 const WORLD_STAMP_KEY = 'library3d.world.stamp'
+const LIGHTS_KEY = 'library3d.lights'
 
 /**
  * Plain-browser driver: no filesystem, a generated stand-in library.
@@ -52,6 +61,59 @@ const PLACEHOLDERS: IndexedBook[] = buildCatalogue(PLACEHOLDER_COUNT).map((book,
   pageCount: 80 + ((i * 37) % 400),
   sizeBytes: 1024 * (200 + ((i * 13) % 4000)),
   indexedAt: 0,
+}))
+
+/**
+ * Stand-in records and pictures, so the record shelf and the picture frames are
+ * furnished in the browser build rather than standing conspicuously empty.
+ *
+ * The records are openly fake — their paths point at nothing, and the player
+ * only ever touches a file when you actually put one on, so nothing here
+ * fetches anything. The pictures are real, in that they are SVG data URLs
+ * generated here: no network, no assets, and a frame with something in it.
+ */
+const RECORD_TITLES: [string, string][] = [
+  ['Wild Is the Wind', 'Nina Simone'],
+  ['Kind of Blue', 'Miles Davis'],
+  ['Music for Airports', 'Brian Eno'],
+  ['The Köln Concert', 'Keith Jarrett'],
+  ['Blue', 'Joni Mitchell'],
+  ['A Love Supreme', 'John Coltrane'],
+  ['Spiegel im Spiegel', 'Arvo Pärt'],
+  ['Selected Ambient Works', 'Aphex Twin'],
+]
+
+const PLACEHOLDER_TRACKS: IndexedTrack[] = RECORD_TITLES.map(([title, artist], i) => ({
+  id: `record-${i}`,
+  path: `placeholder://${title}`,
+  title,
+  artist,
+  album: title,
+  format: i % 3 === 0 ? 'flac' : 'mp3',
+  sizeBytes: 8_000_000 + i * 400_000,
+}))
+
+/** A flat abstract print, as a data URL. Deterministic, so screenshots match. */
+function placeholderPicture(index: number): string {
+  const palettes = [
+    ['#2f4257', '#7d3b32', '#d8c9a8'],
+    ['#3f5a4a', '#8a7350', '#e2ddcb'],
+    ['#5a3a55', '#b08d57', '#efe6d5'],
+  ]
+  const [ink, accent, paper] = palettes[index % palettes.length]!
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
+    <rect width="400" height="300" fill="${paper}"/>
+    <circle cx="${120 + index * 37}" cy="130" r="72" fill="${accent}" opacity="0.85"/>
+    <rect x="40" y="196" width="320" height="10" fill="${ink}"/>
+    <rect x="40" y="216" width="${180 + index * 20}" height="6" fill="${ink}" opacity="0.6"/>
+  </svg>`
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
+const PLACEHOLDER_ARTWORK: IndexedArtwork[] = Array.from({ length: 3 }, (_, i) => ({
+  id: `artwork-${i}`,
+  path: placeholderPicture(i),
+  title: ['Lake, morning', 'Pines', 'Study in ochre'][i]!,
 }))
 
 /**
@@ -140,6 +202,23 @@ export const browserDriver: LibraryService = {
 
   async saveLayout(layout) {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
+  },
+
+  async listTracks() {
+    return PLACEHOLDER_TRACKS
+  },
+
+  async listArtwork() {
+    return PLACEHOLDER_ARTWORK
+  },
+
+  async loadLights() {
+    const stored = localStorage.getItem(LIGHTS_KEY)
+    return stored ? (JSON.parse(stored) as LightState) : null
+  },
+
+  async saveLights(state) {
+    localStorage.setItem(LIGHTS_KEY, JSON.stringify(state))
   },
 
   assetUrl(path) {

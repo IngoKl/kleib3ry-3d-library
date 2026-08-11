@@ -145,9 +145,24 @@ export function coverColourFor(book: IndexedBook): Promise<string | null> {
  * results are cached to disk, so it happens once per book ever.
  */
 const images = new Map<string, HTMLImageElement | null>()
-const imageQueue: IndexedBook[] = []
+/** Books asked for by name — a shelf you are standing at, a book in your hand. */
+const urgent: IndexedBook[] = []
+/** The rest of the library, warmed in the background. */
+const background: IndexedBook[] = []
+/** Claimed the moment a book is queued, so nothing is ever fetched twice. */
+const claimed = new Set<string>()
 let inFlight = 0
 const MAX_IN_FLIGHT = 2
+/**
+ * A pause between background covers.
+ *
+ * The urgent queue runs flat out because you are looking at those books. The
+ * background one is walking the whole library, and for a PDF each entry means
+ * rasterising a page — so it deliberately leaves the main thread alone between
+ * books. A thousand-book library warms itself in a couple of minutes, once, and
+ * every launch after that reads them off disk.
+ */
+const BACKGROUND_GAP_MS = 90
 
 export function peekCoverImage(id: string): HTMLImageElement | null | undefined {
   return images.get(id)
@@ -156,23 +171,27 @@ export function peekCoverImage(id: string): HTMLImageElement | null | undefined 
 /** Called when a cover finishes, so whoever drew the book can redraw it. */
 export const onCoverReady = new Set<(id: string) => void>()
 
+function decode(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const element = new Image()
+    element.crossOrigin = 'anonymous'
+    element.onload = () => resolve(element)
+    element.onerror = () => resolve(null)
+    element.src = url
+  })
+}
+
 function pump() {
-  while (inFlight < MAX_IN_FLIGHT && imageQueue.length > 0) {
-    const book = imageQueue.shift()!
+  while (inFlight < MAX_IN_FLIGHT && (urgent.length > 0 || background.length > 0)) {
+    const fromBackground = urgent.length === 0
+    const book = (fromBackground ? background.shift() : urgent.shift())!
     inFlight += 1
+
     void (async () => {
       let image: HTMLImageElement | null = null
       try {
         const url = await coverFor(book)
-        if (url) {
-          image = await new Promise<HTMLImageElement | null>((resolve) => {
-            const element = new Image()
-            element.crossOrigin = 'anonymous'
-            element.onload = () => resolve(element)
-            element.onerror = () => resolve(null)
-            element.src = url
-          })
-        }
+        if (url) image = await decode(url)
       } catch {
         image = null
       }
@@ -180,17 +199,49 @@ function pump() {
       if (image) colours.set(book.id, sample(image))
       inFlight -= 1
       for (const listener of onCoverReady) listener(book.id)
-      pump()
+      if (fromBackground) setTimeout(pump, BACKGROUND_GAP_MS)
+      else pump()
     })()
   }
 }
 
-/** Queue a book's cover. Safe to call every frame; it only ever queues once. */
+/**
+ * Queue a book's cover, ahead of the background sweep.
+ *
+ * Safe to call every frame: the claim is taken when the book is queued rather
+ * than when it finishes, which is the bug this used to have — a book in flight
+ * was in neither the queue nor the results, so a shelf in view would re-queue
+ * the same rasterisation several times a second.
+ */
 export function coverImageFor(book: IndexedBook) {
-  if (images.has(book.id)) return
-  if (imageQueue.some((queued) => queued.id === book.id)) return
-  images.set(book.id, null) // claim it, so it is not queued twice
-  images.delete(book.id)
-  imageQueue.push(book)
+  if (claimed.has(book.id)) {
+    // Already waiting in the slow lane: promote it, since somebody is looking.
+    const at = background.findIndex((queued) => queued.id === book.id)
+    if (at >= 0) {
+      background.splice(at, 1)
+      urgent.push(book)
+      pump()
+    }
+    return
+  }
+  claimed.add(book.id)
+  urgent.push(book)
+  pump()
+}
+
+/**
+ * Warm the whole library in the background.
+ *
+ * Covers used to arrive only for books you had walked up to, which meant a
+ * shelf resolved as you approached it and a book you had never picked up had
+ * no artwork at all. Kicking the whole catalogue off at load — slowly, behind
+ * anything urgent — means the room is finished rather than finishing.
+ */
+export function warmCovers(books: readonly IndexedBook[]) {
+  for (const book of books) {
+    if (claimed.has(book.id)) continue
+    claimed.add(book.id)
+    background.push(book)
+  }
   pump()
 }

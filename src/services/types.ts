@@ -43,10 +43,68 @@ export type LayoutDocument = {
   boxes?: Record<string, string[]>
   /** Book id -> the spreads you have put a bookmark in, ascending. */
   bookmarks?: Record<string, number[]>
+  /** Book id -> the spread you had open when you last closed it. */
+  progress?: Record<string, number>
+  /** Books put down somewhere that is not a shelf or a box. */
+  loose?: Record<string, LoosePlacement>
+  /** Where you have shoved the moving boxes, by furniture id. */
+  furniture?: Record<string, { at: [number, number]; facing: number }>
+  /** Shelf id -> what you have written on its label. */
+  labels?: Record<string, string>
+}
+
+/**
+ * A book lying somewhere in the room: on a table, or on the floor where you
+ * dropped it.
+ *
+ * World coordinates rather than something-relative, because a book is put down
+ * *there* — the table it happens to be over is not what you were thinking
+ * about, and if the table goes away the book should stay on the floor under
+ * where it was rather than teleport.
+ */
+export type LoosePlacement = {
+  x: number
+  y: number
+  z: number
+  /** Radians about Y. */
+  yaw: number
+  /** True if it was set down open, in which case `spread` is the page shown. */
+  open: boolean
+  spread: number
 }
 
 /** Where this library is saved. Both files live in the library folder. */
 export type SavePaths = { world: string; layout: string }
+
+/** A track in the library's `music/` folder, as the indexer found it. */
+export type IndexedTrack = {
+  id: string
+  path: string
+  title: string
+  artist: string | null
+  album: string | null
+  /** `mp3`, `wav`, `flac`, `ogg`, `m4a`. */
+  format: string
+  sizeBytes: number
+}
+
+/** A picture in the library's `artwork/` folder. */
+export type IndexedArtwork = {
+  id: string
+  path: string
+  title: string
+}
+
+/**
+ * Which lamps are on. Kept in its own small file rather than in the book
+ * layout: it is about the room rather than about the books, and a file you can
+ * delete to get all the lights back on is a good thing to have.
+ */
+export type LightState = {
+  schemaVersion: number
+  /** Furniture id -> whether it is lit. Absent means "as the document says". */
+  on: Record<string, boolean>
+}
 
 export interface LibraryService {
   /** Which driver is live. Surfaced in the HUD so misconfiguration is visible. */
@@ -90,6 +148,18 @@ export interface LibraryService {
 
   loadLayout(): Promise<LayoutDocument | null>
   saveLayout(layout: LayoutDocument): Promise<void>
+
+  /**
+   * The rest of the library folder: records for the player, pictures for the
+   * walls. Both resolve to an empty list on a host that cannot read files, so
+   * the scene simply has no records rather than failing to build.
+   */
+  listTracks(): Promise<IndexedTrack[]>
+  listArtwork(): Promise<IndexedArtwork[]>
+
+  /** Which lamps are on, from `.library/lights.json`. Null if never written. */
+  loadLights(): Promise<LightState | null>
+  saveLights(state: LightState): Promise<void>
 
   /** Turn an absolute file path into a URL the WebView can actually load. */
   assetUrl(path: string): string

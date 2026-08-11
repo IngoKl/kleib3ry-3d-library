@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { library } from '../services'
-import type { IndexedBook, LayoutDocument, ScanProgress, ScanSummary } from '../services/types'
+import type {
+  IndexedBook,
+  LayoutDocument,
+  LoosePlacement,
+  ScanProgress,
+  ScanSummary,
+} from '../services/types'
 import { dimensionsFor, hashId, type BookDimensions } from '../data/dimensions'
 import { mulberry32 } from '../lib/rng'
 import {
@@ -13,7 +19,7 @@ import {
   type PackedBook,
   type RowKey,
 } from '../scene/shelving'
-import type { DerivedWorld } from '../world/derive'
+import type { DerivedWorld, FurnitureOverride } from '../world/derive'
 import { boxesIn } from '../world/boxes'
 import {
   LAYOUT_SCHEMA_VERSION,
@@ -51,10 +57,23 @@ type LibraryState = {
   boxes: Record<string, string[]>
   /** Every book in a box, box by box. The unshelved half of the library. */
   boxed: string[]
+  /**
+   * Books put down somewhere that is not a shelf and not a box: on a table, or
+   * on the floor where you dropped them. A third home, and the only one whose
+   * position is stored rather than derived — because "there" is the whole
+   * point of putting something down.
+   */
+  loose: Record<string, LoosePlacement>
   /** What the last reconciliation cost, for the panel. Null when it cost nothing. */
   reconciliation: string | null
   /** Book id -> bookmarked spreads, ascending. Saved beside the layout. */
   bookmarks: Record<string, number[]>
+  /** Book id -> the spread it was last left open at. */
+  readProgress: Record<string, number>
+  /** Shelf id -> what is written on its label card. Overrides the document. */
+  labels: Record<string, string>
+  /** Furniture that has been shoved somewhere else. Boxes, in practice. */
+  placements: Record<string, FurnitureOverride>
 
   loaded: boolean
   scanning: boolean
@@ -66,19 +85,35 @@ type LibraryState = {
   scan: () => Promise<void>
   /** Recompute against the current world. Called when `library.json` changes. */
   rebuild: () => void
-  /** Take a book off its shelf, or out of a box. Returns false if it had neither. */
+  /** Take a book off its shelf, out of a box, or up off the floor. */
   unshelve: (id: string) => boolean
   /** Put a book into a row. Returns false if it will not fit. */
   shelve: (id: string, shelfId: string, row: number, index: number) => boolean
   /** Drop a book into a box, on top of the pile. Returns false if there is no such box. */
   putInBox: (id: string, boxId: string) => boolean
+  /** Set a book down in the room — on a table, or on the floor. */
+  putDown: (id: string, placement: LoosePlacement) => void
+  /** Move a book that is already lying about, as the physics settles it. */
+  nudge: (id: string, placement: LoosePlacement) => void
   /**
    * Unpack a box onto the shelves. Returns how many books found a shelf;
    * whatever did not fit is still in the box.
    */
   emptyBoxOntoShelves: (boxId: string) => number
+  /**
+   * The reverse: every book off every shelf and off the floor, back into the
+   * boxes. Returns how many moved.
+   */
+  packEverything: () => number
   /** Add or remove a bookmark at `spread`. Returns true if one is now there. */
   toggleBookmark: (bookId: string, spread: number) => boolean
+  /** Remember where you got to in a book, so putting it down keeps the page. */
+  setProgress: (bookId: string, spread: number) => void
+  /** Write on a bookcase's label. An empty string takes the label off again. */
+  setLabel: (shelfId: string, text: string) => void
+  labelOf: (shelfId: string) => string | null
+  /** Shove a piece of furniture. Only the moving boxes accept this. */
+  moveFurniture: (id: string, at: [number, number], facing: number) => void
   bookAt: (id: string) => IndexedBook | undefined
   dimensionsOf: (id: string) => BookDimensions | undefined
 }
@@ -118,6 +153,14 @@ function without(
   return next
 }
 
+/** The same, for the one-entry-per-book maps. */
+function omit<T>(map: Record<string, T>, id: string): Record<string, T> {
+  if (!(id in map)) return map
+  const next = { ...map }
+  delete next[id]
+  return next
+}
+
 /** The flat unshelved list, in box order, so the pile is packed the same way. */
 function flatten(world: DerivedWorld | null, boxes: Record<string, string[]>): string[] {
   const order = world ? boxesIn(world).map((box) => box.id) : Object.keys(boxes)
@@ -129,11 +172,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   const scheduleSave = () => {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
+      const state = get()
       const document: LayoutDocument = {
         schemaVersion: LAYOUT_SCHEMA_VERSION,
-        rows: get().savedRows,
-        boxes: get().savedBoxes,
-        bookmarks: get().bookmarks,
+        rows: state.savedRows,
+        boxes: state.savedBoxes,
+        bookmarks: state.bookmarks,
+        progress: state.readProgress,
+        loose: state.loose,
+        furniture: state.placements,
+        labels: state.labels,
       }
       void library.saveLayout(document).catch((e) => set({ error: String(e) }))
     }, SAVE_DEBOUNCE_MS)
@@ -162,7 +210,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       savedBoxes[to.boxId] = [...(savedBoxes[to.boxId] ?? []), id]
     }
 
-    return { savedRows, savedBoxes }
+    // Anywhere a book goes, it stops being on the floor.
+    return { savedRows, savedBoxes, loose: omit(get().loose, id) }
   }
 
   return {
@@ -176,8 +225,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     packed: [],
     boxes: {},
     boxed: [],
+    loose: {},
     reconciliation: null,
     bookmarks: {},
+    readProgress: {},
+    labels: {},
+    placements: {},
 
     loaded: false,
     scanning: false,
@@ -187,6 +240,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
     bookAt: (id) => get().byId.get(id),
     dimensionsOf: (id) => get().dims.get(id),
+    labelOf: (shelfId) => {
+      const written = get().labels[shelfId]
+      if (written !== undefined) return written || null
+      const world = currentWorld()
+      const index = world?.shelfIndex.get(shelfId)
+      return index === undefined ? null : (world?.shelves[index]?.label ?? null)
+    },
 
     load: async () => {
       try {
@@ -217,6 +277,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           if (known.has(id) && spreads.length) bookmarks[id] = [...spreads].sort((a, b) => a - b)
         }
 
+        const readProgress: Record<string, number> = {}
+        for (const [id, spread] of Object.entries(layout?.progress ?? {})) {
+          if (known.has(id) && spread > 0) readProgress[id] = spread
+        }
+
+        const loose: Record<string, LoosePlacement> = {}
+        for (const [id, placement] of Object.entries(layout?.loose ?? {})) {
+          if (known.has(id)) loose[id] = placement
+        }
+
+        const placements = layout?.furniture ?? {}
+        // The world has to know where the boxes were pushed to before the books
+        // are reconciled against it, or a box's pile is drawn where it used to be.
+        useWorldStore.getState().setPlacements(placements)
+
         set({
           books,
           byId,
@@ -224,6 +299,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           savedRows,
           savedBoxes,
           bookmarks,
+          readProgress,
+          loose,
+          labels: layout?.labels ?? {},
+          placements,
           hasSavedLayout: layout !== null,
           loaded: true,
           error: null,
@@ -235,7 +314,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     rebuild: () => {
-      const { books, dims, savedRows, savedBoxes, hasSavedLayout, loaded } = get()
+      const { books, dims, savedRows, savedBoxes, hasSavedLayout, loaded, loose } = get()
       if (!loaded) return
       const world = currentWorld()
       // Nothing to stand books on yet. `load` runs after the world in practice,
@@ -245,7 +324,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const result = reconcile(
         world,
         hasSavedLayout
-          ? { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: savedRows, boxes: savedBoxes }
+          ? { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: savedRows, boxes: savedBoxes, loose }
           : null,
         books.map((b) => b.id),
         (id) => dims.get(id),
@@ -279,6 +358,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       return !already
     },
 
+    setProgress: (bookId, spread) => {
+      if (get().readProgress[bookId] === spread) return
+      const readProgress = { ...get().readProgress }
+      if (spread > 0) readProgress[bookId] = spread
+      else delete readProgress[bookId]
+      set({ readProgress })
+      scheduleSave()
+    },
+
+    setLabel: (shelfId, text) => {
+      const trimmed = text.trim()
+      const labels = { ...get().labels }
+      // An empty label is written down as empty rather than deleted, so that
+      // rubbing out a label the document supplied actually rubs it out.
+      labels[shelfId] = trimmed
+      set({ labels })
+      scheduleSave()
+    },
+
+    moveFurniture: (id, at, facing) => {
+      const placements = { ...get().placements, [id]: { at, facing } }
+      set({ placements })
+      useWorldStore.getState().setPlacements(placements)
+      scheduleSave()
+    },
+
     scan: async () => {
       if (get().scanning) return
       set({ scanning: true, progress: null, error: null })
@@ -296,14 +401,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     unshelve: (id) => {
-      const { rows, boxes, dims, boxed } = get()
+      const { rows, boxes, dims, boxed, loose } = get()
       const world = currentWorld()
       const one = new Set([id])
 
       // Taking a book out of a box is a legitimate way to pick one up, and it
-      // has to leave the box or you could take the same book forever.
+      // has to leave the box or you could take the same book forever. So is
+      // picking one up off the table you left it on.
       const onShelf = Object.values(rows).some((ids) => ids.includes(id))
-      if (!onShelf && !boxed.includes(id)) return false
+      if (!onShelf && !boxed.includes(id) && !(id in loose)) return false
 
       const next = without(rows, one)
       const nextBoxes = without(boxes, one)
@@ -366,6 +472,30 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       return true
     },
 
+    putDown: (id, placement) => {
+      const { rows, boxes, dims } = get()
+      const world = currentWorld()
+      const one = new Set([id])
+      const next = without(rows, one)
+      const nextBoxes = without(boxes, one)
+
+      set({
+        ...remember(id, null),
+        loose: { ...get().loose, [id]: placement },
+        rows: next,
+        packed: world ? packLayout(world, next, (x) => dims.get(x)) : [],
+        boxes: nextBoxes,
+        boxed: flatten(world, nextBoxes),
+      })
+      scheduleSave()
+    },
+
+    nudge: (id, placement) => {
+      if (!(id in get().loose)) return
+      set({ loose: { ...get().loose, [id]: placement } })
+      scheduleSave()
+    },
+
     /**
      * Unpack a box: every book in it onto the shelves, empty ones first.
      *
@@ -409,6 +539,42 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       })
       scheduleSave()
       return moved.size
+    },
+
+    /**
+     * Strip the shelves: everything back into the boxes.
+     *
+     * The one destructive command in the app, and the reason it exists is that
+     * rearranging a library by hand is worth being able to start over on. It
+     * goes through the same reconciliation a brand-new library does, so the
+     * result is the state you were in the first time you opened the folder —
+     * boxes spread evenly, shelves bare — rather than a special case.
+     */
+    packEverything: () => {
+      const { books, dims } = get()
+      const world = currentWorld()
+      if (!world) return 0
+      const before = Object.values(get().rows).flat().length + Object.keys(get().loose).length
+
+      const result = reconcile(
+        world,
+        { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {}, boxes: {} },
+        books.map((b) => b.id),
+        (id) => dims.get(id),
+      )
+
+      set({
+        ...project(world, result, dims),
+        savedRows: {},
+        savedBoxes: result.boxes,
+        loose: {},
+        // Reconciliation reports "everything is new", which is true of the
+        // arrangement and would read as an alarm about the shelves. It was not
+        // an accident: it is what was asked for.
+        reconciliation: null,
+      })
+      scheduleSave()
+      return before
     },
   }
 })

@@ -1,15 +1,20 @@
-import { aabbFromCentre, type Aabb } from '../scene/collision'
-import type { DerivedShelf } from './derive'
+import { aabbFromCentre } from '../scene/collision'
+import type { DerivedShelf, Solid } from './derive'
 
 /**
  * The bookcase itself. Its *proportions* are fixed — a bookcase is a bookcase —
  * while where it stands and how many shelves it holds come from the world
  * document, because those are the things worth deciding per library.
+ *
+ * The carcass grew with the books. A spine is read at two or three metres
+ * across a room, and at the old scale the printed title was a few pixels tall
+ * even with a whole atlas cell to itself; making the books physically larger is
+ * the only thing that actually buys legibility, and the case has to hold them.
  */
 export const SHELF = {
-  width: 0.9,
-  depth: 0.3,
-  height: 2.1,
+  width: 1.0,
+  depth: 0.32,
+  height: 2.24,
   panel: 0.022,
   board: 0.024,
   back: 0.01,
@@ -50,8 +55,14 @@ export function rowFromLocalY(localY: number, rows: number): number | null {
 /** Usable width inside one compartment. */
 export const INTERIOR_WIDTH = SHELF.width - 2 * SHELF.panel
 
-export function shelfColliders(shelves: readonly DerivedShelf[]): Aabb[] {
-  return shelves.map((shelf) =>
-    aabbFromCentre(shelf.x, shelf.z, SHELF.width, SHELF.depth, shelf.rotationY),
-  )
+/**
+ * A bookcase blocks you on the floor it stands on, and only there — a case in
+ * the loft is not a wall in the living room below it.
+ */
+export function shelfColliders(shelves: readonly DerivedShelf[]): Solid[] {
+  return shelves.map((shelf) => ({
+    ...aabbFromCentre(shelf.x, shelf.z, SHELF.width, SHELF.depth, shelf.rotationY),
+    bottom: shelf.y,
+    top: shelf.y + SHELF.height,
+  }))
 }

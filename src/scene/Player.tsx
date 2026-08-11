@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import type * as THREE from 'three'
-import { resolveMove } from './collision'
+import { groundAt, stepPlayer } from './walk'
+import { floorAt } from '../world/derive'
 import { shelfColliders } from '../world/shelf'
 import { EYE_HEIGHT, KNEEL_HEIGHT, PLAYER_RADIUS, SEATED_EYE, player } from '../state/player'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
+import { useLightStore } from '../state/lights'
+import { useMediaStore } from '../state/media'
 import { useWorldStore } from '../state/world'
+import { LAMPS } from '../world/derive'
 
 const WALK_FOV = 72
 
@@ -49,9 +53,11 @@ export function Player() {
 
   const world = useWorldStore((s) => s.world)
   // Walls and furniture come pre-derived; the bookcases are added here because
-  // their footprint belongs to the carcass rather than to the document.
-  const colliders = useMemo(
-    () => (world ? [...world.colliders, ...shelfColliders(world.shelves)] : []),
+  // their footprint belongs to the carcass rather than to the document. Each
+  // carries the height band it occupies, so the loft's balustrade is not a wall
+  // in the middle of the living room below it.
+  const solids = useMemo(
+    () => (world ? [...world.solids, ...shelfColliders(world.shelves)] : []),
     [world],
   )
   const keys = useRef(new Set<string>())
@@ -70,8 +76,20 @@ export function Player() {
      * you rearrange the library.
      */
     const takeOrPlace = () => {
-      const { held, focusedBook, focusedSeat, shelfTarget, boxTarget, seat, setHeld, setSeat } =
-        useAppStore.getState()
+      const state = useAppStore.getState()
+      const {
+        held,
+        focusedBook,
+        focusedSeat,
+        focusedFixture,
+        focusedRecord,
+        shelfTarget,
+        boxTarget,
+        surfaceTarget,
+        seat,
+        setHeld,
+        setSeat,
+      } = state
       const shelf = useLibraryStore.getState()
 
       // Sitting down and getting up are both E, which is the same key you use
@@ -87,8 +105,18 @@ export function Player() {
       }
 
       if (held === null) {
+        // Putting a record on is the same gesture as taking a book down, and it
+        // is offered only when no book is nearer — see `Interaction`.
+        if (focusedRecord) {
+          useMediaStore.getState().play(focusedRecord)
+          return
+        }
+        if (focusedFixture) {
+          operate(focusedFixture)
+          return
+        }
         if (!focusedBook) return
-        useAppStore.getState().setDrawn(null)
+        state.setDrawn(null)
         shelf.unshelve(focusedBook)
         setHeld(focusedBook)
         return
@@ -101,6 +129,23 @@ export function Player() {
         return
       }
 
+      // Onto a table, exactly where you are pointing. Closed: leaving one open
+      // is `O`, because which of the two you meant is not something a crosshair
+      // can tell you.
+      if (surfaceTarget) {
+        const size = shelf.dims.get(held)
+        shelf.putDown(held, {
+          x: surfaceTarget.x,
+          y: surfaceTarget.y + (size?.thickness ?? 0.03) / 2,
+          z: surfaceTarget.z,
+          yaw: player.yaw + Math.PI,
+          open: false,
+          spread: 0,
+        })
+        setHeld(null)
+        return
+      }
+
       // Refuse rather than silently drop the book if the row is full.
       if (!shelfTarget) return
       if (shelf.shelve(held, shelfTarget.shelfId, shelfTarget.row, shelfTarget.index)) {
@@ -108,7 +153,35 @@ export function Player() {
       }
     }
 
+    /**
+     * Working something: a lamp, the deck, the coffee maker.
+     *
+     * All three are E on the thing itself rather than a switch on the wall,
+     * because a switch you have to find is a puzzle and a lamp you can just
+     * reach out and click is a room.
+     */
+    const operate = (id: string) => {
+      const world = useWorldStore.getState().world
+      const item = world?.furniture.find((piece) => piece.id === id)
+      if (!item) return
+
+      if (LAMPS.has(item.kind)) {
+        useLightStore.getState().toggle(id, item.on ?? true)
+        return
+      }
+      if (item.kind === 'recordplayer') {
+        const music = useMediaStore.getState()
+        // Nothing on the deck yet: start at the top of the collection.
+        if (music.playing) music.play(music.playing)
+        else if (music.tracks[0]) music.play(music.tracks[0].id)
+        return
+      }
+      if (item.kind === 'coffeemaker') useAppStore.getState().brew(id)
+    }
+
     const onKeyDown = (e: KeyboardEvent) => {
+      // Typing a shelf label is typing: W is a letter, not a step forward.
+      if (useAppStore.getState().labelling !== null) return
       keys.current.add(e.code)
       if (useAppStore.getState().mode !== 'walk') return
 
@@ -122,6 +195,14 @@ export function Player() {
         const { focusedBook, drawn, setDrawn } = useAppStore.getState()
         if (drawn !== null) setDrawn(null)
         else if (focusedBook) setDrawn(focusedBook)
+      } else if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+        // Riffle through the box you are looking at. A box shows the top of the
+        // pile; this is how you get at the rest of it without unpacking.
+        const { focusedBox, browseBox } = useAppStore.getState()
+        if (focusedBox) {
+          e.preventDefault()
+          browseBox(focusedBox, e.code === 'BracketRight' ? 1 : -1)
+        }
       } else if (e.code === 'KeyG') {
         e.preventDefault()
         // Unpack the box you are looking at onto the shelves. Deliberately not
@@ -187,11 +268,22 @@ export function Player() {
       )
     }
 
+    // The wheel is what a hand does to a box of books, so it browses the one
+    // you are looking at and does nothing at all anywhere else.
+    const onWheel = (e: WheelEvent) => {
+      const { mode, focusedBox, browseBox } = useAppStore.getState()
+      if (mode !== 'walk' || !focusedBox || e.deltaY === 0) return
+      e.preventDefault()
+      browseBox(focusedBox, e.deltaY > 0 ? 1 : -1)
+    }
+
     canvas.addEventListener('click', onClick)
+    canvas.addEventListener('wheel', onWheel, { passive: false })
     document.addEventListener('pointerlockchange', onLockChange)
     document.addEventListener('mousemove', onMouseMove)
     return () => {
       canvas.removeEventListener('click', onClick)
+      canvas.removeEventListener('wheel', onWheel)
       document.removeEventListener('pointerlockchange', onLockChange)
       document.removeEventListener('mousemove', onMouseMove)
     }
@@ -230,7 +322,8 @@ export function Player() {
       player.x = seat.x + forwardX * 0.06
       player.z = seat.z + forwardZ * 0.06
       player.crouch = 0
-      player.eye += (SEATED_EYE - player.eye) * Math.min(1, delta * 8)
+      player.floor = seat.y
+      player.eye += (seat.y + SEATED_EYE - player.eye) * Math.min(1, delta * 8)
 
       camera.position.set(player.x, player.eye, player.z)
       camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ')
@@ -256,8 +349,6 @@ export function Player() {
       Math.abs(wantCrouch - player.crouch),
       delta * CROUCH_RATE,
     )
-    player.eye = EYE_HEIGHT + (KNEEL_HEIGHT - EYE_HEIGHT) * player.crouch
-
     const running = !kneeling && (pressed.has('ShiftLeft') || pressed.has('ShiftRight'))
     const top = kneeling ? KNEEL_SPEED : running ? RUN : WALK
 
@@ -277,20 +368,37 @@ export function Player() {
     velocity.current.x += (wantX - velocity.current.x) * ease
     velocity.current.z += (wantZ - velocity.current.z) * ease
 
-    const next = resolveMove(
-      player,
-      {
-        x: player.x + velocity.current.x * delta,
-        z: player.z + velocity.current.z * delta,
-      },
-      PLAYER_RADIUS,
-      colliders,
-    )
+    // A live reload can pull the floor out from under you — a room deleted, a
+    // loft moved — and a teleport does not say which storey it meant. Either
+    // way, re-ground rather than leave someone standing in mid-air.
+    if (world && floorAt(world, player.x, player.z, player.floor) === null) {
+      player.floor = groundAt(world, player.x, player.z, player.floor)
+    }
+
+    const next = world
+      ? stepPlayer(
+          world,
+          solids,
+          player,
+          {
+            x: player.x + velocity.current.x * delta,
+            z: player.z + velocity.current.z * delta,
+          },
+          PLAYER_RADIUS,
+        )
+      : { x: player.x, z: player.z, floor: player.floor }
+
     // Kill the component that was blocked, so we do not keep pushing into a wall.
     if (next.x === player.x) velocity.current.x = 0
     if (next.z === player.z) velocity.current.z = 0
     player.x = next.x
     player.z = next.z
+    // Ease onto a new floor rather than snapping: a staircase is a ramp, and
+    // stepping over a threshold should read as a step rather than a jolt.
+    player.floor += (next.floor - player.floor) * Math.min(1, delta * 14)
+    if (Math.abs(next.floor - player.floor) < 0.005) player.floor = next.floor
+
+    player.eye = player.floor + EYE_HEIGHT + (KNEEL_HEIGHT - EYE_HEIGHT) * player.crouch
 
     player.speed = Math.hypot(velocity.current.x, velocity.current.z)
 
