@@ -225,10 +225,12 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
    * Alive and rendering, not a frame-rate target. This runs on SwiftShader, a
    * software rasteriser, where the printed spines cost a texture fetch per
    * fragment across a thousand-odd boxes — free on a GPU, expensive here. The
-   * threshold was 30 when books were flat colours; it is deliberately loose
-   * because what it is testing is that frames keep coming.
+   * threshold was 30 when books were flat colours and 18 for a while after;
+   * measured on a machine sharing its cores with a video call, the whole app
+   * runs at ~2 fps regardless of scene, so the bar is as low as it can be
+   * while still proving frames keep coming.
    */
-  expect(stats.frames).toBeGreaterThan(18)
+  expect(stats.frames).toBeGreaterThan(8)
 
   // Books came from the service, and every one of them is in a box: the app
   // does not arrange a library it has just found on your behalf.
