@@ -509,8 +509,8 @@ export function Hud() {
               ) : (
                 <p className="focus-key">
                   drag a page across · <kbd>←</kbd>
-                  <kbd>→</kbd> turn · <kbd>B</kbd> bookmark · <kbd>J</kbd> go to page ·{' '}
-                  <kbd>Esc</kbd> close
+                  <kbd>→</kbd> turn · <kbd>B</kbd> bookmark · <kbd>P</kbd> copy this page ·{' '}
+                  <kbd>J</kbd> go to page · <kbd>Esc</kbd> close
                 </p>
               )}
             </div>

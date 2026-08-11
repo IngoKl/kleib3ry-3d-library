@@ -27,6 +27,9 @@ working on:
 
 The browser build has a generated 1,700-book placeholder catalogue plus one real
 PDF, so read mode works and the shelves are full without pointing at anything.
+It is a fixture, not a way to ship the app: only the first and third rows above
+correspond to a mode anyone runs. [modes.md](modes.md) is that distinction, and
+why the `http` one is chosen at build time rather than probed for.
 
 ## The gate
 
@@ -80,8 +83,14 @@ cargo test --manifest-path core/Cargo.toml index::
 ```
 
 `scripts/make-test-library.mjs` generates a folder of throwaway PDFs and EPUBs to
-point the desktop probe at. `npm run icon` regenerates the app icon from
-`scripts/make-icon.mjs`.
+point the desktop probe at. For working *by hand* against something that looks
+like a real collection, `demo-data/demo-library/` is a small freely-licensed one
+in the repository — ten EPUBs, two records, two pictures and a tape — and it is
+what to mount into the container when you are changing the hosted mode.
+
+`npm run icon` regenerates the app icon, which is generated rather than committed
+as an opaque binary: `scripts/make-icon.mjs` writes `assets/icon-source.png` and
+`tauri icon` renders it into `src-tauri/icons/`.
 
 ## How the tests are arranged
 

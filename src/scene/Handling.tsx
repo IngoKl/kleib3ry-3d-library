@@ -102,7 +102,12 @@ export function Handling() {
           x,
           y: y + 0.004,
           z,
-          yaw: player.yaw + Math.PI,
+          // Your own yaw, not the reverse of it. A page laid flat has its head
+          // pointing along -Z at rest, and the group's yaw turns that with you —
+          // so `yaw` alone points the top of the spread away from you, which is
+          // the way round you read it. Turning it through 180° as well laid the
+          // book down upside down, and swapped the verso and the recto.
+          yaw: player.yaw,
           open: true,
           spread,
         })

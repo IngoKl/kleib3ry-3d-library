@@ -48,10 +48,12 @@ const MAX_THICKNESS = 0.098
 /**
  * How many pages a file that does not say is likely to have.
  *
- * EPUBs carry no page count, so the only signal is compressed size — and a
- * pamphlet and a doorstop really are different sizes on disk. The curve is
- * square-rooted because most of an EPUB's bulk after the first megabyte is
- * images rather than text.
+ * Rarely reached now: a PDF states its page count and the EPUB probe measures
+ * the length of the documents inside the archive, which is a far better signal
+ * than the size of the file around them. This is for the ones that answer
+ * neither — an archive with nothing document-shaped in it, or a row indexed
+ * before the probe learned to measure. The curve is square-rooted because most
+ * of a book's bulk on disk after the first megabyte is images rather than text.
  */
 export function estimatedPages(book: IndexedBook): number {
   if (book.pageCount && book.pageCount > 0) return book.pageCount

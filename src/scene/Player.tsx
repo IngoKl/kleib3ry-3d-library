@@ -299,7 +299,10 @@ export function Player() {
           x: surfaceTarget.x,
           y: surfaceTarget.y + (size?.thickness ?? 0.03) / 2,
           z: surfaceTarget.z,
-          yaw: player.yaw + Math.PI,
+          // Your yaw, so the cover reads the right way up from where you are
+          // standing — the same arithmetic as a book put down open. See the
+          // note in `Handling`.
+          yaw: player.yaw,
           open: false,
           spread: 0,
         })
@@ -589,6 +592,30 @@ export function Player() {
       handoff.current = HANDOFF_SECONDS
     }
   }, [mode])
+
+  /**
+   * Stepping away from the catalogue puts you back behind your own eyes.
+   *
+   * The terminal releases the pointer when it opens, because a panel you type
+   * into is a panel you have to be able to click. Every other way out of a panel
+   * leaves the lock to be taken back by a click on the room — but the terminal is
+   * opened with `E` from a stride away and closed with `Esc` from the same spot,
+   * so a hand that never touched the mouse was made to go and find it again. `Esc`
+   * is user activation, which is what makes taking the lock back here allowed.
+   */
+  const searching = useAppStore((s) => s.searching)
+  const wasSearching = useRef(false)
+  useEffect(() => {
+    const closed = wasSearching.current && !searching
+    wasSearching.current = searching
+    if (!closed || mode !== 'walk' || !roomHasKeyboard()) return
+    // Wrapped because a refused lock is a rejected promise on modern Chrome and
+    // a bare `void` on older typings — and headless, where it is refused every
+    // time, an unhandled rejection is a console error the smoke tests fail on.
+    if (!document.pointerLockElement) {
+      void Promise.resolve(gl.domElement.requestPointerLock()).catch(() => {})
+    }
+  }, [searching, mode, gl])
 
   // --- movement --------------------------------------------------------
 

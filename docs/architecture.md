@@ -20,6 +20,7 @@ two shape everything else.
                          └───────────────────────────────┘
                                         ▲
                      ┌──────────────────┴──────────────────┐
+                 DESKTOP APP                        HOSTED (container)
                      │                                     │
             ┌────────┴────────┐                   ┌────────┴────────┐
             │  core/          │                   │  core/          │
@@ -47,6 +48,37 @@ two shape everything else.
 
 ---
 
+## The repository
+
+```text
+src/                front end
+  services/         the ONLY place that touches the filesystem — three drivers
+  world/            the library.json document: schema, defaults, geometry,
+                    roofs, floor heights and stairs, the terrain and the
+                    forest, and what happens to shelved books when the room
+                    changes
+  scene/            R3F scene graph — rooms, roofs, shelves, books, boxes,
+                    furniture, tapes, pinned pages, the forest outside, the
+                    spine atlas that prints titles, and the little bit of
+                    gravity that dropped books fall under
+  reader/           read mode: page cache, page mesh, the turn
+  state/            zustand stores: world, library, media, video, lights, app;
+                    plus player, cat and metrics, deliberately outside React
+  data/             placeholder catalogue + book proportions
+  ui/               DOM overlay: crosshair, focus cards, panels, typed fields
+core/               Rust: indexing, SQLite, format + tag probes, media folders.
+                    No GUI — which is what lets the container skip Tauri entirely
+src-tauri/          Rust: the desktop shell. IPC commands, settings, asset scope
+server/             Rust: the same core over HTTP, for the container
+tests/              Playwright harness — smoke tests plus world/layout units
+scripts/            asset generation, icon, test corpus, desktop probe
+demo-data/          a small freely-licensed library folder, to try it with
+Dockerfile          three build stages, one small runtime
+docs/               this folder
+```
+
+---
+
 ## The one rule
 
 **Nothing above `src/services/` may import `@tauri-apps/*`.**
@@ -55,15 +87,27 @@ Every byte the front end reads from a disk goes through the `LibraryService`
 interface in [../src/services/types.ts](../src/services/types.ts). There are
 three implementations:
 
-| driver | host | filesystem | picker | indexes |
+| driver | mode | filesystem | picker | indexes |
 | --- | --- | --- | --- | --- |
-| `tauriDriver` | the desktop app | Rust core over IPC | native dialog | yes |
-| `httpDriver` | a browser, container | Rust core over HTTP | no — the mount is the library | yes |
-| `browserDriver` | a plain browser tab | none; localStorage | no | no |
+| `tauriDriver` | **desktop app** | Rust core over IPC | native dialog | yes |
+| `httpDriver` | **hosted** — the container | Rust core over HTTP | no — the mount is the library | yes |
+| `browserDriver` | none; a test fixture | none; localStorage | no | no |
+
+Two of those are shipped modes and the third is a fixture, which is a
+distinction the code cannot make on its own — `DRIVER_LABELS` in
+[src/services/index.ts](../src/services/index.ts) is where the three are given
+the names the UI shows, so the menu and the settings card cannot drift apart.
+[modes.md](modes.md) is the two modes written out for someone deciding how to
+run it.
 
 A driver *advertises* what it can do — `kind`, `canPickFolder`, `canIndex` — and
 the UI disables controls accordingly rather than failing at call time. Anything
-genuinely unsupported throws `UnsupportedOperation`.
+genuinely unsupported throws `UnsupportedOperation`. Note that the capability
+and the mode are not the same question: `canPickFolder` is false in both
+non-desktop drivers for opposite reasons — the container has a real library and
+will not go looking for another, the fixture has no library at all — so a
+message about *why* a control is off has to key off `kind`, not off the
+capability.
 
 This is the rule that earned its keep. The HTTP driver and the container were
 added without a single change above `src/services/`, which is exactly what it was
@@ -139,7 +183,9 @@ pinned to a wall. Both are worth keeping as the only exceptions.
 
 **Book appearance is a pure function of index data.**
 [src/data/dimensions.ts](../src/data/dimensions.ts) derives thickness from page
-count (estimated from file size for EPUBs, which have none) and height, depth and
+count — an EPUB has none, so the probe measures the uncompressed length of the
+documents in the archive and divides by what the reader fits on a page, which is
+the only signal that tracks the *text* rather than the cover art — and height, depth and
 a stand-in colour from a hash of the book id — arbitrary but stable, so a book
 always looks the same on the shelf. Once its cover has been read, the binding
 colour is sampled from the artwork instead, so a shelf of your books looks like

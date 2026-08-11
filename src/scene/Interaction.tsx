@@ -61,7 +61,14 @@ function pinFrom(hit: THREE.Intersection | undefined): {
   yaw: number
 } | null {
   if (!hit || !hit.normal) return null
-  const normal = hit.normal
+  // A raycast hands back the normal in the *hit object's* own space, not the
+  // world's. The room shells are built as boxes already at their world
+  // coordinates, so nobody noticed — but a whiteboard is a group turned to face
+  // the room it hangs in, and its face reported a normal of +Z whichever way it
+  // was hung. A note pinned to the office board was therefore stuck facing into
+  // the plaster, with its paper 4 mm inside the frame: found by the crosshair,
+  // and invisible.
+  const normal = hit.normal.clone().transformDirection(hit.object.matrixWorld)
   if (Math.abs(normal.y) > 1 - UPRIGHT) return null
   return {
     x: hit.point.x,

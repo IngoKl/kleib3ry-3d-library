@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { closeDocument, openDocument, renderPage } from '../reader/pdf'
+import { renderOnePage } from '../reader/source'
+import { useLibraryStore } from '../state/library'
 
 /**
  * Artwork for the sheets pinned up round the house: a page copied out of a book,
@@ -54,22 +55,22 @@ export function pageTextureFor(bookId: string, page: number): Promise<THREE.Text
 
   const job = (async (): Promise<THREE.Texture | null> => {
     try {
-      const doc = await openDocument(bookId)
-      try {
-        const canvas = await renderPage(doc, page, PAGE_PX)
-        if (!canvas) return null
-        const texture = new THREE.CanvasTexture(canvas)
-        texture.colorSpace = THREE.SRGBColorSpace
-        texture.minFilter = THREE.LinearMipmapLinearFilter
-        texture.magFilter = THREE.LinearFilter
-        texture.needsUpdate = true
-        return texture
-      } finally {
-        // Let the document go the moment the page is out of it: a parsed PDF
-        // pins its whole file in the pdf.js worker, and a wall of pages from a
-        // wall of books would otherwise pin all of them.
-        closeDocument(bookId)
-      }
+      // Through the source rather than through pdf.js: a page torn out of an
+      // EPUB has to be set in type before it can be drawn, and going straight
+      // to the rasteriser pinned a blank sheet to the wall. `renderOnePage`
+      // also lets the document go the moment the page is out of it — a parsed
+      // PDF pins its whole file in the pdf.js worker, and a wall of pages from
+      // a wall of books would otherwise pin all of them.
+      const book = useLibraryStore.getState().byId.get(bookId)
+      if (!book) return null
+      const canvas = await renderOnePage(book, page, PAGE_PX)
+      if (!canvas) return null
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.minFilter = THREE.LinearMipmapLinearFilter
+      texture.magFilter = THREE.LinearFilter
+      texture.needsUpdate = true
+      return texture
     } catch {
       return null
     }

@@ -93,3 +93,40 @@ export async function openSource(book: IndexedBook): Promise<PageSource> {
   }
   return pdfSource(book.id)
 }
+
+/**
+ * One page of one book, rasterised on its own.
+ *
+ * For the two places that want a page *outside* the reader: a book left lying
+ * open on a table, and a page torn out and pinned to a wall. Both used to call
+ * pdf.js directly, which is why both were blank for an EPUB — the one kind of
+ * book with no pages until something lays it out. Going through the source
+ * makes them format-blind like everything else above this file.
+ *
+ * The source is shared while renders overlap and dropped the moment the last
+ * one finishes: an open spread asks for two pages at once, and for an EPUB the
+ * pagination — not the drawing — is the expensive half.
+ */
+const shared = new Map<string, { source: Promise<PageSource>; refs: number }>()
+
+export async function renderOnePage(
+  book: IndexedBook,
+  page: number,
+  heightPx: number,
+): Promise<HTMLCanvasElement | null> {
+  const existing = shared.get(book.id)
+  const entry = existing ?? { source: openSource(book), refs: 0 }
+  entry.refs += 1
+  if (!existing) shared.set(book.id, entry)
+
+  try {
+    const source = await entry.source
+    return await source.render(page, heightPx, 8192)
+  } finally {
+    entry.refs -= 1
+    if (entry.refs === 0) {
+      shared.delete(book.id)
+      void entry.source.then((source) => source.close()).catch(() => {})
+    }
+  }
+}

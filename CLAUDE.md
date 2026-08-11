@@ -6,17 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 kleib3ry — a 3D personal library: React Three Fiber front end inside a Tauri 2
 shell, with a Rust core doing indexing, SQLite persistence and format probing.
-The same core also runs behind an HTTP server, so the app runs in a container and
-serves a library folder to a browser.
+
+**There are exactly two shipped modes**, and a change that adds a way to run this
+is a change to that list: the **desktop app** (Tauri, `tauriDriver`) and
+**hosted** (the Docker container — the same core behind an HTTP server, serving a
+library folder to a browser, `httpDriver`). `browserDriver` is a *test fixture*
+with a generated catalogue, not a third mode, and it is also the fallback for any
+non-Tauri bundle built without `VITE_DRIVER=http`. Say "container", not "web
+version" — [docs/modes.md](docs/modes.md) is the record of all of this, and
+`DRIVER_LABELS` in [src/services/index.ts](src/services/index.ts) is where the UI
+gets its words for the three.
 
 **[docs/architecture.md](docs/architecture.md) is the architecture record.** This
 file is its short form, for orienting fast; where the two disagree, that one is
 right. [docs/README.md](docs/README.md) indexes the rest —
 [custom-maps.md](docs/custom-maps.md) before changing anything in `src/world/`,
 because the world document is a published interface;
-[docs/docker.md](docs/docker.md) for the container;
-[docs/development.md](docs/development.md) for how the tests are arranged and
-what the frame budget is; [docs/ideas.md](docs/ideas.md) for the open roadmap.
+[docs/modes.md](docs/modes.md) and [docs/docker.md](docs/docker.md) for the
+hosted mode; [docs/development.md](docs/development.md) for how the tests are
+arranged and what the frame budget is; [docs/ideas.md](docs/ideas.md) for the
+open roadmap.
+
+The root [README.md](README.md) is the project's front page and is deliberately
+thin: what it is, the two quick starts, the demo library, and links. Anything
+longer belongs in `docs/`, not there.
 
 ## Commands
 
@@ -136,8 +149,9 @@ units, at open time* — not at the texture's pixel size — so page 200 is page
 on any monitor and a bookmark keeps meaning something.
 
 **Book appearance is a pure function of index data.** [src/data/dimensions.ts](src/data/dimensions.ts)
-derives thickness from page count (estimated from file size for EPUBs, which have
-none), and height/depth/colour from a hash of the book id — arbitrary but stable, so
+derives thickness from page count (an EPUB has none, so the probe measures the
+uncompressed length of the documents inside the archive rather than the size of the
+file around them), and height/depth/colour from a hash of the book id — arbitrary but stable, so
 a book always looks the same on the shelf. Everything is about a quarter over life
 size, and the carcass in `world/shelf.ts` was grown to match: legibility of a printed
 spine is capped by screen pixels, so physical size is the only thing that buys it.

@@ -29,6 +29,8 @@ import {
   type Reconciliation,
 } from '../world/reconcile'
 import { useWorldStore } from './world'
+import { useMediaStore } from './media'
+import { useVideoStore } from './video'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -468,7 +470,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       try {
         const lastScan = await library.scan()
         set({ lastScan })
-        await get().load()
+        // "Scan" means look at the folder again, and the folder is not only
+        // books. The other three are walked on demand rather than indexed, so
+        // nothing in Rust has to be told — but the lists in front of them were
+        // read once at startup, which is why a record or a tape dropped into
+        // the folder while the app was open only turned up on the next launch.
+        await Promise.all([
+          get().load(),
+          useMediaStore.getState().load(),
+          useVideoStore.getState().load(),
+        ])
       } catch (e) {
         set({ error: e instanceof Error ? e.message : String(e) })
       } finally {

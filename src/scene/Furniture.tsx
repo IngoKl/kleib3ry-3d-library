@@ -622,11 +622,18 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
           <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.75} />
         </mesh>
       </group>
-      {/* The sleeve of whatever is on, propped against the plinth the way a
-          sleeve is actually left while its record plays. Keyed so the artwork
-          mounts a fresh material — see HeldBook for why. */}
+      {/* The sleeve of whatever is on, stood up behind the deck the way a sleeve
+          is actually left while its record plays.
+
+          Behind rather than beside, which is where it used to be: a 12" sleeve is
+          31.5 cm and the plinth is 44 wide on a 90 cm crate, so there is no room
+          to stand one at the side — it was drawn with its bottom corner sunk
+          through the plinth. There is 7 cm of crate behind, which is enough for a
+          sleeve leaning back on its bottom edge, and it stands a clear 20 cm
+          above the deck from the front. Keyed so the artwork mounts a fresh
+          material — see HeldBook for why. */}
       {sleeve && (
-        <group position={[0.255, 0.156, -0.02]} rotation-y={0.18} rotation-x={-0.14}>
+        <group position={[0.05, 0.156, -0.215]} rotation-x={-0.16}>
           <mesh castShadow>
             <boxGeometry args={[0.315, 0.315, 0.004]} />
             <meshStandardMaterial color="#221c17" roughness={0.8} />
@@ -1390,6 +1397,15 @@ export function Furniture() {
  * re-rendered for an unrelated reason, and three re-allocates a shadow map when
  * that happens. Here they are one flat list keyed by furniture id, and turning
  * one off is a prop change.
+ *
+ * Every lamp stays in the scene whether it is lit or not, and a lamp that is off
+ * is one with no intensity. Unmounting it instead is the obvious thing and it
+ * cost half a second of frozen room the first time anybody pulled a switch: the
+ * number of lights is baked into every shader program three compiles, so taking
+ * one out of the scene invalidates the lot and recompiles the whole cabin
+ * mid-frame. Holding the count still costs a few instructions per fragment for a
+ * lamp contributing nothing, which is what the room already pays when every lamp
+ * in it is on.
  */
 export function FurnitureLights() {
   const world = useWorldStore((s) => s.world)
@@ -1400,7 +1416,6 @@ export function FurnitureLights() {
     <>
       {world.lights.map((lamp) => {
         const lit = on[lamp.id] ?? lamp.defaultOn
-        if (!lit) return null
         const fire = lamp.kind === 'fireplace'
         return (
           <pointLight
@@ -1410,7 +1425,7 @@ export function FurnitureLights() {
             // under it, 4.5 cd arrives as just over 1. Argued down twice from
             // hotter values: intensity makes the glare pool by the fitting,
             // distance is what carries a soft edge into the corners.
-            intensity={fire ? 4.5 : lamp.kind === 'pendant' ? 4.5 : 2.8}
+            intensity={!lit ? 0 : fire ? 4.5 : lamp.kind === 'pendant' ? 4.5 : 2.8}
             position={[lamp.x, lamp.y, lamp.z]}
             distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : 5.6}
             color={fire ? '#ff9346' : BULB}

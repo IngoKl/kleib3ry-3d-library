@@ -37,9 +37,41 @@ pub fn probe(bytes: &[u8]) -> Probed {
     Probed {
         title: package.title,
         author: package.author,
-        page_count: None, // reflowable: pages do not exist until it is laid out
+        page_count: estimated_pages(&mut zip),
         cover,
     }
+}
+
+/// How much text there is per page once the reader has set the book in type.
+///
+/// `epubPages.ts` fits about 950 characters on one of its pages, and the markup
+/// around them in the file adds something like a quarter again.
+const BYTES_PER_PAGE: u64 = 1_200;
+
+/// About how long this book is, in the pages the reader will actually give it.
+///
+/// A reflowable book has no pages until something lays it out — but it does
+/// have a *length*, and the shelf needs one: a book's thickness comes from its
+/// page count, so with nothing here every EPUB in the library stood on the
+/// shelf as the same fat paperback. The fallback in front of this was the
+/// compressed file size, which for an EPUB is mostly cover art and
+/// illustrations rather than words — a picture book read as a doorstop and a
+/// long novel as a pamphlet.
+///
+/// The zip's central directory carries every entry's uncompressed size, so
+/// nothing is decompressed to work this out: sum the documents and divide.
+fn estimated_pages<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Option<u32> {
+    let mut bytes: u64 = 0;
+    for i in 0..zip.len() {
+        let Ok(entry) = zip.by_index_raw(i) else { continue };
+        let name = entry.name().to_ascii_lowercase();
+        if name.ends_with(".xhtml") || name.ends_with(".html") || name.ends_with(".htm") {
+            bytes = bytes.saturating_add(entry.size());
+        }
+    }
+    // Nothing readable in it is not a book of no pages, it is a book we cannot
+    // measure — and `None` is what lets the front end fall back to file size.
+    (bytes > 0).then(|| u32::try_from(bytes / BYTES_PER_PAGE).unwrap_or(u32::MAX).max(1))
 }
 
 fn read_entry<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, name: &str) -> Option<String> {
@@ -324,5 +356,35 @@ mod tests {
     #[test]
     fn a_file_that_is_not_a_zip_probes_to_nothing() {
         assert_eq!(probe(b"this is not an epub"), Probed::default());
+    }
+
+    /// A zip of named entries with the given uncompressed sizes, which is all
+    /// `estimated_pages` reads — it never decompresses anything.
+    fn zip_of(entries: &[(&str, usize)]) -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, size) in entries {
+            writer.start_file::<_, ()>(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut writer, &vec![b'a'; *size]).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn length_comes_from_the_documents_rather_than_the_file_size() {
+        // A novel: half a megabyte of text and nothing else.
+        let novel = zip_of(&[("OEBPS/ch1.xhtml", 240_000), ("OEBPS/ch2.xhtml", 240_000)]);
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(novel)).unwrap();
+        assert_eq!(estimated_pages(&mut zip), Some(400));
+
+        // A picture book: the same file size, almost all of it artwork. The old
+        // size-based guess called this the longer of the two.
+        let pictures = zip_of(&[("OEBPS/text.html", 24_000), ("OEBPS/plate.jpg", 800_000)]);
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(pictures)).unwrap();
+        assert_eq!(estimated_pages(&mut zip), Some(20));
+
+        // Nothing measurable: not "no pages", but "ask somebody else".
+        let empty = zip_of(&[("mimetype", 20), ("OEBPS/style.css", 4_000)]);
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(empty)).unwrap();
+        assert_eq!(estimated_pages(&mut zip), None);
     }
 }

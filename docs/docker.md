@@ -1,5 +1,11 @@
 # Running kleib3ry in a container
 
+**This is hosted mode.** The container is not one deployment option among
+several — it is the second of the two ways to run kleib3ry, the desktop app
+being the first. [modes.md](modes.md) is the two of them side by side: what is
+the same, what differs, and what this one deliberately does not do. This page is
+how to run it.
+
 The desktop app and the container are the same library seen through two
 different drivers. Point them both at the same folder and they see the same
 shelves, the same boxes, the same bookmarks — the library is the folder, and the
@@ -13,6 +19,12 @@ docker run --rm -p 8080:8080 -v /path/to/your/library:/library kleib3ry
 Then open <http://localhost:8080>. On a fresh library folder, open the panel and
 press **scan** once; after that the index lives in the folder and every launch
 reads it.
+
+No library of your own to hand? The repository carries a small real one:
+
+```bash
+docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
+```
 
 With compose:
 
@@ -81,6 +93,13 @@ GID=1000
 - **It has no TLS and no authentication.** This serves one library to one
   household on a network you trust. Anything more exposed wants a reverse proxy
   in front of it doing both.
+- **It has no idea who is looking at it.** The shelving, the bookmarks and the
+  reading positions are files in the library folder, not per-viewer state. Two
+  browsers open at once are two writers of the same document and the last save
+  wins — fine for your laptop and your tablet, wrong for two people.
+
+The reasoning behind all three is in
+[modes.md](modes.md#what-hosted-mode-is-not).
 
 ## What the browser is allowed to read
 

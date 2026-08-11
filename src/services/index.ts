@@ -2,7 +2,7 @@ import { isTauri } from '@tauri-apps/api/core'
 import { browserDriver } from './browserDriver'
 import { httpDriver } from './httpDriver'
 import { tauriDriver } from './tauriDriver'
-import type { LibraryService } from './types'
+import type { DriverKind, LibraryService } from './types'
 
 /**
  * The active driver, chosen once at startup.
@@ -28,6 +28,21 @@ export const library: LibraryService = isTauri()
   : wanted === 'http'
     ? httpDriver
     : browserDriver
+
+/**
+ * What each driver *is*, in the words [docs/modes.md](../../docs/modes.md) uses.
+ *
+ * Two of these are shipped ways to run kleib3ry and the third is not, which a
+ * bare `kind` cannot say. `http` reads as "container" everywhere a person sees
+ * it because that is what running it hosted means — the transport is an
+ * implementation detail of the mode, not the name of it. Here rather than in
+ * either card so the menu and the settings panel cannot come to disagree.
+ */
+export const DRIVER_LABELS: Record<DriverKind, string> = {
+  tauri: 'desktop app',
+  http: 'container',
+  browser: 'stand-in — no filesystem',
+}
 
 export type { DriverKind, LibraryService } from './types'
 export { UnsupportedOperation } from './types'

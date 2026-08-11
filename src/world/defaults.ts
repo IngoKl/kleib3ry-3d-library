@@ -71,7 +71,16 @@ export const DEFAULT_WORLD_TEXT = `{
         // from outside is a window with a plank through it. 1.38 leaves a hand's
         // width of plaster between the head of the window and the boards.
         { "wall": "north", "at": 0, "width": 4.6, "height": 1.38, "sill": 0.8, "kind": "window" },
-        { "wall": "west", "at": 3.0, "width": 1.6, "height": 1.5, "sill": 0.95, "kind": "window" },
+        // The third window is on the *east* wall, north of the flight, and used
+        // to be on the west one. There is nowhere on the west wall for a window
+        // to go: the reading corner is built against it from z = -1.6 to 3.4 and
+        // the three bookcases stand along the rest, so what that window looked
+        // out at was 24 cm of air and then the reading corner's blank east wall
+        // — plaster filling three quarters of the opening with a sliver of
+        // forest past the corner. Here it has open ground beyond it. Its head
+        // clears the loft floor for the same reason the north one's does: the
+        // slab hangs from 2.28, and 0.85 + 1.35 stops at 2.2.
+        { "wall": "east", "at": -3.0, "width": 1.4, "height": 1.35, "sill": 0.85, "kind": "window" },
         { "wall": "south", "at": 0.3, "width": 1.6, "height": 1.4, "sill": 0.95, "kind": "window" },
         // Doors need a matching door in the next room's facing wall. The east
         // door sits towards the south end of its wall because the staircase
@@ -258,11 +267,13 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "rug", "kind": "rug", "at": [0.9, 1.4], "facing": 0, "size": [3.0, 2.4] },
         { "id": "chair", "kind": "armchair", "at": [1.6, 1.5], "facing": 265 },
         { "id": "stool", "kind": "footstool", "at": [0.75, 1.65], "facing": 265 },
-        // Beside the chair rather than through it. An armchair turned 265° is
-        // 0.9 m across in X, so a table at x = 2.1 stood 16 cm inside its arm —
-        // which reads as a table growing out of the upholstery. 2.45 clears it,
-        // and is still far enough back from the door line at z = 0.
-        { "id": "table", "kind": "sidetable", "at": [2.45, 1.5], "facing": 0 },
+        // At the chair's arm, which is the only place a side table is any use.
+        // Pushing it east to clear the upholstery had put it *behind* the chair
+        // and half off the rug, against the east wall — out of reach of anybody
+        // sitting down, which is the whole job. Beside it instead: a chair turned
+        // 265° reaches z = 1.97, so a table at 2.2 stands 3 cm off its arm, on
+        // the rug, clear of the lamp at 2.25 and 7 cm short of the south wall.
+        { "id": "table", "kind": "sidetable", "at": [1.5, 2.2], "facing": 0 },
         { "id": "lamp", "kind": "floorlamp", "at": [2.25, 2.1], "facing": 0 },
         { "id": "reading-plant", "kind": "plant", "at": [2.3, -2.05], "facing": 0 },
         { "id": "picture-3", "kind": "picture", "at": [0.9, 2.44], "facing": 180, "y": 1.6, "size": [0.8, 0.6] },
@@ -401,7 +412,12 @@ export const DEFAULT_WORLD_TEXT = `{
         // where the thing actually is.
         { "id": "desk", "kind": "desk", "at": [-1.2, 1.6], "facing": 0, "size": [1.6, 0.75] },
         { "id": "desk-chair", "kind": "diningchair", "at": [-1.2, 0.75], "facing": 0 },
-        { "id": "catalogue", "kind": "computer", "at": [-0.75, 1.62], "facing": 0, "y": 0.75 },
+        // The terminal faces 180 while the desk it stands on faces 0, which
+        // looks like a mistake and is the opposite: facing points a thing's
+        // front, and a screen's front is the side you read. You come at this
+        // desk from the north, from the chair — so the screen has to look north
+        // at you. Facing 0 showed the room the back of the monitor.
+        { "id": "catalogue", "kind": "computer", "at": [-0.75, 1.62], "facing": 180, "y": 0.75 },
         { "id": "notepad", "kind": "postits", "at": [-1.75, 1.42], "facing": 12, "y": 0.75 },
 
         { "id": "office-rug", "kind": "rug", "at": [-0.4, 0.6], "facing": 0, "size": [3.0, 2.2] },

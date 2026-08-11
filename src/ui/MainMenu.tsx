@@ -99,8 +99,16 @@ export function MainMenu() {
         <p className="menu-sub">a library you can walk into</p>
 
         <p className="controls-heading">this library</p>
+        {/* Three drivers, three different meanings for "no root yet", and the
+            container's is the one that used to read wrong: a mounted folder the
+            server has not answered for yet is not a stand-in library. */}
         <p className="menu-current" data-testid="menu-current">
-          {libraryRoot ?? (library.canPickFolder ? 'no folder chosen yet' : 'a generated stand-in')}
+          {libraryRoot ??
+            (library.kind === 'tauri'
+              ? 'no folder chosen yet'
+              : library.kind === 'http'
+                ? 'the folder mounted into the container'
+                : 'a generated stand-in')}
         </p>
         <p className="note">
           {ready
@@ -141,10 +149,22 @@ export function MainMenu() {
           </>
         )}
 
-        {!library.canPickFolder && (
+        {/* `canPickFolder` is false in both of the non-desktop drivers, and for
+            opposite reasons: the container has a real library and will not let a
+            browser go looking for another one, the stand-in has no library at
+            all. Keying the message off the capability said "generated stand-in"
+            to someone reading their own shelves in a container. */}
+        {library.kind === 'http' && (
+          <p className="note">
+            Hosted mode: the library is the folder mounted into the container, so there is nothing
+            to choose. To read a different one, mount a different folder.
+          </p>
+        )}
+        {library.kind === 'browser' && (
           <p className="note warn">
             This build has no filesystem, so the library is a generated stand-in. Run{' '}
-            <code>npm run tauri:dev</code> to open a folder of your own.
+            <code>npm run tauri:dev</code> for the desktop app, or{' '}
+            <code>npm run docker:build</code> for the container, to open a folder of your own.
           </p>
         )}
 

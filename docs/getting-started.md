@@ -1,5 +1,9 @@
 # Getting started
 
+There are two ways to run kleib3ry — the desktop app and the container — and
+this page is the desktop one. [modes.md](modes.md) is the difference between
+them; [docker.md](docker.md) is how to run the other.
+
 ## Run it
 
 ```bash
@@ -13,8 +17,29 @@ reading will fail without it.
 
 If you only want to look round the room, `npm run dev` opens it in a browser tab
 with a generated 1,700-book stand-in library and no filesystem access at all.
-There is also a container, which reads a real library folder and serves it to a
-browser — see [docker.md](docker.md).
+That is a test fixture rather than a third way to run it — see
+[modes.md](modes.md#the-third-driver-is-not-a-third-mode).
+
+## Try it without your own books
+
+There is a small real library in the repository, at
+[demo-data/demo-library/](../demo-data/demo-library/): ten
+[Standard Ebooks](https://standardebooks.org/) titles, two records, two pictures
+and a tape, all freely licensed — the credits are in the folder's own
+[README](../demo-data/demo-library/README.md).
+
+Point the app at it like any other library folder: **choose folder…**, then
+**scan**. It fills four boxes rather than a room, which is enough to unpack a
+shelf, put a record on and read something. The container can use it too:
+
+```bash
+docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
+```
+
+Whichever you use writes its `.library/` into that folder, so the demo library
+remembers where you put things exactly as your own would. The two generated
+files it writes there are gitignored; delete the folder's `.library/` to put it
+back the way it shipped.
 
 ## Point it at your books
 
@@ -114,12 +139,15 @@ The panel is the first place to look. It shows which driver is live, which folde
 is open, which files this library is saved into, how many books are shelved and
 how many are still boxed, and any error from the last scan or the last edit.
 
-- **An empty library.** Check the panel's folder. In a browser tab without the
-  desktop shell there is no filesystem at all and the catalogue is a stand-in —
-  the panel says so.
+- **An empty library.** Check the panel's folder. The panel also says which of
+  the three drivers is live — in a browser tab without the desktop shell there
+  is no filesystem at all and the catalogue is a stand-in, which is the usual
+  answer to "why are these not my books".
 - **Books with no cover art.** They are still warming. PDFs have their first page
   rasterised once, ever, and cached in `.library/covers/`.
-- **A book that will not open.** Only PDFs open; EPUBs are indexed, shelved and
-  readable-as-objects, but the reader has no text layout engine.
+- **A book that will not open.** Both formats open — a PDF through pdf.js, an
+  EPUB unzipped and set in type by the app itself. What an EPUB cannot do is
+  keep its own layout: it is re-set, so its page numbers are the app's rather
+  than the publisher's.
 - **A tape that will not play.** The container it is in has to be one the WebView
   can decode — roughly H.264 in MP4, or VP9 in WebM. The panel says why.

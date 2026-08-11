@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { closeDocument, openDocument, renderPage } from '../reader/pdf'
+import { renderOnePage } from '../reader/source'
+import { useLibraryStore } from './library'
 
 /**
  * Page images for books that are open in the *room* rather than in the reader.
@@ -57,22 +58,22 @@ export function pageTexture(bookId: string, page: number): Promise<THREE.Texture
 
   const job = (async (): Promise<THREE.Texture | null> => {
     try {
-      const doc = await openDocument(bookId)
-      try {
-        const canvas = await renderPage(doc, page, PAGE_PX)
-        if (!canvas) return null
-        const texture = new THREE.CanvasTexture(canvas)
-        texture.colorSpace = THREE.SRGBColorSpace
-        texture.needsUpdate = true
-        cache.set(id, texture)
-        trim()
-        return texture
-      } finally {
-        // The texture outlives the document on purpose: it is the document
-        // that costs the memory, and the reader holds its own reference while
-        // a book is actually open.
-        closeDocument(bookId)
-      }
+      // The book as the index has it, because the format is what decides
+      // whether this is a rasterised page or one that has to be set in type
+      // first. A book the index has never heard of has no pages to draw.
+      const book = useLibraryStore.getState().byId.get(bookId)
+      if (!book) return null
+      // The texture outlives the document on purpose: it is the document that
+      // costs the memory, and `renderOnePage` lets go of it as soon as the
+      // page is out.
+      const canvas = await renderOnePage(book, page, PAGE_PX)
+      if (!canvas) return null
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.needsUpdate = true
+      cache.set(id, texture)
+      trim()
+      return texture
     } catch {
       return null
     } finally {

@@ -4,16 +4,22 @@ Start wherever your question is.
 
 ## Using it
 
-- **[getting-started.md](getting-started.md)** — install it, point it at your
-  books, find your way round the room.
+- **[modes.md](modes.md)** — the two ways to run it: the desktop app, and the
+  container that serves a library folder to a browser. What is the same in both,
+  what differs, and what hosted mode deliberately does not do. Read this first if
+  you are deciding how to run it.
+- **[getting-started.md](getting-started.md)** — install the desktop app, try the
+  demo library, point it at your own books, find your way round the room.
+- **[docker.md](docker.md)** — the hosted mode: running the container, what is in
+  the image, and the routes it serves.
+- **[controls.md](controls.md)** — every key, plus the menu and what is in
+  settings. `F1` shows the same table in the room.
 - **[library-folder.md](library-folder.md)** — what a library folder is, what the
   app writes into it, and what happens to your shelved books when you change the
   room underneath them.
 - **[custom-maps.md](custom-maps.md)** — building your own building: rooms,
   openings, lofts, stairs, roofs, furniture, light. Read this before editing
   `library.json`.
-- **[docker.md](docker.md)** — running it in a container and reading your library
-  in a browser.
 
 ## Working on it
 

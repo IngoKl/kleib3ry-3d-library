@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { library } from '../services'
+import { DRIVER_LABELS, library } from '../services'
 import { metrics, type RenderMetrics } from '../state/metrics'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
@@ -294,6 +294,13 @@ export function SettingsCard() {
         </button>
       </div>
 
+      {library.kind === 'http' && (
+        <p className="note">
+          Hosted mode: this is the folder mounted into the container. Choosing another one would
+          mean letting the browser walk the server&rsquo;s disk, so the button is off rather than
+          broken. Mount a different folder to read a different library.
+        </p>
+      )}
       {!library.canIndex && (
         <p className="note warn">
           Browser mode shows a generated stand-in library. Run <code>npm run tauri:dev</code> to
@@ -311,8 +318,13 @@ export function SettingsCard() {
         <dd>{render.drawCalls}</dd>
         <dt>triangles</dt>
         <dd>{render.triangles.toLocaleString()}</dd>
-        <dt>file driver</dt>
-        <dd className={driver === 'tauri' ? 'ok' : 'warn'}>{driver}</dd>
+        {/* Two of the three are shipped modes, so only the stand-in is a
+            warning. Marking the container amber said "something is wrong here"
+            to somebody whose setup was exactly right. */}
+        <dt>running as</dt>
+        <dd className={driver === 'browser' ? 'warn' : 'ok'}>
+          {DRIVER_LABELS[driver]} <span className="dim">({driver})</span>
+        </dd>
       </dl>
 
       <div className="row-controls settings-foot">
