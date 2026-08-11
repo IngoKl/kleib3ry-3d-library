@@ -46,6 +46,8 @@ const FINISHES = {
   boards: { r: 138, g: 100, b: 64, plank: PLANK_WIDTH_M, seam: 'rgba(40, 24, 12, 0.5)' },
   deck: { r: 128, g: 110, b: 86, plank: 0.22, seam: 'rgba(30, 24, 16, 0.75)' },
   stone: { r: 150, g: 145, b: 136, plank: 0.6, seam: 'rgba(60, 58, 54, 0.55)' },
+  /** Pale spruce for overhead: a cabin ceiling is boards, not plaster. */
+  ceiling: { r: 176, g: 142, b: 100, plank: 0.14, seam: 'rgba(62, 42, 24, 0.4)' },
 } as const
 
 export type FloorFinishName = keyof typeof FINISHES

@@ -49,7 +49,7 @@ formatting are yours.
   "id": "main",              // required, unique, no colons
   "name": "Great room",      // optional, defaults to the id
   "origin": [0, 0],          // centre, in world metres
-  "size": [9, 7],            // width along X, depth along Z
+  "size": [10, 8],           // width along X, depth along Z
   "height": 4.8,             // floor to ceiling
   "elevation": 0,            // height of this room's floor. A loft has one.
   "walls": ["north", "south", "east", "west"],   // which walls to build
@@ -65,6 +65,8 @@ formatting are yours.
 
 Rooms are axis-aligned boxes. Walls are 0.12 m thick and are drawn **outward**
 from the floor area, so a room's `size` is the space you can actually walk in.
+The floor runs out under them, which is what lets two rooms a wall-gap apart
+have something to stand on in the doorway between them.
 
 **Joining two rooms:** place them `0.24` m apart — twice the wall thickness — so
 their wall slabs sit flush, and put a matching door in each of the facing walls.
@@ -113,14 +115,17 @@ default document:
 ```jsonc
 {
   "id": "loft",
-  "origin": [0, -1.15],
-  "size": [9, 4.7],
-  "elevation": 2.4,          // 1. its floor is 2.4 m up
-  "height": 2.4,             // …and its head height is the cabin's ceiling
+  "origin": [0, -1.3],
+  "size": [10, 5.4],
+  "elevation": 2.5,          // 1. its floor is 2.5 m up. A bookcase is 2.24 m
+                             //    tall and the floor slab 0.22 m thick, so any
+                             //    lower and the cases downstairs stand up into
+                             //    the boards.
+  "height": 2.3,             // …and its head height is the cabin's ceiling
   "walls": ["south"],        // 2. only the balustrade. The other three walls
                              //    are the cabin's, which run the full 4.8 m.
   "ceiling": false,          // 3. its ceiling is the cabin's
-  "holes": [{ "at": [4.0, -0.75], "size": [1.35, 3.5] }]   // 4. the stairwell
+  "holes": [{ "at": [4.4, 0.675], "size": [1.45, 2.95] }]  // 4. the stairwell
 }
 ```
 
@@ -136,13 +141,19 @@ default document:
 ### Stairs
 
 ```jsonc
-{ "id": "stairs", "kind": "stairs", "at": [4.0, -1.85],
-  "facing": 0, "size": [0.95, 3.3], "rise": 2.4 }
+{ "id": "stairs", "kind": "stairs", "at": [4.4, -0.4],
+  "facing": 180, "size": [1.05, 3.4], "rise": 2.5 }
 ```
 
 A flight climbs **towards its facing direction**. `size` is `[width, run]` and
 `rise` is how far up it gets. Underfoot it is a smooth ramp; what you see is
 treads.
+
+Put the **bottom of the flight somewhere you can actually stand**: the default
+one is entered from the open floor by the seating and climbs north along the
+east wall. A flight whose bottom step is a hand's width from a wall is a
+staircase nobody can get onto — and keep doors off the wall the flight runs
+along, or the door opens into the side of it.
 
 The one measurement that has to be right is **where the flight reaches the top**
 relative to the stairwell. The floor above only exists outside the hole, so the
@@ -151,25 +162,31 @@ walk up the stairs and find a 60 cm step you cannot climb. Work it out from the
 run:
 
 ```text
-flight at z = -1.85, run 3.3, facing 0 (climbing +Z)
-  → bottom at z = -3.50 (floor level)
-  → top    at z = -0.20 (2.4 m up)
-stairwell hole must therefore end at z = -0.20 or a whisker beyond
-  → hole centre z = -1.90, length 3.5   (world)
-  → local to a room at origin z = -1.15:  "at": [4.0, -0.75]
+flight at z = -0.4, run 3.4, facing 180 (climbing -Z)
+  → bottom at z =  1.30 (floor level)
+  → top    at z = -2.10 (2.5 m up)
+the stairwell hole must therefore END at z = -2.10, not after it
+  → hole from z = -2.10 back to 0.85  →  centre -0.625, length 2.95   (world)
+    (0.85 is where your head would otherwise meet the underside of the loft)
+  → local to a room at origin z = -1.3:  "at": [4.4, 0.675], "size": [1.45, 2.95]
 ```
 
-If you get it wrong you will know immediately: you will climb the stairs and
-stop dead at the top. The rule the walk controller applies is that a move is
-only allowed if the floor you are stepping onto is within 0.42 m of the floor
-you are on — which is also what stops you walking off the loft.
+Ending the hole *later* than the top of the flight leaves a strip with no floor
+at either height — the ramp has run out and the boards have not started — and
+you will climb the stairs and stop dead one pace short of the landing. Ending it
+earlier is harmless as long as the ramp is within a step of the floor by then.
+
+The rule the walk controller applies is that a move is only allowed if the floor
+you are stepping onto is within 0.42 m of the floor you are on. That is both how
+a staircase works and why you cannot walk off the loft, which is a good sign it
+is the right rule.
 
 ---
 
 ## Shelves
 
 ```jsonc
-{ "id": "west-0", "at": [-4.325, -2.9], "facing": 90, "rows": 5, "label": "Fiction" }
+{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" }
 ```
 
 `rows` is how many compartments the case has; the compartments divide the same
@@ -177,7 +194,9 @@ carcass, so **fewer rows means taller shelves**. `at` is where the case stands,
 relative to the room centre. To stand one flush against a wall, offset it from
 the wall by half the case's depth plus a little: `0.175`.
 
-A case is 1.0 m wide and 0.32 m deep, so cases stand 1.05 m apart in a run.
+A case is 1.0 m wide and 0.32 m deep, so `1.05` apart is the tightest a run can
+stand. The default map uses `1.2`, which leaves a hand's width between cases and
+reads as furniture rather than as built-in shelving.
 
 `label` is a *starting* label for the card on its top edge. You can relabel a
 case in the app with `L`, and that overrides what is written here — the app's

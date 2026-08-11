@@ -104,6 +104,8 @@ export type LightState = {
   schemaVersion: number
   /** Furniture id -> whether it is lit. Absent means "as the document says". */
   on: Record<string, boolean>
+  /** Whether it is night outside. Absent means day. */
+  night?: boolean
 }
 
 export interface LibraryService {

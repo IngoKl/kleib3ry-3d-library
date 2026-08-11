@@ -74,12 +74,18 @@ test.describe('world document', () => {
     // The climb is continuous: no step bigger than one, all the way up. The
     // trace is collected first so a failure names *where* the flight breaks —
     // "a 0.6 m step two thirds of the way up" is a fixable report and
-    // "expected 0.42" is not.
+    // "expected 0.42" is not. Walked along the flight's own up-vector rather
+    // than assuming it climbs +Z, so re-orienting the staircase in the default
+    // map does not falsify the test.
     const climb: { z: number; floor: number | null }[] = []
-    let previous = floorAt(WORLD, stair.x, stair.z - stair.run / 2, 0)!
+    const at = (t: number) => ({
+      x: stair.x + stair.dx * (t - 0.5) * stair.run,
+      z: stair.z + stair.dz * (t - 0.5) * stair.run,
+    })
+    let previous = floorAt(WORLD, at(0).x, at(0).z, 0)!
     for (let t = 0; t <= 1.0001; t += 0.02) {
-      const z = stair.z + (t - 0.5) * stair.run
-      const here = floorAt(WORLD, stair.x, z, previous)
+      const { x, z } = at(t)
+      const here = floorAt(WORLD, x, z, previous)
       climb.push({ z: +z.toFixed(3), floor: here })
       if (here !== null) previous = here
     }

@@ -57,6 +57,8 @@ export function Hud() {
   const paused = useMediaStore((s) => s.paused)
   const musicError = useMediaStore((s) => s.error)
   const lightsOn = useLightStore((s) => s.on)
+  const night = useLightStore((s) => s.night)
+  const toggleNight = useLightStore((s) => s.toggleNight)
   const brewing = useAppStore((s) => s.brewing)
   const packEverything = useLibraryStore((s) => s.packEverything)
 
@@ -145,8 +147,8 @@ export function Hud() {
                 {browsing && (
                   <>
                     {' · '}
-                    <kbd>[</kbd>
-                    <kbd>]</kbd> browse
+                    <kbd>,</kbd>
+                    <kbd>.</kbd> browse
                   </>
                 )}
               </>
@@ -214,8 +216,8 @@ export function Hud() {
                 {browsing && (
                   <>
                     {' · '}
-                    <kbd>[</kbd>
-                    <kbd>]</kbd> or scroll to browse
+                    <kbd>,</kbd>
+                    <kbd>.</kbd> or scroll to browse
                   </>
                 )}
               </>
@@ -297,7 +299,7 @@ export function Hud() {
           <kbd>D</kbd> move · <kbd>shift</kbd> run · <kbd>ctrl</kbd> kneel ·{' '}
           <kbd>E</kbd> take, shelve, sit, switch on · <kbd>Q</kbd> drop · <kbd>O</kbd> leave open ·{' '}
           <kbd>G</kbd> empty a box · <kbd>X</kbd> carry a box · <kbd>L</kbd> label a shelf ·{' '}
-          <kbd>F</kbd> show cover
+          <kbd>F</kbd> show cover · <kbd>N</kbd> night
         </div>
       )}
 
@@ -394,6 +396,18 @@ export function Hud() {
             {nowPlaying && ` · ${paused ? 'paused' : 'playing'}`}
           </p>
           {musicError && <p className="note warn">{musicError}</p>}
+        </div>
+
+        <div className="row">
+          <span className="row-label">outside</span>
+          <div className="row-controls">
+            <button data-testid="toggle-night" onClick={() => toggleNight()}>
+              {night ? 'make it day' : 'make it night'}
+            </button>
+          </div>
+          <p className="note">
+            or press <kbd>N</kbd> in the room
+          </p>
         </div>
 
         <div className="row">

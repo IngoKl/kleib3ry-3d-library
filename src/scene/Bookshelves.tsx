@@ -80,7 +80,10 @@ function Group({ group }: { group: Bucket }) {
 
     group.shelves.forEach((shelf, i) => {
       quaternion.setFromAxisAngle(axis, shelf.rotationY)
-      matrix.compose(new THREE.Vector3(shelf.x, 0, shelf.z), quaternion, one)
+      // `shelf.y` is the floor the case stands on. Hardcoding 0 here once sank
+      // every loft bookcase into the room below it, leaving its label and its
+      // books floating upstairs over nothing.
+      matrix.compose(new THREE.Vector3(shelf.x, shelf.y, shelf.z), quaternion, one)
       mesh.setMatrixAt(i, matrix)
     })
     mesh.instanceMatrix.needsUpdate = true

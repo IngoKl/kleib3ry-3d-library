@@ -286,21 +286,27 @@ const holeBounds = (room: RoomSpec, hole: FloorHole): Bounds => ({
  * A loft needs a hole for the stair to come up through, and a floor is exactly
  * the sort of thing that must not be approximated: you stand on it.
  *
- * The floor runs out to the *outside* of the walls rather than stopping at the
- * room's inner face, because a wall stands on the floor rather than beside it.
- * That is not a detail: two rooms are joined by placing them `2 * WALL` apart,
- * so without it there is a 24 cm strip of nothing in every doorway in the
- * building — which the walk controller reads, correctly, as a hole to refuse to
- * step into.
+ * The floor runs out to the *outside* of each wall the room actually builds,
+ * rather than stopping at the room's inner face, because a wall stands on the
+ * floor rather than beside it. That is not a detail: two rooms are joined by
+ * placing them `2 * WALL` apart, so without it there is a 24 cm strip of
+ * nothing in every doorway in the building — which the walk controller reads,
+ * correctly, as a hole to refuse to step into.
+ *
+ * Only under walls it builds, though. A porch butted flush against the cabin
+ * has no north wall of its own, and a floor that ran out under one anyway would
+ * be a second slab at exactly the height of the cabin's, in the open, fighting
+ * it for every pixel.
  */
 export function floorSlabs(room: RoomSpec): Slab[] {
   const inner = roomBounds(room)
+  const under = (wall: Wall) => (room.walls.includes(wall) ? WALL : 0)
   let rects: Bounds[] = [
     {
-      minX: inner.minX - WALL,
-      maxX: inner.maxX + WALL,
-      minZ: inner.minZ - WALL,
-      maxZ: inner.maxZ + WALL,
+      minX: inner.minX - under('west'),
+      maxX: inner.maxX + under('east'),
+      minZ: inner.minZ - under('north'),
+      maxZ: inner.maxZ + under('south'),
     },
   ]
   for (const hole of room.holes) {

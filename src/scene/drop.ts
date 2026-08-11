@@ -42,6 +42,26 @@ const SLEEP_SPEED = 0.06
 
 export type Support = (x: number, z: number, from: number) => number
 
+/**
+ * Bodies thrown this frame, waiting for the renderer to adopt them.
+ *
+ * The store's placement is just a point — it has nowhere to carry a velocity —
+ * so a drop used to arrive in `LooseBooks` looking exactly like a saved resting
+ * placement and was seeded asleep, leaving the book hanging where your hand
+ * was. The throw parks its full body here and the simulation picks it up.
+ */
+const launched = new Map<string, Body>()
+
+export function launchBody(id: string, body: Body) {
+  launched.set(id, body)
+}
+
+export function takeLaunchedBody(id: string): Body | undefined {
+  const body = launched.get(id)
+  if (body) launched.delete(id)
+  return body
+}
+
 /** The world's own answer to "what is under this point", curried for the step. */
 export const supportFrom = (world: DerivedWorld): Support => (x, z, from) =>
   supportAt(world, x, z, from)

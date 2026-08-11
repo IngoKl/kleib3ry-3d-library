@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use library3d_lib::index;
+use library3d_lib::{index, media};
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -95,6 +95,26 @@ fn main() -> ExitCode {
             if summary.failed > 0 {
                 println!("(unreadable books are still indexed, under their filename)");
             }
+
+            // The rest of the library folder. Music and artwork are deliberately
+            // not in the index — the app walks them on demand — but a scan should
+            // still read them, because this is where you find out the folder
+            // layout is wrong *before* the record shelf stands empty.
+            match media::music_root(&root) {
+                Some(_) => {
+                    let tracks = media::list_tracks(&root);
+                    println!("music    {} track(s)", tracks.len());
+                }
+                None => println!("music    no music/ folder"),
+            }
+            match media::artwork_root(&root) {
+                Some(_) => {
+                    let artwork = media::list_artwork(&root);
+                    println!("artwork  {} picture(s)", artwork.len());
+                }
+                None => println!("artwork  no artwork/ folder"),
+            }
+
             ExitCode::SUCCESS
         }
         Err(e) => {

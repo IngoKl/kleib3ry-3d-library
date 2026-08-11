@@ -25,8 +25,11 @@ import { APPLIANCES, LAMPS, SITTABLE, type DerivedFurniture } from '../world/der
  * cabin is the one thing in the frame that would actually cost something.
  */
 
-const CLOTH = '#7a5a4a'
-const CLOTH_DARK = '#6a4c3e'
+// Moss rather than leather: with the floor, the shelves and the ceiling all in
+// wood, brown seating made the whole room one material. Green is what a cabin
+// puts against timber.
+const CLOTH = '#63705a'
+const CLOTH_DARK = '#525e4b'
 const OAK = '#8a6039'
 const PINE = '#b08e63'
 const WOOL = '#8c6f58'
@@ -257,7 +260,7 @@ function FloorLamp({ lit }: { lit: boolean }) {
           roughness={1}
           side={THREE.DoubleSide}
           emissive={lit ? SHADE : '#000000'}
-          emissiveIntensity={lit ? 0.55 : 0}
+          emissiveIntensity={lit ? 0.4 : 0}
         />
       </mesh>
     </group>
@@ -279,7 +282,7 @@ function Pendant({ lit }: { lit: boolean }) {
           roughness={0.85}
           side={THREE.DoubleSide}
           emissive={lit ? SHADE : '#000000'}
-          emissiveIntensity={lit ? 0.7 : 0}
+          emissiveIntensity={lit ? 0.5 : 0}
         />
       </mesh>
     </group>
@@ -560,6 +563,37 @@ function RecordPlayer({ spinning, loaded }: { spinning: boolean; loaded: boolean
   )
 }
 
+/**
+ * Artwork is anything somebody drops in a folder, which includes photographs
+ * far larger than a GPU texture is allowed to be — and an oversized upload
+ * fails silently, leaving a black canvas in the frame. So the image is decoded
+ * and redrawn into a capped canvas rather than handed to the GPU raw; at frame
+ * size on a wall, a couple of thousand pixels is already more than the screen
+ * will ever show of it.
+ */
+const ARTWORK_MAX_PX = 2048
+
+function artworkTexture(source: string): Promise<THREE.Texture | null> {
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onerror = () => resolve(null)
+    image.onload = () => {
+      const scale = Math.min(1, ARTWORK_MAX_PX / Math.max(image.width, image.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return resolve(null)
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.colorSpace = THREE.SRGBColorSpace
+      resolve(texture)
+    }
+    image.src = source
+  })
+}
+
 /** A picture, in a frame, with a mount. The artwork itself is loaded lazily. */
 function Picture({ item, source }: { item: DerivedFurniture; source: string | null }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null)
@@ -569,20 +603,12 @@ function Picture({ item, source }: { item: DerivedFurniture; source: string | nu
   useEffect(() => {
     if (!source) return
     let cancelled = false
-    new THREE.TextureLoader().load(
-      source,
-      (loaded) => {
-        if (cancelled) {
-          loaded.dispose()
-          return
-        }
-        loaded.colorSpace = THREE.SRGBColorSpace
-        setTexture(loaded)
-      },
-      undefined,
+    void artworkTexture(source).then((loaded) => {
       // A picture that will not load is an empty mount, not a broken app.
-      () => {},
-    )
+      if (!loaded) return
+      if (cancelled) loaded.dispose()
+      else setTexture(loaded)
+    })
     return () => {
       cancelled = true
     }
@@ -604,10 +630,13 @@ function Picture({ item, source }: { item: DerivedFurniture; source: string | nu
       </mesh>
       <mesh position={[0, 0, 0.023]}>
         <planeGeometry args={[width, height]} />
+        {/* Keyed so the artwork arriving mounts a *new* material. Swapping a
+            map into a live material reuses its map-less shader program and
+            draws black, which is exactly the "black picture" this replaces. */}
         {texture ? (
-          <meshStandardMaterial map={texture} roughness={0.85} />
+          <meshStandardMaterial key="art" map={texture} roughness={0.85} />
         ) : (
-          <meshStandardMaterial color="#d8d0be" roughness={1} />
+          <meshStandardMaterial key="mount" color="#d8d0be" roughness={1} />
         )}
       </mesh>
     </group>
@@ -924,10 +953,12 @@ export function FurnitureLights() {
             key={lamp.id}
             // Candela, falling off with the square of distance, so these are
             // larger than they look: at the 2 m from a pendant to the table
-            // under it, 7 cd arrives as under 2.
-            intensity={fire ? 5 : lamp.kind === 'pendant' ? 7 : 4.5}
+            // under it, 4.5 cd arrives as just over 1. Argued down twice from
+            // hotter values: intensity makes the glare pool by the fitting,
+            // distance is what carries a soft edge into the corners.
+            intensity={fire ? 4.5 : lamp.kind === 'pendant' ? 4.5 : 2.8}
             position={[lamp.x, lamp.y, lamp.z]}
-            distance={fire ? 5.5 : lamp.kind === 'pendant' ? 9 : 4.2}
+            distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : 5.6}
             color={fire ? '#ff9346' : BULB}
           />
         )

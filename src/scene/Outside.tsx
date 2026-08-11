@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { between, mulberry32 } from '../lib/rng'
 import { roomBounds } from '../world/derive'
+import { useLightStore } from '../state/lights'
 import { useWorldStore } from '../state/world'
 
 /**
@@ -154,23 +155,44 @@ function Forest({ trees }: { trees: Tree[] }) {
  * hills against. Drawn on the inside of a sphere with a two-stop gradient baked
  * into a 2x64 canvas — cheaper than a shader and easier to argue with.
  */
-function Sky() {
+function Sky({ night }: { night: boolean }) {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas')
-    canvas.width = 2
+    // Wide enough to scatter stars into at night; the day gradient does not care.
+    canvas.width = 256
     canvas.height = 128
     const ctx = canvas.getContext('2d')!
     const gradient = ctx.createLinearGradient(0, 0, 0, 128)
-    gradient.addColorStop(0, '#4d7fb5')
-    gradient.addColorStop(0.45, '#9dc0dc')
-    gradient.addColorStop(0.72, '#d6e4ec')
-    gradient.addColorStop(1, '#e8e2d4')
+    if (night) {
+      gradient.addColorStop(0, '#0a1024')
+      gradient.addColorStop(0.5, '#141d33')
+      gradient.addColorStop(0.78, '#1d2536')
+      gradient.addColorStop(1, '#12141c')
+    } else {
+      gradient.addColorStop(0, '#4d7fb5')
+      gradient.addColorStop(0.45, '#9dc0dc')
+      gradient.addColorStop(0.72, '#d6e4ec')
+      gradient.addColorStop(1, '#e8e2d4')
+    }
     ctx.fillStyle = gradient
-    ctx.fillRect(0, 0, 2, 128)
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    if (night) {
+      // A seeded scatter of stars in the upper half, brighter towards the top.
+      const random = mulberry32(0x57a2)
+      for (let i = 0; i < 220; i++) {
+        const x = random() * canvas.width
+        const y = random() * canvas.height * 0.6
+        const bright = 0.35 + random() * 0.65 * (1 - y / (canvas.height * 0.6))
+        ctx.fillStyle = `rgba(232, 238, 255, ${bright.toFixed(2)})`
+        ctx.fillRect(x, y, random() > 0.85 ? 1.5 : 1, 1)
+      }
+    }
+
     const made = new THREE.CanvasTexture(canvas)
     made.colorSpace = THREE.SRGBColorSpace
     return made
-  }, [])
+  }, [night])
   useEffect(() => () => texture.dispose(), [texture])
 
   return (
@@ -221,6 +243,7 @@ function Hills() {
 
 export function Outside() {
   const world = useWorldStore((s) => s.world)
+  const night = useLightStore((s) => s.night)
 
   /** Trees keep out of every room's footprint, plus a margin to walk in. */
   const keepOut = useMemo(() => {
@@ -238,7 +261,10 @@ export function Outside() {
 
   return (
     <group>
-      <Sky />
+      {/* The clear colour behind everything lives with the sky it has to match,
+          not in App: the two changing in different frames is a visible flash. */}
+      <color attach="background" args={[night ? '#0b101c' : '#9dc0dc']} />
+      <Sky night={night} />
       <Hills />
 
       {/* The ground, a whisker below the cabin floor so the two never z-fight. */}
@@ -273,8 +299,10 @@ export function Outside() {
       <Forest trees={trees} />
 
       {/* Haze, which is what makes a hundred metres of forest read as distance
-          rather than as a lot of cones. Thin enough not to fog the room. */}
-      <fogExp2 attach="fog" args={['#c3d2dd', 0.0085]} />
+          rather than as a lot of cones. Thin enough not to fog the room. At
+          night it thickens a little and goes dark, which is what darkness at a
+          distance actually looks like. */}
+      <fogExp2 attach="fog" args={night ? ['#101624', 0.0105] : ['#c3d2dd', 0.0085]} />
     </group>
   )
 }

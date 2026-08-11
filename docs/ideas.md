@@ -1,62 +1,26 @@
 # Ideas / Features
 
-## Batch 2
+## Batch 4
 
 ### General
 
-- Add a commmand that clears all bookshelves and puts all book in the boxes
-- Make sure that covers etc. are loaded from the get go; not only after reading a book once
-- When I pick up a book for the first time, the cover doesn't show
+- I want to sit and read at the same timer
+- We need a "controls" menu where players can learn the controls
+- Remove the "plan.md" if its no longer needed
+- What is "spikes/reading": It is needed? Check that the project architecture and the folder structure is clean and purposefull.
+- I want to be able to hide the hud
+- The "label shelve" button doesn't work
+- Add a function (HUD) to put all stray (dropped down, not on a table) books into a box
+  
+### Records
 
-### Library
+- When picking up record, they are gone; I want to place them on the record player.
+- Records should have a label
+- Records are stored just atop of each other in the shelve, give them a cover and have them like books
 
-- The number of pages should correspond with the size of a book
-- Make the books a little bit bigger; this will also improve readability of the spine etc. They are quite low texture right now.
-- The library scanning CLI command needs to be aware of the "books" folder and not scan the other folders in the library. The CLI command should read only the "books" folder for books.
+### Map
 
-### World/Map Design
-
-For the default map:
-
-- Make the library more cozy; make it feel like a modern cabin in the forest; also change the map accordingly.
-- Give it an outside world (a forest setting with a lake) that I can see through the window.
-- Add plants and other small items for ambiance
-- Add a record player: in the library folder, read from two subfolders: books (for books) and music (for music) playable via the record player. I want, similar to bookshelves, a smaller record shelve. Each mp3/wav/flac is one record.
-- I want to be able to hang images, they are loaded from a third folder, called "artwork"; add an image (in a nice frame) in the library
-- Add a small kitchen with a coffee maker
-- Add a porch/patio with a chair and a table from which I can look into the forest
-- Give it a cozy second floor with another reading corner
-
-### World Interaction
-
-- I want to place books on tables etc.
-- I want to be able to put books back into a box
-- I want some physics, especially, I want to drop books in the room. The shelving and placing on tables etc. should be static, but I want to be able to just drop/move books on the ground.
-- I want to be able to turn on and off lights; safe the light state etc. in a file in the .library folder
-- I want to place labels on bookshelves
-- I want to be able to move the book boxes (moving boxes) in the library; each book box holds specific books (track them just like bookshelves)
-- I want to be able to put a book down (e.g., on a table) opened; I want it opened at the current page (last page I read) so that when I pick it up again, its at the same page. When doing that, show it as an opened book with the correct page displayed.
-
-### Reading
-
-- If you have multiple bookmarks in one book, its hard to separate them. Add colors and maybe a little border.
-- Add a "jump to page x" option
-
-### Documentation
-
-- Update the docs, the Readme, and CLAUDE.md
-- Create more documenation for building custom maps
-
-## Batch 3
-
-- The geometry and the placement of the bookshelves and stairs is bad; make everything a bit more spacious and less crammed
-- Make sure that the CLI scan command also scans artwork and music
-- The buttons for browsing a box [ ] are bad.
-- The artwork is black
-- Opened books show a black page
-- The lighting is very aggressive
-- Allow day/night switching
-- Rework the textures and models to fit the "modern cabin in the woods" vibe
-- When picking up a book for the first time, the cover is black
-- Dropping a book places it in mid air
-- There is on random label "Poetry" on the first floor
+- The vibe is still too corporate, too office; it should be a modern, but cozy place in the woods
+- Improve on the asset quality, especially also the outside; make the trees more tree like etc. Add more tree types to create visual interest; Try to make it look less cheap
+- Add a bedroom; with shelves, a reading char, a nice view over the lake
+- The coffee maker is the wrong way around

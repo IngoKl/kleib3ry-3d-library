@@ -36,8 +36,22 @@ export function HeldBook() {
 
     const show = (source: HTMLImageElement | string) => {
       if (cancelled) return
-      const texture =
-        typeof source === 'string' ? new THREE.TextureLoader().load(source) : new THREE.Texture(source)
+      if (typeof source === 'string') {
+        // Only once it has loaded: a texture handed to a material before its
+        // image arrives renders black, which for a freshly rasterised PDF
+        // cover was every first pickup.
+        new THREE.TextureLoader().load(source, (texture) => {
+          if (cancelled) {
+            texture.dispose()
+            return
+          }
+          texture.colorSpace = THREE.SRGBColorSpace
+          texture.needsUpdate = true
+          setCover(texture)
+        })
+        return
+      }
+      const texture = new THREE.Texture(source)
       texture.colorSpace = THREE.SRGBColorSpace
       texture.needsUpdate = true
       setCover(texture)
@@ -121,13 +135,15 @@ export function HeldBook() {
         <meshStandardMaterial color="#e9e0cb" roughness={1} />
       </mesh>
 
-      {/* the real cover art, or a blank board until it arrives */}
+      {/* the real cover art, or a blank board until it arrives. Keyed so the
+          art mounts a fresh material — swapping a map into a live one keeps
+          its map-less shader and draws the board black. */}
       <mesh position={[0, 0, spine / 2 + 0.0012]}>
         <planeGeometry args={[coverWidth * 0.98, coverHeight * 0.98]} />
         {cover ? (
-          <meshStandardMaterial map={cover} roughness={0.62} />
+          <meshStandardMaterial key="cover" map={cover} roughness={0.62} />
         ) : (
-          <meshStandardMaterial color={size.colour} roughness={0.62} />
+          <meshStandardMaterial key="board" color={size.colour} roughness={0.62} />
         )}
       </mesh>
     </group>

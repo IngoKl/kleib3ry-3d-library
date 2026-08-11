@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { supportAt } from '../world/derive'
-import { throwFrom } from './drop'
+import { launchBody, throwFrom } from './drop'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
@@ -50,6 +50,9 @@ export function Handling() {
         const size = shelf.dims.get(app.held)
         if (!size) return
         const body = throwFrom(player, size, false)
+        // The placement is only where the book leaves your hand; the body —
+        // with the velocity of the throw — is what actually falls.
+        launchBody(app.held, body)
         shelf.putDown(app.held, {
           x: body.x,
           y: body.y,

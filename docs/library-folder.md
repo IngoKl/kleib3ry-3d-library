@@ -178,7 +178,7 @@ cannot walk off. The loft balustrade and the porch rails are all built this way.
 ### Shelves
 
 ```jsonc
-{ "id": "west-0", "at": [-4.325, -2.9], "facing": 90, "rows": 5, "label": "Fiction" }
+{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" }
 ```
 
 `rows` is how many compartments the case has; the compartments divide the same

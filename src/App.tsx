@@ -29,6 +29,7 @@ import { useMediaStore } from './state/media'
 import { useWorldStore } from './state/world'
 import { warmCovers } from './state/covers'
 import { library } from './services'
+import type { LoosePlacement } from './services/types'
 import { setWorldText } from './services/browserDriver'
 import { roomAt } from './world/derive'
 import { boxesIn } from './world/boxes'
@@ -171,6 +172,13 @@ export default function App() {
         useLibraryStore.getState().emptyBoxOntoShelves(boxId),
       /** Books lying about the room, and where each one came to rest. */
       looseBooks: () => ({ ...useLibraryStore.getState().loose }),
+      /**
+       * Put a book down in the room, as Q and O do. Aiming those keys needs a
+       * pointer lock a headless driver has not got; what the tests are about
+       * is what happens to a book once it is lying there.
+       */
+      putDownForTest: (id: string, placement: LoosePlacement) =>
+        useLibraryStore.getState().putDown(id, placement),
       /** Every piece of furniture, where it actually is — boxes get shoved. */
       furniture: () =>
         (useWorldStore.getState().world?.furniture ?? []).map((item) => ({
@@ -199,6 +207,9 @@ export default function App() {
         const lamp = world?.lights.find((candidate) => candidate.id === id)
         return lamp ? useLightStore.getState().toggle(id, lamp.defaultOn) : null
       },
+      /** Whether it is night outside, and the switch the N key presses. */
+      night: () => useLightStore.getState().night,
+      toggleNightForTest: () => useLightStore.getState().toggleNight(),
       /** The records the music folder produced, and what is on the deck. */
       records: () => useMediaStore.getState().tracks.map((track) => track.id),
       nowPlaying: () => useMediaStore.getState().playing,
@@ -260,7 +271,6 @@ export default function App() {
         // reach past the sky dome.
         camera={{ fov: 72, near: 0.05, far: 400, position: [player.x, EYE_HEIGHT, player.z] }}
       >
-        <color attach="background" args={['#9dc0dc']} />
         <Probe />
         <Lighting />
         <Outside />

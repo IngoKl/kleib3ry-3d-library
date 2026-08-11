@@ -38,7 +38,7 @@ export const DEFAULT_WORLD_TEXT = `{
       "name": "Great room",
       // Centre of the room in world metres, then width (X) by depth (Z).
       "origin": [0, 0],
-      "size": [9, 7],
+      "size": [10, 8],
       // A cathedral ceiling, because the loft lives inside this volume rather
       // than on top of it: the loft floor is at 2.4 and its head height is the
       // same ceiling you see from down here.
@@ -47,12 +47,15 @@ export const DEFAULT_WORLD_TEXT = `{
       "openings": [
         // "at" is measured from the middle of that wall. The big one faces the
         // lake; the sill is low so it reads as a view rather than as a window.
-        { "wall": "north", "at": 0, "width": 4.4, "height": 2.1, "sill": 0.8, "kind": "window" },
-        { "wall": "west", "at": 2.6, "width": 1.6, "height": 1.5, "sill": 0.95, "kind": "window" },
+        { "wall": "north", "at": 0, "width": 4.6, "height": 2.1, "sill": 0.8, "kind": "window" },
+        { "wall": "west", "at": 3.0, "width": 1.6, "height": 1.5, "sill": 0.95, "kind": "window" },
         { "wall": "south", "at": 0.3, "width": 1.6, "height": 1.4, "sill": 0.95, "kind": "window" },
-        // Doors need a matching door in the next room's facing wall.
+        // Doors need a matching door in the next room's facing wall. The east
+        // door sits towards the south end of its wall because the staircase
+        // owns the north end — a door opening into the side of a flight is a
+        // door you cannot use.
         { "wall": "west", "at": 0.9, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
-        { "wall": "east", "at": 1.4, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
+        { "wall": "east", "at": 2.1, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "south", "at": 2.6, "width": 1.3, "height": 2.1, "sill": 0, "kind": "door" }
       ],
 
@@ -61,66 +64,78 @@ export const DEFAULT_WORLD_TEXT = `{
       // packed into the boxes on the floor rather than being reshuffled.
       // "label" is a starting label for the card on its top edge — you can
       // change it in the app, and that overrides what is written here.
+      //
+      // A case is 1.0 m wide; these stand 1.2 m apart, so a run of them reads
+      // as furniture standing along a wall rather than as built-in shelving
+      // crammed edge to edge.
       "shelves": [
-        { "id": "west-0", "at": [-4.325, -2.9], "facing": 90, "rows": 5, "label": "Fiction" },
-        { "id": "west-1", "at": [-4.325, -1.85], "facing": 90, "rows": 5 },
-        { "id": "west-2", "at": [-4.325, -0.8], "facing": 90, "rows": 5 },
+        { "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" },
+        { "id": "west-1", "at": [-4.825, -2.0], "facing": 90, "rows": 5 },
+        { "id": "west-2", "at": [-4.825, -0.8], "facing": 90, "rows": 5 },
 
-        { "id": "north-0", "at": [2.75, -3.325], "facing": 0, "rows": 5 },
+        { "id": "north-0", "at": [2.9, -3.825], "facing": 0, "rows": 5 },
 
-        { "id": "east-0", "at": [4.325, 2.9], "facing": 270, "rows": 5 },
+        { "id": "east-0", "at": [4.825, 3.4], "facing": 270, "rows": 5 },
 
-        { "id": "south-0", "at": [-3.8, 3.325], "facing": 180, "rows": 6, "label": "Reference" },
-        { "id": "south-1", "at": [-2.75, 3.325], "facing": 180, "rows": 5 },
-        { "id": "south-2", "at": [-1.7, 3.325], "facing": 180, "rows": 5 }
+        { "id": "south-0", "at": [-4.0, 3.825], "facing": 180, "rows": 6, "label": "Reference" },
+        { "id": "south-1", "at": [-2.8, 3.825], "facing": 180, "rows": 5 },
+        { "id": "south-2", "at": [-1.6, 3.825], "facing": 180, "rows": 5 }
       ],
 
       "furniture": [
-        // The hearth end of the room.
-        { "id": "hearth", "kind": "fireplace", "at": [-3.4, -3.25], "facing": 0 },
-        { "id": "hearth-rug", "kind": "rug", "at": [-3.1, -1.9], "facing": 0, "size": [3.4, 2.6] },
-        { "id": "sofa", "kind": "sofa", "at": [-3.1, -2.0], "facing": 180 },
-        { "id": "reading-chair", "kind": "armchair", "at": [-1.5, -2.4], "facing": 250 },
-        { "id": "hearth-table", "kind": "sidetable", "at": [-1.6, -1.5], "facing": 0 },
-        { "id": "hearth-lamp", "kind": "floorlamp", "at": [-4.0, -1.1], "facing": 0 },
+        // The hearth end of the room. The sofa keeps a fireside rug's width of
+        // floor between itself and the hearth — close enough to warm your
+        // feet, far enough that nothing reads as pushed against the fire.
+        { "id": "hearth", "kind": "fireplace", "at": [-3.4, -3.75], "facing": 0 },
+        { "id": "hearth-rug", "kind": "rug", "at": [-3.0, -1.9], "facing": 0, "size": [3.6, 2.8] },
+        { "id": "sofa", "kind": "sofa", "at": [-3.0, -2.0], "facing": 180 },
+        { "id": "reading-chair", "kind": "armchair", "at": [-1.2, -2.5], "facing": 250 },
+        { "id": "hearth-table", "kind": "sidetable", "at": [-1.3, -1.5], "facing": 0 },
+        { "id": "hearth-lamp", "kind": "floorlamp", "at": [-4.3, -1.4], "facing": 0 },
 
         // Records live under the window, with the deck on top of the crate.
-        { "id": "records", "kind": "recordshelf", "at": [1.6, -3.32], "facing": 0 },
-        { "id": "deck", "kind": "recordplayer", "at": [1.6, -3.25], "facing": 0, "y": 0.78 },
+        { "id": "records", "kind": "recordshelf", "at": [1.6, -3.8], "facing": 0 },
+        { "id": "deck", "kind": "recordplayer", "at": [1.6, -3.73], "facing": 0, "y": 0.78 },
 
         // A picture over the hearth. With no "source" it takes whatever is next
-        // in your artwork/ folder, so dropping images in is enough.
-        { "id": "picture-1", "kind": "picture", "at": [-3.4, -3.46], "facing": 0, "y": 2.1, "size": [1.0, 0.75] },
+        // in your artwork/ folder, so dropping images in is enough. It is sized
+        // to the band of wall it actually has: above the mantel (1.57) and
+        // below the underside of the loft floor (2.28) — a taller frame here
+        // stands in the mantel or vanishes into the ceiling.
+        { "id": "picture-1", "kind": "picture", "at": [-3.4, -3.96], "facing": 0, "y": 1.92, "size": [0.9, 0.55] },
 
-        { "id": "fern", "kind": "plant", "at": [4.1, -0.6], "facing": 0 },
-        { "id": "palm", "kind": "plant", "at": [-4.1, 2.9], "facing": 0, "height": 1.35 },
+        { "id": "fern", "kind": "plant", "at": [4.4, -3.5], "facing": 0 },
+        { "id": "palm", "kind": "plant", "at": [-4.5, 2.0], "facing": 0, "height": 1.35 },
 
         // Ceiling lights. "on": false starts one dark; switching a light in the
         // app is remembered in .library/lights.json, not written back here.
         //
         // The two tall ones hang in the open half of the room, south of where
-        // the loft floor ends at z = 1.2 — a pendant on a long flex under a
+        // the loft floor ends at z = 1.4 — a pendant on a long flex under a
         // loft is a pendant inside the floor above it. The low one lights the
         // hearth end, where the ceiling is the loft.
-        { "id": "main-pendant-w", "kind": "pendant", "at": [-2.4, 2.3], "facing": 0, "y": 2.9 },
-        { "id": "main-pendant-e", "kind": "pendant", "at": [2.4, 2.3], "facing": 0, "y": 2.9 },
-        { "id": "hearth-pendant", "kind": "pendant", "at": [-1.6, -1.4], "facing": 0, "y": 1.95 },
+        { "id": "main-pendant-w", "kind": "pendant", "at": [-2.6, 2.6], "facing": 0, "y": 2.9 },
+        { "id": "main-pendant-e", "kind": "pendant", "at": [2.6, 2.6], "facing": 0, "y": 2.9 },
+        { "id": "hearth-pendant", "kind": "pendant", "at": [-1.5, -1.5], "facing": 0, "y": 1.95 },
 
         // Up to the loft. A flight climbs towards its facing direction, "size"
         // is [width, run], and "rise" is how far up it gets.
         //
-        // The number that has to be right is where the run *ends*: this one
-        // tops out at z = -0.3, and the loft's stairwell hole ends at exactly
-        // the same z, so the last tread and the first floorboard are the same
-        // height and you walk off one onto the other. End the hole any later
-        // and there is a strip of nothing at the top of the stairs.
-        { "id": "stairs", "kind": "stairs", "at": [4.0, -1.9], "facing": 0, "size": [0.95, 3.2], "rise": 2.4 },
+        // It runs along the east wall and is *entered from the middle of the
+        // room*: the bottom step is at z = 1.3, in the open floor by the
+        // seating, and you climb north. The number that has to be right is
+        // where the run ends — this one tops out at z = -2.1, and the loft's
+        // stairwell hole ends at exactly the same z, so the last tread and the
+        // first floorboard are the same height and you walk off one onto the
+        // other. End the hole any later and there is a strip of nothing at the
+        // top of the stairs.
+        { "id": "stairs", "kind": "stairs", "at": [4.4, -0.4], "facing": 180, "size": [1.05, 3.4], "rise": 2.5 },
 
         // Books with nowhere to go end up in these. Add more if you run out.
-        { "id": "box-1", "kind": "box", "at": [-0.9, 2.4], "facing": 8 },
-        { "id": "box-2", "kind": "box", "at": [-0.25, 2.5], "facing": -6 },
-        { "id": "box-3", "kind": "box", "at": [0.4, 2.35], "facing": 3 },
-        { "id": "box-4", "kind": "box", "at": [-0.6, 1.8], "facing": -12 }
+        { "id": "box-1", "kind": "box", "at": [-1.0, 2.5], "facing": 8 },
+        { "id": "box-2", "kind": "box", "at": [-0.3, 2.65], "facing": -6 },
+        { "id": "box-3", "kind": "box", "at": [0.45, 2.45], "facing": 3 },
+        { "id": "box-4", "kind": "box", "at": [-0.7, 1.9], "facing": -12 }
       ]
     },
 
@@ -131,49 +146,52 @@ export const DEFAULT_WORLD_TEXT = `{
       // origin, an elevation, and no ceiling of its own. "walls" lists only the
       // walls this room builds — the other three are the cabin's, which run the
       // full 4.8 m, so building them again would be two walls in one place.
-      "origin": [0, -1.15],
-      "size": [9, 4.7],
-      "elevation": 2.4,
-      "height": 2.4,
+      "origin": [0, -1.3],
+      "size": [10, 5.4],
+      // 2.5 rather than a rounder 2.4, because a bookcase is 2.24 m tall and
+      // the loft floor is 0.22 m thick: any lower and the cases downstairs
+      // stand up into the boards.
+      "elevation": 2.5,
+      "height": 2.3,
       "walls": ["south"],
       "ceiling": false,
 
-      // The stairwell. Its far edge is at world z = -0.3, which is exactly
-      // where the flight reaches 2.4 — so you walk off the top step onto the
+      // The stairwell. Its far edge is at world z = -2.1, which is exactly
+      // where the flight reaches 2.5 — so you walk off the top step onto the
       // boards without a step to climb, and without a gap to fall down.
-      "holes": [{ "at": [4.0, -0.825], "size": [1.35, 3.35] }],
+      "holes": [{ "at": [4.4, 0.675], "size": [1.45, 2.95] }],
 
       "openings": [
         // The balustrade: a very wide window with a waist-high sill and no
         // glass in it. You can see the whole room over it and you cannot walk
         // off it — "glazed": false is what tells the difference between a
         // window and a hole with a railing under it.
-        { "wall": "south", "at": 0, "width": 8.6, "height": 1.4, "sill": 1.0, "kind": "window", "glazed": false }
+        { "wall": "south", "at": 0, "width": 9.6, "height": 1.3, "sill": 1.0, "kind": "window", "glazed": false }
       ],
 
       "shelves": [
-        { "id": "loft-0", "at": [-3.4, -2.175], "facing": 0, "rows": 5, "label": "Poetry" },
-        { "id": "loft-1", "at": [-2.35, -2.175], "facing": 0, "rows": 5 },
-        { "id": "loft-2", "at": [-1.3, -2.175], "facing": 0, "rows": 5 },
-        { "id": "loft-3", "at": [-4.325, -0.5], "facing": 90, "rows": 4 }
+        { "id": "loft-0", "at": [-3.6, -2.525], "facing": 0, "rows": 5, "label": "Poetry" },
+        { "id": "loft-1", "at": [-2.4, -2.525], "facing": 0, "rows": 5 },
+        { "id": "loft-2", "at": [-1.2, -2.525], "facing": 0, "rows": 5 },
+        { "id": "loft-3", "at": [-4.825, 0.0], "facing": 90, "rows": 4 }
       ],
 
       "furniture": [
-        { "id": "loft-rug", "kind": "rug", "at": [-1.2, 0.1], "facing": 0, "size": [3.0, 2.2] },
-        { "id": "loft-chair", "kind": "armchair", "at": [-1.9, 0.3], "facing": 20 },
-        { "id": "loft-stool", "kind": "footstool", "at": [-1.9, -0.55], "facing": 20 },
-        { "id": "loft-table", "kind": "sidetable", "at": [-0.9, 0.45], "facing": 0 },
-        { "id": "loft-lamp", "kind": "floorlamp", "at": [-2.9, 0.5], "facing": 0 },
-        { "id": "loft-plant", "kind": "plant", "at": [0.4, -1.9], "facing": 0, "height": 0.8 },
-        { "id": "picture-2", "kind": "picture", "at": [-4.44, 0.9], "facing": 90, "y": 1.5, "size": [0.7, 0.9] }
+        { "id": "loft-rug", "kind": "rug", "at": [-1.0, 0.6], "facing": 0, "size": [3.0, 2.2] },
+        { "id": "loft-chair", "kind": "armchair", "at": [-1.7, 0.8], "facing": 20 },
+        { "id": "loft-stool", "kind": "footstool", "at": [-1.7, -0.05], "facing": 20 },
+        { "id": "loft-table", "kind": "sidetable", "at": [-0.6, 0.95], "facing": 0 },
+        { "id": "loft-lamp", "kind": "floorlamp", "at": [-2.7, 1.0], "facing": 0 },
+        { "id": "loft-plant", "kind": "plant", "at": [0.5, -2.3], "facing": 0, "height": 0.8 },
+        { "id": "picture-2", "kind": "picture", "at": [-4.94, 1.6], "facing": 90, "y": 1.5, "size": [0.7, 0.9] }
       ]
     },
 
     {
       "id": "reading",
       "name": "Reading corner",
-      // 4.5 (the cabin's edge) + 0.24 (two wall thicknesses) + 2.2 (half of 4.4).
-      "origin": [-6.94, 0.9],
+      // 5 (the cabin's edge) + 0.24 (two wall thicknesses) + 2.2 (half of 4.4).
+      "origin": [-7.44, 0.9],
       "size": [4.4, 4.4],
       "height": 3.0,
 
@@ -209,12 +227,13 @@ export const DEFAULT_WORLD_TEXT = `{
     {
       "id": "kitchen",
       "name": "Kitchen",
-      "origin": [6.74, 1.4],
+      "origin": [7.24, 1.4],
       "size": [4, 3.4],
       "height": 2.7,
 
       "openings": [
-        { "wall": "west", "at": 0, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
+        // World z = 2.1, matching the great room's east door.
+        { "wall": "west", "at": 0.7, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "east", "at": 0, "width": 1.6, "height": 1.2, "sill": 1.05, "kind": "window" },
         { "wall": "north", "at": 0.8, "width": 1.0, "height": 1.1, "sill": 1.15, "kind": "window" }
       ],
@@ -240,7 +259,7 @@ export const DEFAULT_WORLD_TEXT = `{
       // it, so the decking meets the floorboards and there is nothing to trip
       // over on the way out. "outdoor" gives it decking and no room lights;
       // with no north wall of its own, the cabin's is what you step through.
-      "origin": [1.3, 5.0],
+      "origin": [1.3, 5.5],
       "size": [6.2, 3],
       "height": 2.7,
       "outdoor": true,

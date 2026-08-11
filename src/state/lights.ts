@@ -23,10 +23,18 @@ const SAVE_DEBOUNCE_MS = 400
 type LightsState = {
   /** Only the lamps whose state differs from what the document asked for. */
   on: Record<string, boolean>
+  /**
+   * Whether it is night outside. Saved with the lamps because it is the same
+   * kind of fact — how the room is lit right now — and deleting `lights.json`
+   * should bring the daylight back along with every lamp.
+   */
+  night: boolean
   loaded: boolean
   load: () => Promise<void>
   /** Flip one lamp. Returns whether it is now lit. */
   toggle: (id: string, defaultOn: boolean) => boolean
+  /** Day to night and back. Returns whether it is now night. */
+  toggleNight: () => boolean
   /** Turn everything in the library off, or back on. */
   setAll: (ids: readonly string[], on: boolean) => void
   isOn: (id: string, defaultOn: boolean) => boolean
@@ -38,7 +46,11 @@ export const useLightStore = create<LightsState>((set, get) => {
   const scheduleSave = () => {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
-      const document: LightState = { schemaVersion: LIGHT_SCHEMA_VERSION, on: get().on }
+      const document: LightState = {
+        schemaVersion: LIGHT_SCHEMA_VERSION,
+        on: get().on,
+        night: get().night,
+      }
       // A light that will not save is not worth interrupting anybody over; the
       // room is still lit the way they asked for this session.
       void library.saveLights(document).catch(() => {})
@@ -47,18 +59,26 @@ export const useLightStore = create<LightsState>((set, get) => {
 
   return {
     on: {},
+    night: false,
     loaded: false,
 
     load: async () => {
       try {
         const saved = await library.loadLights()
-        set({ on: saved?.on ?? {}, loaded: true })
+        set({ on: saved?.on ?? {}, night: saved?.night ?? false, loaded: true })
       } catch {
         set({ loaded: true })
       }
     },
 
     isOn: (id, defaultOn) => get().on[id] ?? defaultOn,
+
+    toggleNight: () => {
+      const next = !get().night
+      set({ night: next })
+      scheduleSave()
+      return next
+    },
 
     toggle: (id, defaultOn) => {
       const next = !(get().on[id] ?? defaultOn)

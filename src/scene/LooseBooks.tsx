@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
-import { shove, stepBody, supportFrom, type Body } from './drop'
+import { shove, stepBody, supportFrom, takeLaunchedBody, type Body } from './drop'
 import { peekPage, pageTexture, releaseBook } from '../state/pages'
+import { coverImageFor, onCoverReady, peekCoverImage } from '../state/covers'
 import { useLibraryStore } from '../state/library'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
@@ -70,13 +71,76 @@ function OpenBook({ id, at }: { id: string; at: LoosePlacement }) {
       {faces.map((face, i) => (
         <mesh key={i} position={[face.x, board + 0.0015, 0]} rotation-x={-Math.PI / 2}>
           <planeGeometry args={[page * 0.96, height * 0.96]} />
+          {/* Keyed: a map swapped into a live material keeps the map-less
+              shader and renders the page black. A fresh material compiles
+              with the page in place. */}
           {face.map ? (
-            <meshStandardMaterial map={face.map} roughness={0.95} />
+            <meshStandardMaterial key="page" map={face.map} roughness={0.95} />
           ) : (
-            <meshStandardMaterial color="#efe8d8" roughness={1} />
+            <meshStandardMaterial key="paper" color="#efe8d8" roughness={1} />
           )}
         </mesh>
       ))}
+    </group>
+  )
+}
+
+/**
+ * The cover artwork on top of a closed book lying about.
+ *
+ * The block itself is an instance in one mesh, which cannot carry a texture of
+ * its own — and a book put down on a table used to be an anonymous slab of
+ * cloth. There are only ever a handful of loose books, so each cover is its own
+ * small plane, posed by the same code that writes the instance matrix.
+ */
+function LooseCover({
+  id,
+  register,
+}: {
+  id: string
+  register: (id: string, node: THREE.Group | null) => void
+}) {
+  const book = useLibraryStore((s) => s.byId.get(id))
+  const size = useLibraryStore((s) => s.dims.get(id))
+  const [cover, setCover] = useState<THREE.Texture | null>(null)
+
+  useEffect(() => {
+    if (!book) return
+    let cancelled = false
+
+    const adopt = () => {
+      const image = peekCoverImage(book.id)
+      if (!image || cancelled) return
+      const texture = new THREE.Texture(image)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.needsUpdate = true
+      setCover(texture)
+    }
+
+    adopt()
+    if (!peekCoverImage(book.id)) coverImageFor(book)
+    const listener = (ready: string) => {
+      if (ready === book.id) adopt()
+    }
+    onCoverReady.add(listener)
+    return () => {
+      cancelled = true
+      onCoverReady.delete(listener)
+    }
+  }, [book])
+  useEffect(() => () => cover?.dispose(), [cover])
+
+  if (!size) return null
+  return (
+    // The group mounts even before the artwork arrives, so the pose-writer can
+    // register it; an unposed cover appearing at the origin is the alternative.
+    <group ref={(node) => register(id, node)}>
+      {cover && (
+        <mesh rotation-x={-Math.PI / 2} position={[0, 0.0012, 0]}>
+          <planeGeometry args={[size.depth * 0.96, size.height * 0.96]} />
+          <meshStandardMaterial map={cover} roughness={0.7} />
+        </mesh>
+      )}
     </group>
   )
 }
@@ -128,11 +192,36 @@ export function LooseBooks() {
   const reseed = () => {
     const live = bodies.current
     for (const [id, at] of closed) {
+      // A drop hands over its whole body, velocity and all — a placement alone
+      // cannot say "falling", so without this the book would freeze in the air
+      // where your hand was.
+      const thrown = takeLaunchedBody(id)
+      if (thrown) {
+        live.set(id, thrown)
+        continue
+      }
       const existing = live.get(id)
       // A placement that moved under us — a reload, or a book put down
       // somewhere else — wins over whatever the simulation thought.
       if (!existing || Math.hypot(existing.x - at.x, existing.z - at.z) > 0.5) {
-        live.set(id, { x: at.x, y: at.y, z: at.z, vx: 0, vy: 0, vz: 0, yaw: at.yaw, spin: 0, resting: true })
+        // A saved placement should be a resting one, but a save written
+        // mid-throw leaves a book recorded in the air; seed those falling so a
+        // reload lands them instead of hanging them where the throw stopped.
+        const size = dims.get(id)
+        const rest =
+          support && size ? support(at.x, at.z, at.y + size.thickness) + size.thickness / 2 : at.y
+        const floating = at.y > rest + 0.02
+        live.set(id, {
+          x: at.x,
+          y: at.y,
+          z: at.z,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          yaw: at.yaw,
+          spin: 0,
+          resting: !floating,
+        })
       }
     }
     for (const id of [...live.keys()]) {
@@ -151,6 +240,13 @@ export function LooseBooks() {
     }),
     [],
   )
+
+  /** Cover planes, keyed by book id, posed alongside the instance matrices. */
+  const covers = useRef(new Map<string, THREE.Group>())
+  const registerCover = useCallback((id: string, node: THREE.Group | null) => {
+    if (node) covers.current.set(id, node)
+    else covers.current.delete(id)
+  }, [])
 
   const write = (mesh: THREE.InstancedMesh, i: number) => {
     const entry = closed[i]
@@ -172,6 +268,13 @@ export function LooseBooks() {
     scale.set(size.depth, size.thickness, size.height)
     matrix.compose(position, quaternion, held === id ? hidden : scale)
     mesh.setMatrixAt(i, matrix)
+
+    const cover = covers.current.get(id)
+    if (cover) {
+      cover.visible = held !== id
+      cover.position.set(body.x, body.y + size.thickness / 2, body.z)
+      cover.rotation.y = body.yaw
+    }
 
     colour.set(size.colour)
     if (useAppStore.getState().focusedBook === id) colour.lerp(HIGHLIGHT, 0.45)
@@ -251,6 +354,10 @@ export function LooseBooks() {
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial roughness={0.72} metalness={0} />
       </instancedMesh>
+
+      {closed.map(([id]) => (
+        <LooseCover key={id} id={id} register={registerCover} />
+      ))}
 
       {/* Open books are their own meshes rather than instances, so they get
           their own group for the crosshair to find them in. */}

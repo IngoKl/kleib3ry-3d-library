@@ -195,13 +195,21 @@ export function Player() {
         const { focusedBook, drawn, setDrawn } = useAppStore.getState()
         if (drawn !== null) setDrawn(null)
         else if (focusedBook) setDrawn(focusedBook)
-      } else if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      } else if (
+        e.code === 'Comma' ||
+        e.code === 'Period' ||
+        e.code === 'BracketLeft' ||
+        e.code === 'BracketRight'
+      ) {
         // Riffle through the box you are looking at. A box shows the top of the
         // pile; this is how you get at the rest of it without unpacking.
+        // Comma and period are the advertised pair — the brackets still work,
+        // but on many layouts (QWERTZ among them) they need AltGr, which is a
+        // lot to ask of "look at the next few books".
         const { focusedBox, browseBox } = useAppStore.getState()
         if (focusedBox) {
           e.preventDefault()
-          browseBox(focusedBox, e.code === 'BracketRight' ? 1 : -1)
+          browseBox(focusedBox, e.code === 'Period' || e.code === 'BracketRight' ? 1 : -1)
         }
       } else if (e.code === 'KeyG') {
         e.preventDefault()
@@ -216,6 +224,11 @@ export function Player() {
         useAppStore.getState().setDrawn(null)
       } else if (e.code === 'Escape' && useAppStore.getState().seat !== null) {
         useAppStore.getState().setSeat(null)
+      } else if (e.code === 'KeyN') {
+        e.preventDefault()
+        // Day to night and back. On the keyboard rather than only in the panel
+        // because it is something you do *in* the room, like switching a lamp.
+        useLightStore.getState().toggleNight()
       } else if (e.code === 'KeyR') {
         e.preventDefault()
         const { held, setReading, setMode } = useAppStore.getState()

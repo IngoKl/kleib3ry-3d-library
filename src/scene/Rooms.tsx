@@ -190,6 +190,16 @@ function Room({ room }: { room: RoomSpec }) {
   }, [width, depth, room.floor, maxAnisotropy])
   useEffect(() => () => floorTexture.dispose(), [floorTexture])
 
+  // Boards overhead as well as underfoot: a plaster lid on a timber room was
+  // the one surface still insisting this was a gallery.
+  const ceilingTexture = useMemo(() => {
+    if (!room.ceiling) return null
+    const texture = makeFloorTexture(width, depth, 'ceiling')
+    texture.anisotropy = maxAnisotropy
+    return texture
+  }, [width, depth, room.ceiling, maxAnisotropy])
+  useEffect(() => () => ceilingTexture?.dispose(), [ceilingTexture])
+
   const walls = wallsOf(room)
   const panels = useMemo(() => walls.flatMap((wall) => wallPanels(room, wall)), [room, walls])
   const panes = useMemo(() => windowPanes(room).map(paneOf), [room])
@@ -206,10 +216,10 @@ function Room({ room }: { room: RoomSpec }) {
         <FloorSlab key={`floor-${i}`} slab={slab} texture={floorTexture} />
       ))}
 
-      {room.ceiling && (
+      {room.ceiling && ceilingTexture && (
         <mesh position={[cx, room.elevation + room.height, cz]} rotation-x={Math.PI / 2} receiveShadow>
           <planeGeometry args={[width, depth]} />
-          <meshStandardMaterial color={MATERIALS.ceiling} roughness={1} />
+          <meshStandardMaterial map={ceilingTexture} roughness={0.92} />
         </mesh>
       )}
       <Shell panels={panels} color={MATERIALS.wall} />

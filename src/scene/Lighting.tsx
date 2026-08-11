@@ -2,14 +2,17 @@ import { useMemo } from 'react'
 import { FurnitureLights } from './Furniture'
 import { roomBounds } from '../world/derive'
 import type { RoomSpec } from '../world/schema'
+import { useLightStore } from '../state/lights'
 import { useWorldStore } from '../state/world'
 
 /**
- * Daylight through the windows plus warm interior fill.
+ * Daylight through the windows plus warm interior fill — or moonlight, because
+ * night is a switch now and a library is somewhere you want to be after dark.
  *
  * Only one directional light casts shadows, for the whole world: a shadow map
  * per room would eat the frame budget the books need, and a single sun angled
- * across the library reads as one building rather than several.
+ * across the library reads as one building rather than several. At night the
+ * same light is the moon, low and cold, so the shadow path never changes shape.
  *
  * The lamps themselves are no longer invented per room — they are furniture in
  * `library.json`, and switching one off is a thing you can do. What is left
@@ -17,9 +20,13 @@ import { useWorldStore } from '../state/world'
  * back off a window reveal. A room that declares no lamps at all still gets one
  * soft fixture, so that a map somebody is halfway through writing is not pitch
  * dark while they write it.
+ *
+ * Every intensity in here has been argued down once already: the first pass
+ * left hot pools under the pendants and sun stripes you could read by, which
+ * is a stage set rather than an afternoon.
  */
 
-function RoomFill({ room, unlit }: { room: RoomSpec; unlit: boolean }) {
+function RoomFill({ room, unlit, night }: { room: RoomSpec; unlit: boolean; night: boolean }) {
   const [cx, cz] = room.origin
   const bounds = roomBounds(room)
 
@@ -28,7 +35,7 @@ function RoomFill({ room, unlit }: { room: RoomSpec; unlit: boolean }) {
       {unlit && !room.outdoor && (
         <pointLight
           position={[cx, room.elevation + room.height - 0.5, cz]}
-          intensity={7}
+          intensity={5}
           distance={Math.hypot(room.size[0], room.size[1]) + 2}
           color="#ffd9a8"
         />
@@ -36,7 +43,8 @@ function RoomFill({ room, unlit }: { room: RoomSpec; unlit: boolean }) {
 
       {/* Soft bounce off the reveal of each window, back into the room. An
           unglazed opening — a balustrade, a porch railing — is not a window and
-          does not light anything. */}
+          does not light anything. At night the same wash goes cold and faint:
+          moonlight on the reveal rather than sky. */}
       {room.openings
         .filter((opening) => opening.kind === 'window' && opening.glazed)
         .map((opening, i) => {
@@ -54,9 +62,9 @@ function RoomFill({ room, unlit }: { room: RoomSpec; unlit: boolean }) {
             <pointLight
               key={`win-${i}`}
               position={position}
-              intensity={4.5}
-              distance={9}
-              color="#dceaf6"
+              intensity={night ? 1.0 : 2.8}
+              distance={night ? 7 : 9}
+              color={night ? '#5c6478' : '#dceaf6'}
             />
           )
         })}
@@ -66,6 +74,7 @@ function RoomFill({ room, unlit }: { room: RoomSpec; unlit: boolean }) {
 
 export function Lighting() {
   const world = useWorldStore((s) => s.world)
+  const night = useLightStore((s) => s.night)
 
   /** One shadow camera wide enough to cover every room in the document. */
   const extent = useMemo(() => {
@@ -105,17 +114,23 @@ export function Lighting() {
     <>
       {/* Shelves face into the room with their backs to the walls, so they see
           almost none of the window light. Without a generous ambient floor the
-          spines read as black and the library is unbrowsable. */}
-      <ambientLight intensity={0.55} />
-      <hemisphereLight args={['#d6e6f4', '#7d6a4e', 0.7]} />
+          spines read as black and the library is unbrowsable — which is also
+          why night does not go truly dark: the ambient floor stays generous
+          and *warm*, so the dark is lamplight fading into shadow rather than
+          black corners with hot pools between them. */}
+      <ambientLight intensity={night ? 0.34 : 0.45} color={night ? '#a8967e' : '#ffffff'} />
+      <hemisphereLight
+        args={night ? ['#41465c', '#33291e', 0.45] : ['#d6e6f4', '#7d6a4e', 0.55]}
+      />
 
       {/* Low and to the north-west, which is where the lake is: afternoon
-          light coming in through the big window rather than noon overhead. */}
+          light coming in through the big window rather than noon overhead. At
+          night the same light is the moon over the same lake. */}
       <directionalLight
         position={[midX - spanX * 0.5, extent.height + radius * 0.55, extent.minZ - radius * 0.7]}
         target-position={[midX, 0, midZ]}
-        intensity={2.5}
-        color="#ffeccf"
+        intensity={night ? 0.35 : 1.7}
+        color={night ? '#b4c4e2' : '#ffeccf'}
         castShadow
         shadow-mapSize={[2048, 2048]}
         // Square and generous. The frustum is in the *light's* view space, so a
@@ -133,7 +148,7 @@ export function Lighting() {
       />
 
       {world?.rooms.map((room) => (
-        <RoomFill key={room.id} room={room} unlit={unlit.has(room.id)} />
+        <RoomFill key={room.id} room={room} unlit={unlit.has(room.id)} night={night} />
       ))}
       <FurnitureLights />
     </>
