@@ -1,35 +1,11 @@
 # Ideas / Features
 
-## Open roadmap (carried over from the retired plan.md)
-
-- EPUB reading: pagination to page images, CFI progress
-- Music: playlists and positional audio falloff (scan + record player exist)
-- In-app grid-snap editor for shelves and furniture (the world is hand-edited today)
-- Persistence polish: migrations, rescan reconciliation
-- Packaging: signed installer, auto-update, performance pass
-- Optional: Linux-hosted web build via an HTTP driver
-
-## Batch 4
-
-### General
-
-- I want to sit and read at the same timer
-- We need a "controls" menu where players can learn the controls
-- Remove the "plan.md" if its no longer needed
-- What is "spikes/reading": It is needed? Check that the project architecture and the folder structure is clean and purposefull.
-- I want to be able to hide the hud
-- The "label shelve" button doesn't work
-- Add a function (HUD) to put all stray (dropped down, not on a table) books into a box
-  
-### Records
-
-- When picking up record, they are gone; I want to place them on the record player.
-- Records should have a label
-- Records are stored just atop of each other in the shelve, give them a cover and have them like books
-
-### Map
-
-- The vibe is still too corporate, too office; it should be a modern, but cozy place in the woods
-- Improve on the asset quality, especially also the outside; make the trees more tree like etc. Add more tree types to create visual interest; Try to make it look less cheap
-- Add a bedroom; with shelves, a reading char, a nice view over the lake
-- The coffee maker is the wrong way around
+- Rename the project to "kleib3ry"
+- Docker container deployment
+- Add a video folder to have VHS tapes that can be played on a small CRT TV; place that CRT in the map; have a box with VHS tapes next to the TV
+- Let users wander to world around the house so that they can have a walk around the pond
+- Add a roof to the house
+- Add an office space with a whiteboard; users can rip out pages from books (the page is copied and stays in the book) and add them to the whiteboard (or any other wall); there are also post it notes users can write (type) on; they can also be placed around the house.
+- Add a "zoom" function where players can zoom with their view
+- Increase the resolution of book covers in shelves
+- Create/reorganize the /docs folder and add actual docs, also outlining the architecture of the project etc.
