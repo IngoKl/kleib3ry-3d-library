@@ -13,19 +13,11 @@ import { forgetLibrary, recentLibraries, rememberLibrary } from '../state/settin
 /**
  * The main menu: which library, and then in.
  *
- * The room loads *behind* this rather than after it. That is the decision worth
- * writing down, because the obvious arrangement — menu, then load — makes
- * choosing a library a thing you do and then wait for, and a fresh scan of a
- * real folder is not a short wait. Loading underneath means the menu is up for
- * exactly as long as it takes you to decide, and going in is instant.
+ * The room loads *behind* this, so going in is instant. The cost is a rule
+ * enforced in `roomHasKeyboard`: while the menu is up, nothing reaches the room.
  *
- * What that costs is a rule, enforced in `roomHasKeyboard`: while the menu is
- * up, no keystroke and no click reaches the room. Otherwise the E you press to
- * choose a folder is also the E that takes a book off a shelf behind it.
- *
- * The recent list is per-machine, in `localStorage`, and not in the library
- * folder — a list of *other* libraries is exactly the sort of thing that must
- * not travel inside one of them.
+ * The recent list is per-machine, in `localStorage` — a list of other libraries
+ * must not travel inside one of them.
  */
 export function MainMenu() {
   const started = useAppStore((s) => s.started)
@@ -56,11 +48,8 @@ export function MainMenu() {
   const ready = rootLoaded && worldLoaded && libraryLoaded
 
   /**
-   * Open a different folder, and rebuild everything that hangs off it.
-   *
-   * In that order, and the order is the whole of it: the world has to be up
-   * before the library, or there are no shelves to reconcile against and every
-   * book looks like it has nowhere to go. Same sequence as the boot in `App`.
+   * Open a different folder and rebuild everything that hangs off it. The world
+   * goes first, or there are no shelves to reconcile against. Same order as `App`.
    */
   const openFolder = async (path: string | null) => {
     const chosen = path ?? (await library.pickRoot().catch(() => null))
@@ -96,31 +85,30 @@ export function MainMenu() {
     <div className="menu" data-testid="main-menu">
       <div className="menu-card">
         <h1 className="menu-title">kleib3ry</h1>
-        <p className="menu-sub">a library you can walk into</p>
+        <p className="menu-sub">A library you can walk into</p>
 
-        <p className="controls-heading">this library</p>
-        {/* Three drivers, three different meanings for "no root yet", and the
-            container's is the one that used to read wrong: a mounted folder the
-            server has not answered for yet is not a stand-in library. */}
+        <p className="controls-heading">This Library</p>
+        {/* "No root yet" means something different in each driver: a mounted
+            folder the server has not answered for yet is not a stand-in. */}
         <p className="menu-current" data-testid="menu-current">
           {libraryRoot ??
             (library.kind === 'tauri'
-              ? 'no folder chosen yet'
+              ? 'No folder chosen yet'
               : library.kind === 'http'
-                ? 'the folder mounted into the container'
-                : 'a generated stand-in')}
+                ? 'The folder mounted into the container'
+                : 'A generated stand-in')}
         </p>
         <p className="note">
           {ready
-            ? `${worldName ?? 'the room'} · ${books.toLocaleString()} books`
-            : 'reading the folder…'}
+            ? `${worldName ?? 'The room'} · ${books.toLocaleString()} books`
+            : 'Reading the folder…'}
         </p>
         {worldError && <p className="note warn">{worldError}</p>}
         {libraryError && <p className="note warn">{libraryError}</p>}
 
         {recent.length > 0 && (
           <>
-            <p className="controls-heading">recently open</p>
+            <p className="controls-heading">Recently Open</p>
             <ul className="menu-recent">
               {recent.map((path) => (
                 <li key={path}>
@@ -134,7 +122,7 @@ export function MainMenu() {
                   </button>
                   <button
                     className="menu-forget"
-                    aria-label={`forget ${path}`}
+                    aria-label={`Forget ${path}`}
                     disabled={opening !== null}
                     onClick={() => {
                       forgetLibrary(path)
@@ -149,11 +137,8 @@ export function MainMenu() {
           </>
         )}
 
-        {/* `canPickFolder` is false in both of the non-desktop drivers, and for
-            opposite reasons: the container has a real library and will not let a
-            browser go looking for another one, the stand-in has no library at
-            all. Keying the message off the capability said "generated stand-in"
-            to someone reading their own shelves in a container. */}
+        {/* `canPickFolder` is false in both non-desktop drivers for opposite
+            reasons, so the message is keyed off the driver rather than off it. */}
         {library.kind === 'http' && (
           <p className="note">
             Hosted mode: the library is the folder mounted into the container, so there is nothing
@@ -174,16 +159,16 @@ export function MainMenu() {
             disabled={!library.canPickFolder || opening !== null}
             onClick={() => void openFolder(null)}
           >
-            {opening ? 'opening…' : 'choose a folder…'}
+            {opening ? 'Opening…' : 'Choose a Folder…'}
           </button>
           <button
             data-testid="menu-settings"
             onClick={() => setSettingsOpen(!settingsOpen)}
           >
-            settings
+            Settings
           </button>
           <button className="on" data-testid="enter-library" onClick={() => start()}>
-            {ready ? 'go in' : 'go in (still loading)'}
+            {ready ? 'Go In' : 'Go In (still loading)'}
           </button>
         </div>
       </div>

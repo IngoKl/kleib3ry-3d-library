@@ -242,7 +242,7 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 | --- | --- |
 | `size` | footprint `[width, depth]` — or for anything hung on a wall, `[width, height]` |
 | `height` | height override, for the kinds where it is worth varying |
-| `y` | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a `whiteboard` — it is the centre of the thing; for a **pendant** it is where the fitting is. |
+| `y` | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a `whiteboard`, a `clock`, a `lightswitch` — it is the centre of the thing; for a **pendant** it is where the fitting is, and for `fairylights` it is the line they hang from. |
 | `source` | which file in `artwork/` a picture shows |
 | `rise` | how far a flight of stairs climbs |
 | `on` | whether a lamp starts lit |
@@ -261,21 +261,28 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 | `desk` | yes | put books on | deeper and a little higher than a table |
 | `bed` | yes | sit, put books on | headboard is its back; `facing` points the foot into the room |
 | `kitchencounter` | yes | put books on | comes with a sink |
-| `recordshelf` | yes | put books on | fills with records from `music/` |
+| `recordshelf` | yes | put books on, file records in | fills with records from `music/` |
 | `tapecrate` | yes | put books on | fills with tapes from `video/`; low, so the labels stand proud |
+| `bathtub` | yes | put books on | its rim is a surface |
+| `toilet` | yes | — | `facing` points the seat into the room |
+| `basin` | yes | put books on | on a pedestal |
 | `box` | yes | fill, carry (`X`) | a moving box; books with no shelf pile up in it |
-| `recordplayer` | no | play (`E`) | put it on a `y` so it stands on something |
+| `recordplayer` | no | play (`E`) | put it on a `y` so it stands on something. An empty one does nothing: bring it a record |
 | `crt` | yes | play a tape (`E`) | a television. `E` with a tape in hand puts it in; `E` empty-handed pauses |
 | `coffeemaker` | no | brew (`E`) | ditto |
 | `computer` | no | search (`E`) | the catalogue terminal. Searches every book, record, tape and picture the library knows about and says where each one is. Stand it on a desk with a `y` |
 | `postits` | no | take one (`E`) | a pad of notes. `E` peels one off and opens the field you write on it — the same note `T` writes |
+| `marker` | no | take it (`E`) | a whiteboard marker. With it in hand, hold the left mouse button to draw on any `whiteboard`; `F` changes pen, `G` wipes the board |
 | `fireplace` | yes | switch (`E`) | lights the room it is in |
 | `floorlamp` | yes | switch (`E`) | |
 | `pendant` | no | switch (`E`) | hangs from `y`; do not hang one under a loft floor |
+| `fairylights` | no | switch (`E`) | a string of bulbs. `size` is `[length, sag]` and `y` is the line it hangs from |
+| `lightswitch` | no | switch everything (`E`) | one press works every light in the library. Hung like a picture |
 | `plant` | yes | — | `height` varies it |
 | `rug` | no | — | `size` sets its footprint |
 | `picture` | no | — | takes an image from `artwork/` |
-| `whiteboard` | no | pin things to (`E`) | hung like a picture; `size` is `[width, height]` |
+| `clock` | no | — | tells this machine's time. Hung like a picture; `size` is the dial |
+| `whiteboard` | no | pin things to (`E`), draw on | hung like a picture; `size` is `[width, height]` |
 | `stairs` | no | climb | see above |
 | `step` | no | walk down | a pair of treads hanging off the edge of a deck. Decoration: the walk controller takes a 24 cm drop unaided |
 
@@ -369,6 +376,14 @@ a file puts it on the shelf. Titles come from the file's tags where it has them
 the folder above it as the artist: `music/Nina Simone/Wild Is the Wind/04
 Four Women.mp3` reads exactly as you would hope.
 
+A record is also a **thing you can carry**. `E` takes one out of a crate, and
+then `E` puts it on a deck, files it in any crate you like, or sets it down flat
+on a table; `F` takes it back off the deck and `Q` sends it to wherever the
+folder deals it. Only the records you have moved are written down — see
+[library-folder.md](library-folder.md) — so a collection nobody has rearranged
+costs nothing. There is one of each record: it is on whichever deck you carried
+it to, and a deck with nothing on it stays quiet.
+
 `artwork/` fills the picture frames. A frame with a `source` names its file; the
 rest are dealt out of the folder in document order, so dropping images in is the
 whole of the work.
@@ -400,6 +415,16 @@ Nothing about this needs anything in `library.json`: a wall is a wall. The
 whiteboard in the default map's office is a good place to aim at, and the office
 is the room the feature was built for, but a page pins just as happily over the
 hearth.
+
+## Drawing on a whiteboard
+
+Put a `marker` anywhere in the room — the default map leaves one on the office
+desk. `E` picks it up, holding the left mouse button draws, `F` changes pen and
+`G` wipes the board you are looking at. The line follows the crosshair, so you
+write by moving your head.
+
+Strokes are stored per board in fractions of its width and height, so resizing a
+board in `library.json` keeps the drawing on it rather than scattering it.
 
 ---
 

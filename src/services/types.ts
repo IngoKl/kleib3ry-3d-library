@@ -53,7 +53,42 @@ export type LayoutDocument = {
   labels?: Record<string, string>
   /** Pages torn out of books and notes written by hand, pinned up round the house. */
   pins?: PinnedSheet[]
+  /** Whiteboard furniture id -> what has been drawn on it, oldest stroke first. */
+  drawings?: Record<string, BoardStroke[]>
+  /** Records you have filed or put down by hand. Everything else is dealt. */
+  records?: RecordLayout
 }
+
+/**
+ * One line drawn on a whiteboard.
+ *
+ * The points are in board space — `u` across from the left edge, `v` up from the
+ * bottom, both 0 to 1 — rather than in metres, so a board resized in
+ * `library.json` keeps its drawing instead of scattering it.
+ */
+export type BoardStroke = {
+  /** Which pen, as an index into the marker inks. */
+  ink: number
+  /** Flattened u, v pairs. */
+  points: number[]
+}
+
+/**
+ * Where the records are, for the ones you have had an opinion about.
+ *
+ * Deliberately sparse. A record nobody has touched is dealt into a crate from
+ * the `music/` folder's own order — see `Records.tsx` — so the common case is an
+ * empty object, and only a record you carried somewhere is written down.
+ */
+export type RecordLayout = {
+  /** Track id -> the crate you filed it in, when that is not where it was dealt. */
+  filed?: Record<string, string>
+  /** Track id -> where you set it down, for a record that is out of the crates. */
+  loose?: Record<string, RecordPlacement>
+}
+
+/** A record left leaning somewhere: a point and the way it faces. */
+export type RecordPlacement = { x: number; y: number; z: number; yaw: number }
 
 /**
  * A sheet of paper stuck to a wall: a page copied out of a book, or a note.

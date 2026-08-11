@@ -11,31 +11,34 @@ import {
   makeSleeveGeometry,
   makeSleeveMaterial,
   sleeveArtFor,
+  SLEEVE_SIZE,
+  SLEEVE_THICKNESS,
   type SleeveArt,
 } from './recordAtlas'
+import { useLibraryStore } from '../state/library'
 import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
 /**
- * The records, filed in the crates.
+ * The records: filed in the crates, or lying wherever you left one.
  *
- * Unlike books, records are *not* arranged by hand. A book's place on a shelf
- * is a decision worth storing — a record is one of a few hundred, filed in the
- * order the folder is in, and inventing a second layout document so you could
- * alphabetise your sleeves would be a lot of machinery for something nobody
- * asked for. So: every crate in the world takes a slice of the music folder, in
- * order, and adding a file to `music/` puts it on the shelf. It also means a
- * record taken out has a place to go back to without anything being written
- * down — filing one is just letting go of it.
+ * Records are *dealt* rather than arranged. Every crate takes a slice of the
+ * music folder in its own order, so adding a file to `music/` puts it on the
+ * shelf and nothing has to be written down for a few hundred sleeves to have
+ * somewhere to be. What is written down is only what you have had an opinion
+ * about: a record carried to another crate stays in that crate, and a record set
+ * down on a table stays on the table. Both live in `books.json` beside the book
+ * layout — see `state/library.ts` — and both are one entry rather than an
+ * ordering, because unlike a shelf a crate has no order worth keeping.
  *
- * One instanced mesh for the lot, printed from a sleeve atlas the same way the
- * books are printed from the spine atlas.
+ * One instanced mesh for the lot, filed and loose together, printed from a
+ * sleeve atlas the same way the books are printed from the spine atlas.
  */
 
-/** Sleeve proportions. A 12" record is square and about 3 mm in its sleeve. */
-const SLEEVE = 0.315
-const THICKNESS = 0.004
+const SLEEVE = SLEEVE_SIZE
+const THICKNESS = SLEEVE_THICKNESS
+/** How much air is left between two filed sleeves. */
 const GAP = 0.0035
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0)
 
@@ -48,13 +51,16 @@ const BAY_X = 0.215
 
 type Filed = {
   id: string
-  crate: string
+  /** The crate it is filed in, or null for one lying about the room. */
+  crate: string | null
   x: number
   y: number
   z: number
   rotationY: number
   /** Radians of lean back against the crate, varied so a bay is not a slab. */
   lean: number
+  /** True for a record set down on a surface: sleeve flat, face up. */
+  flat: boolean
   art: SleeveArt
 }
 
@@ -67,17 +73,54 @@ export function Records() {
   // moment either changes — not the next time the crosshair happens to move.
   const playing = useMediaStore((s) => s.playing)
   const heldRecord = useAppStore((s) => s.heldRecord)
+  const filedRecords = useLibraryStore((s) => s.filedRecords)
+  const looseRecords = useLibraryStore((s) => s.looseRecords)
 
   /**
-   * Deal the collection into whatever crates the room has, in document order.
-   * A crate that runs out of records simply has room in it.
+   * Deal the collection into whatever crates the room has, in document order,
+   * and put the ones you have moved where you put them.
+   *
+   * A record you filed by hand claims its crate first; the rest fill whatever is
+   * left, in folder order. That ordering matters: without it, a record filed into
+   * a full crate would be pushed straight back out by the deal, and putting one
+   * away would look like it had not gone in.
    */
   const filed = useMemo<Filed[]>(() => {
     if (!world || tracks.length === 0) return []
     const crates = world.furniture.filter((item) => item.kind === 'recordshelf')
-    if (crates.length === 0) return []
 
     const out: Filed[] = []
+    const placed = new Set<string>()
+
+    // Records lying on tables and counters. Face up, turned the way you were
+    // standing, resting a hair above whatever they were set down on.
+    for (const track of tracks) {
+      const at = looseRecords[track.id]
+      if (!at) continue
+      placed.add(track.id)
+      out.push({
+        id: track.id,
+        crate: null,
+        x: at.x,
+        y: at.y,
+        z: at.z,
+        rotationY: at.yaw,
+        lean: 0,
+        flat: true,
+        art: sleeveArtFor(track),
+      })
+    }
+
+    const known = new Set(crates.map((crate) => crate.id))
+    // A crate that has gone out of `library.json` cannot hold anything, so its
+    // records rejoin the deal rather than disappearing.
+    const wanted = (crateId: string) =>
+      tracks.filter((track) => !placed.has(track.id) && filedRecords[track.id] === crateId)
+    const pool = tracks.filter(
+      (track) =>
+        !placed.has(track.id) &&
+        !(filedRecords[track.id] !== undefined && known.has(filedRecords[track.id]!)),
+    )
     let cursor = 0
 
     for (const crate of crates) {
@@ -87,8 +130,11 @@ export function Records() {
       const cos = Math.cos(crate.rotationY)
       const sin = Math.sin(crate.rotationY)
 
-      for (let slot = 0; slot < perBay * 2 && cursor < tracks.length; slot++, cursor++) {
-        const track = tracks[cursor]!
+      const queue = wanted(crate.id)
+      for (let slot = 0; slot < perBay * 2; slot++) {
+        const track = queue.shift() ?? pool[cursor++]
+        if (!track) break
+
         const bay = slot < perBay ? -1 : 1
         const localX = bay * BAY_X
         const localZ = usable / 2 - (slot % perBay) * (THICKNESS + GAP)
@@ -102,13 +148,14 @@ export function Records() {
           z: crate.z - localX * sin + localZ * cos,
           rotationY: crate.rotationY,
           lean: -0.045 - (hash % 7) * 0.007,
+          flat: false,
           art: sleeveArtFor(track),
         })
       }
     }
 
     return out
-  }, [world, tracks])
+  }, [world, tracks, filedRecords, looseRecords])
 
   const capacity = useMemo(() => Math.max(32, Math.ceil((filed.length + 8) / 32) * 32), [
     Math.ceil((filed.length + 8) / 32),
@@ -159,7 +206,9 @@ export function Records() {
       useAppStore.getState().heldRecord === item.id
     position.set(item.x, item.y + amount * 0.07, item.z)
     quaternion.setFromAxisAngle(up, item.rotationY)
-    quaternion.multiply(leanTurn.setFromAxisAngle(LEAN_AXIS, item.lean))
+    // A filed record stands and leans back; one set down lies on its face, which
+    // is the same sleeve tipped a quarter turn onto its back.
+    quaternion.multiply(leanTurn.setFromAxisAngle(LEAN_AXIS, item.flat ? -Math.PI / 2 : item.lean))
     scale.set(SLEEVE, SLEEVE, THICKNESS)
     matrix.compose(position, quaternion, away ? hidden : scale)
     mesh.setMatrixAt(i, matrix)

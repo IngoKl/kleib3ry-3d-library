@@ -9,18 +9,12 @@ import { rowKey } from '../scene/shelving'
 /**
  * The catalogue terminal, in the office.
  *
- * A thousand spines and no index was the largest thing standing between this
- * being a library and being a room with books in it. What it deliberately does
- * *not* do is take you there: it tells you where a thing is — which case, which
- * room, which box, or which table you left it on — and then you walk. That is
- * what an index in a library is for, and a teleport would quietly make every
- * other thing in the building pointless.
+ * It says where a thing is — which case, which room, which box, which table —
+ * and deliberately does not take you there.
  *
- * It is a DOM overlay rather than type drawn on the tube, for the same reason
- * the shelf label field is: a search you type is a search you have to be able to
- * read, and a canvas texture on a 40 cm screen across a desk is not that. The
- * screen in the room lights up while it is open, so the thing you are typing
- * into is visibly the thing you are standing in front of.
+ * A DOM overlay rather than type drawn on the tube: a canvas texture on a 40 cm
+ * screen across a desk is not readable. The screen in the room lights while it
+ * is open.
  */
 
 type Hit = {
@@ -32,19 +26,15 @@ type Hit = {
 }
 
 /**
- * How many of each kind a search may show.
- *
- * Per kind rather than one pool, because the books are scanned first and there
- * are a thousand of them: a single shared limit meant that searching for a word
- * that appears in fourteen titles buried the record of the same name entirely,
- * and an index that can only find you books is not an index of the library.
+ * How many of each kind a search may show. Per kind rather than one pool: books
+ * are scanned first and there are a thousand of them, so a shared limit buried
+ * every record and tape.
  */
 const LIMITS = { book: 9, record: 3, tape: 3, picture: 2 } as const
 
 /**
- * Case-insensitive, and blind to accents: NFKD splits an accented letter into
- * a letter and a combining mark, and dropping the marks makes "Melies" find
- * the film it is filed under.
+ * Case-insensitive and blind to accents: NFKD splits an accented letter into a
+ * letter and a combining mark, and dropping the marks makes "Melies" find it.
  */
 const fold = (text: string) =>
   [...text.toLowerCase().normalize('NFKD')]
@@ -55,11 +45,8 @@ const fold = (text: string) =>
     .join('')
 
 /**
- * Every term has to appear somewhere in the record, in any order.
- *
- * Deliberately not fuzzy. A card catalogue that guesses is a card catalogue you
- * cannot trust to tell you a book is *not* there, and "not there" is half of
- * what you ask an index.
+ * Every term has to appear somewhere in the record, in any order. Not fuzzy: an
+ * index that guesses cannot be trusted to say a book is *not* there.
  */
 function matches(haystack: string, terms: string[]): boolean {
   return terms.every((term) => haystack.includes(term))
@@ -76,6 +63,8 @@ export function SearchField() {
   const rows = useLibraryStore((s) => s.rows)
   const boxes = useLibraryStore((s) => s.boxes)
   const loose = useLibraryStore((s) => s.loose)
+  const filedRecords = useLibraryStore((s) => s.filedRecords)
+  const looseRecords = useLibraryStore((s) => s.looseRecords)
   const labelOf = useLibraryStore((s) => s.labelOf)
   const tracks = useMediaStore((s) => s.tracks)
   const artwork = useMediaStore((s) => s.artwork)
@@ -92,15 +81,12 @@ export function SearchField() {
 
   /**
    * Where every shelved book is, as one pass over the layout rather than a
-   * lookup per hit. A library is a thousand books and a search is every
-   * keystroke; walking the rows once per keystroke is cheap and walking them
-   * once per *result* is not.
+   * lookup per hit.
    */
   const placeOf = useMemo(() => {
     const at = new Map<string, string>()
-    // Only while the panel is open. This component is subscribed to the whole
-    // layout, so it re-renders on every shelving — and a full pass over a
-    // thousand books for a panel nobody is looking at is a pass for nothing.
+    // Only while the panel is open: this is subscribed to the whole layout, so
+    // it re-renders on every shelving.
     if (!world || !searching) return at
 
     const roomName = (roomId: string) =>
@@ -112,8 +98,8 @@ export function SearchField() {
       for (let row = 0; row < shelf.rows; row++) {
         const ids = rows[rowKey(shelf.id, row)]
         if (!ids) continue
-        // Rows are numbered from the floor up, which is how you would count
-        // them standing in front of the case.
+        // Rows are numbered from the floor up, as you would count them standing
+        // in front of the case.
         const place = `${name}, shelf ${row + 1} — ${roomName(shelf.roomId)}`
         for (const id of ids) at.set(id, place)
       }
@@ -121,30 +107,46 @@ export function SearchField() {
 
     for (const [boxId, ids] of Object.entries(boxes)) {
       const box = world.furniture.find((item) => item.id === boxId)
-      const place = `still in ${boxId}${box ? ` — ${roomName(box.roomId)}` : ''}`
+      const place = `Still in ${boxId}${box ? ` — ${roomName(box.roomId)}` : ''}`
       for (const id of ids) at.set(id, place)
     }
 
     for (const [id, placement] of Object.entries(loose)) {
-      const room = world.rooms.find(
-        (candidate) =>
-          Math.abs(placement.x - candidate.origin[0]) <= candidate.size[0] / 2 &&
-          Math.abs(placement.z - candidate.origin[1]) <= candidate.size[1] / 2,
-      )
-      at.set(id, room ? `left out in the ${room.name.toLowerCase()}` : 'left out somewhere')
+      at.set(id, whereLeft(placement))
     }
 
     return at
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searching, world, rows, boxes, loose, labelOf])
 
-  /** Which room each kind of crate is in, so a record has an answer too. */
-  const crateIn = useMemo(() => {
-    const of = (kind: string) => {
-      const piece = world?.furniture.find((item) => item.kind === kind)
-      if (!piece || !world) return null
-      return world.rooms.find((room) => room.id === piece.roomId)?.name ?? piece.roomId
-    }
-    return { records: of('recordshelf'), tapes: of('tapecrate') }
+  /** Which room a point is in, for anything put down rather than filed. */
+  function whereLeft(at: { x: number; z: number }): string {
+    const room = world?.rooms.find(
+      (candidate) =>
+        Math.abs(at.x - candidate.origin[0]) <= candidate.size[0] / 2 &&
+        Math.abs(at.z - candidate.origin[1]) <= candidate.size[1] / 2,
+    )
+    return room ? `Left out in the ${room.name.toLowerCase()}` : 'Left out somewhere'
+  }
+
+  /** Where a record actually is: put down, filed by hand, or in the first crate. */
+  const recordPlace = (trackId: string): string => {
+    const at = looseRecords[trackId]
+    if (at) return whereLeft(at)
+    const crateId = filedRecords[trackId]
+    const crate =
+      (crateId ? world?.furniture.find((item) => item.id === crateId) : undefined) ??
+      world?.furniture.find((item) => item.kind === 'recordshelf')
+    if (!crate || !world) return 'The record crate'
+    const room = world.rooms.find((candidate) => candidate.id === crate.roomId)
+    return `The record crate — ${room?.name ?? crate.roomId}`
+  }
+
+  /** Which room the tape crate is in. */
+  const tapeCrateIn = useMemo(() => {
+    const piece = world?.furniture.find((item) => item.kind === 'tapecrate')
+    if (!piece || !world) return null
+    return world.rooms.find((room) => room.id === piece.roomId)?.name ?? piece.roomId
   }, [world])
 
   const hits = useMemo<Hit[]>(() => {
@@ -162,8 +164,8 @@ export function SearchField() {
         key: `book:${book.id}`,
         what: 'book',
         title: book.title,
-        detail: `${book.author ?? 'unknown'} · ${book.format}`,
-        where: placeOf.get(book.id) ?? 'not shelved',
+        detail: `${book.author ?? 'Unknown'} · ${book.format}`,
+        where: placeOf.get(book.id) ?? 'Not shelved',
       })
     }
 
@@ -174,8 +176,8 @@ export function SearchField() {
         key: `record:${track.id}`,
         what: 'record',
         title: track.album ?? track.title,
-        detail: track.artist ?? 'unknown',
-        where: crateIn.records ? `the record crate — ${crateIn.records}` : 'the record crate',
+        detail: track.artist ?? 'Unknown',
+        where: recordPlace(track.id),
       })
     }
 
@@ -186,8 +188,8 @@ export function SearchField() {
         key: `tape:${tape.id}`,
         what: 'tape',
         title: tape.title,
-        detail: tape.series ?? 'unlabelled',
-        where: crateIn.tapes ? `the tape crate — ${crateIn.tapes}` : 'the tape crate',
+        detail: tape.series ?? 'Unlabelled',
+        where: tapeCrateIn ? `The tape crate — ${tapeCrateIn}` : 'The tape crate',
       })
     }
 
@@ -198,13 +200,14 @@ export function SearchField() {
         key: `picture:${picture.id}`,
         what: 'picture',
         title: picture.title,
-        detail: 'from artwork/',
-        where: 'in a frame on a wall',
+        detail: 'From artwork/',
+        where: 'In a frame on a wall',
       })
     }
 
     return found
-  }, [query, books, tracks, tapes, artwork, placeOf, crateIn])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, books, tracks, tapes, artwork, placeOf, tapeCrateIn, filedRecords, looseRecords])
 
   if (!searching) return null
 
@@ -212,14 +215,16 @@ export function SearchField() {
 
   return (
     <div className="terminal" data-testid="catalogue">
-      <p className="terminal-head">kleib3ry catalogue · {books.length.toLocaleString()} records</p>
+      <p className="terminal-head">
+        kleib3ry Catalogue · {books.length.toLocaleString()} records
+      </p>
       <div className="terminal-prompt">
         <span aria-hidden="true">&gt;</span>
         <input
           ref={input}
           value={query}
           maxLength={80}
-          placeholder="title, author, album…"
+          placeholder="Title, author, album…"
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation()
@@ -230,10 +235,10 @@ export function SearchField() {
       </div>
 
       <ul className="terminal-results" data-testid="catalogue-results">
-        {!asked && <li className="terminal-idle">type to look something up</li>}
+        {!asked && <li className="terminal-idle">Type to look something up</li>}
         {asked && hits.length === 0 && (
           <li className="terminal-idle" data-testid="catalogue-empty">
-            nothing in this library matches that
+            Nothing in this library matches that
           </li>
         )}
         {hits.map((hit) => (
@@ -247,7 +252,7 @@ export function SearchField() {
       </ul>
 
       <p className="terminal-foot">
-        <kbd>esc</kbd> step away — it tells you where a thing is, and then you walk to it
+        <kbd>esc</kbd> Step away — it tells you where a thing is, and then you walk to it
       </p>
     </div>
   )

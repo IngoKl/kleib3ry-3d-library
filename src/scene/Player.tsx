@@ -15,16 +15,10 @@ import { useWorldStore } from '../state/world'
 import { useSettings } from '../state/settings'
 import { approach } from '../lib/ease'
 import { LAMPS } from '../world/derive'
+import { SLEEVE_THICKNESS } from './recordAtlas'
 
 const WALK_FOV = 72
-/**
- * Zoomed. Not a toggle: held, like kneeling, because you lean in to read one
- * spine and then stop — and a view you can leave narrowed is a view you will
- * eventually wonder why you cannot walk straight in.
- *
- * 26 degrees is about a 2.8x magnification, which is enough to read a printed
- * spine from across the great room and still know which room you are in.
- */
+/** Zoomed: about 2.8x, enough to read a spine across the great room. Held, not toggled. */
 const ZOOM_FOV = 26
 const ZOOM_KEYS = new Set(['KeyZ'])
 /** How fast the view closes in and opens back out, in units of zoom a second. */
@@ -41,41 +35,16 @@ const KNEEL_KEYS = new Set(['ControlLeft', 'ControlRight', 'KeyC'])
 
 /** How quickly velocity reaches the target. Low enough to feel like a body. */
 const ACCELERATION = 12
-/**
- * …and how quickly it comes back down, which is deliberately quicker.
- *
- * Accelerating like a body and stopping like one are different problems: a
- * slow build-up reads as weight, and a slow stop reads as ice. Letting go of
- * `W` a pace short of a bookcase should put you a pace short of it.
- */
+/** …and how quickly it comes back down. Quicker: a slow stop reads as ice. */
 const BRAKING = 20
 const MOUSE = 0.0022
 const PITCH_LIMIT = Math.PI / 2 - 0.08
 
 /**
- * Pointer lock is not a clean source of deltas, and this is what "the view
- * sometimes jumps" turned out to be.
- *
- * The event that engages a lock carries the movement since the pointer was last
- * seen — often most of the screen. WebView2 emits screen-scale deltas after a
- * focus change, sometimes several frames running. And a browser that has just
- * re-locked after an alt-tab can deliver a burst before it settles.
- *
- * Swallowing exactly one event was not enough, because the burst is more than
- * one event; a fixed pixel cap was not enough either, because a genuine fast
- * flick and a spurious jump are the same size. So there are three guards, and
- * each catches what the others cannot:
- *
- *   - **a settling window** after a lock or a focus change, during which no
- *     delta is believed at all. 180 ms is long enough to cover the burst and
- *     short enough that nobody notices their first flick was eaten;
- *   - **a hard ceiling**, which no wrist reaches between two frames;
- *   - **a relative ceiling**, against a running average of how fast the hand is
- *     actually moving — which is what catches a 300-pixel spike in the middle
- *     of a slow, careful pan along a shelf, where the hard cap never fires.
- *
- * Losing one event off a genuinely violent flick costs a few degrees of turn.
- * That is much the cheaper failure.
+ * Three guards against the spurious mouse deltas pointer lock delivers after a
+ * lock, a focus change or an alt-tab: a settling window in which nothing is
+ * believed, a hard pixel ceiling, and a ceiling relative to how fast the hand
+ * has actually been moving. Each catches what the others cannot.
  */
 const MAX_STEP_PX = 400
 const SETTLE_MS = 180
@@ -84,14 +53,7 @@ const SPIKE_RATIO = 8
 /** …but never below this, or ordinary acceleration off a standstill reads as one. */
 const SPIKE_FLOOR = 120
 
-/**
- * How fast the camera comes back to your own eyes after a book closes.
- *
- * Read mode docks the camera onto the page; walking puts it back at head height.
- * Assigning it was a hard cut from the page to the room every single time a book
- * was closed — which is the other half of "the view sometimes jumps", and the
- * half that happens on purpose.
- */
+/** How fast the camera eases back to your own eyes after a book closes. */
 const HANDOFF_SECONDS = 0.32
 const HANDOFF_RATE = 9
 
@@ -129,13 +91,9 @@ export function Player() {
   /** The right button, which zooms the same as `Z` — whichever hand is free. */
   const rightDown = useRef(false)
   /**
-   * How much to scale a mouse delta by, written by the frame loop.
-   *
-   * Turning has to slow down as the view narrows or a zoomed view is unusable:
-   * the same wrist movement that sweeps a room at 72 degrees throws the picture
-   * off the screen at 26. Scaled by the ratio of the tangents, which is what
-   * makes a given movement of the hand cover the same distance *on screen* at
-   * any zoom.
+   * How much to scale a mouse delta by, written by the frame loop. The ratio of
+   * the tangents, so a movement of the hand covers the same distance *on screen*
+   * at any zoom.
    */
   const turnScale = useRef(1)
 
@@ -176,16 +134,10 @@ export function Player() {
       } = state
       const shelf = useLibraryStore.getState()
 
-      /**
-       * A sheet in your hand goes on the wall you are aiming at, and comes back
-       * off it the same way.
-       *
-       * First, before anything else E does, because it cannot collide with any
-       * of it: a wall is not somewhere a book, a record or a tape can go, so
-       * `pinTarget` is only ever set when pinning is the *only* thing E could
-       * mean. A little tilt, from the position, so a board of pages does not look
-       * like a spreadsheet.
-       */
+      // A sheet goes on the wall you are aiming at. First, because a wall is
+      // not somewhere anything else can go — `pinTarget` is only set when
+      // pinning is the only thing E could mean. The tilt comes from the
+      // position, so a board of pages is not a spreadsheet.
       if (heldPin !== null) {
         if (!pinTarget) return
         const tilt = (Math.sin(pinTarget.x * 12.9898 + pinTarget.y * 78.233) % 1) * 0.09
@@ -229,16 +181,40 @@ export function Player() {
         return
       }
 
-      // Holding a record: the deck plays it, a crate takes it back. Its place
-      // in the crate is derived from the folder, so filing it is just letting
-      // go of it.
+      // The marker goes back on its tray. There is nowhere else for it to be —
+      // it never left the office, it was only in your hand.
+      if (state.heldMarker !== null) {
+        state.setHeldMarker(null)
+        return
+      }
+
+      // Holding a record: the deck plays it, a crate files it, a table takes it
+      // lying down. Filing it into the crate you are looking at is what makes a
+      // record something you can arrange rather than only something you play.
       if (heldRecord !== null) {
         if (focusedFixture) {
-          useMediaStore.getState().play(heldRecord)
+          useMediaStore.getState().play(heldRecord, focusedFixture)
+          shelf.freeRecord(heldRecord)
           setHeldRecord(null)
           return
         }
-        if (crateTarget) setHeldRecord(null)
+        if (crateTarget) {
+          shelf.fileRecord(heldRecord, crateTarget)
+          setHeldRecord(null)
+          return
+        }
+        if (surfaceTarget) {
+          shelf.putRecordDown(heldRecord, {
+            x: surfaceTarget.x,
+            y: surfaceTarget.y + SLEEVE_THICKNESS / 2 + 0.002,
+            z: surfaceTarget.z,
+            // Your own yaw, so the sleeve reads the right way up from where you
+            // are standing — the same arithmetic as a book laid on a table.
+            yaw: player.yaw,
+          })
+          setHeldRecord(null)
+          return
+        }
         return
       }
 
@@ -317,13 +293,7 @@ export function Player() {
       }
     }
 
-    /**
-     * Working something: a lamp, the deck, the coffee maker.
-     *
-     * All three are E on the thing itself rather than a switch on the wall,
-     * because a switch you have to find is a puzzle and a lamp you can just
-     * reach out and click is a room.
-     */
+    /** Working something: E on the thing itself rather than a switch on a wall. */
     const operate = (id: string) => {
       const world = useWorldStore.getState().world
       const item = world?.furniture.find((piece) => piece.id === id)
@@ -333,11 +303,30 @@ export function Player() {
         useLightStore.getState().toggle(id, item.on ?? true)
         return
       }
+      // The switch by the door: every light in the library, on or off together.
+      // Off when anything is lit, so one press always darkens the house.
+      if (item.kind === 'lightswitch' && world) {
+        const lights = useLightStore.getState()
+        const anyOn = world.lights.some((lamp) => lights.isOn(lamp.id, lamp.defaultOn))
+        lights.setAll(
+          world.lights.map((lamp) => lamp.id),
+          !anyOn,
+        )
+        return
+      }
       if (item.kind === 'recordplayer') {
         const music = useMediaStore.getState()
-        // Nothing on the deck yet: start at the top of the collection.
-        if (music.playing) music.play(music.playing)
-        else if (music.tracks[0]) music.play(music.tracks[0].id)
+        // Only the deck with the record on it answers. An empty one does not
+        // help itself to the first record in the folder — a record is a thing
+        // there is one of, and carrying it here is the whole gesture. Same rule
+        // the television follows.
+        if (music.playing && music.deck === id) music.play(music.playing, id)
+        return
+      }
+      // The marker comes off the tray and into your hand. Nothing is written
+      // down: it is the same marker, hidden while you carry it.
+      if (item.kind === 'marker') {
+        useAppStore.getState().setHeldMarker(id)
         return
       }
       if (item.kind === 'crt') {
@@ -377,16 +366,9 @@ export function Player() {
       keys.current.add(e.code)
       if (useAppStore.getState().mode !== 'walk') return
 
-      /**
-       * Auto-repeat moves you; it does not act for you.
-       *
-       * Holding a key fires `keydown` thirty times a second once the operating
-       * system's repeat kicks in, and every verb below is a thing you meant to do
-       * once. Holding `N` strobed the room between day and night, holding `E`
-       * took a book off a shelf and put it back over and over, and holding `X`
-       * did the same to a moving box. The movement keys are exempt because they
-       * are read from the *set*, which a repeat cannot change.
-       */
+      // Auto-repeat moves you; it does not act for you. Every verb below is
+      // one-shot. The movement keys are exempt: they are read from the *set*,
+      // which a repeat cannot change.
       if (e.repeat) return
 
       if (e.code === 'KeyE') {
@@ -397,9 +379,34 @@ export function Player() {
         // Aimed at the cat, F asks it for a book — there is no book under the
         // crosshair to draw out when a cat is standing in front of it, so the
         // two never compete.
-        const { focusedBook, focusedCat, drawn, setDrawn } = useAppStore.getState()
+        const { focusedBook, focusedCat, drawn, setDrawn, heldMarker, cycleInk } =
+          useAppStore.getState()
+        // With the marker in hand, F is the next pen in the tray. It cannot
+        // collide with drawing a book out: the crosshair offers nothing but
+        // whiteboards while you are holding it.
+        if (heldMarker !== null) {
+          cycleInk()
+          return
+        }
         if (focusedCat) {
           askCatForBook()
+          return
+        }
+        // A record on a deck comes back off it. Without this a record carried
+        // to a deck could never be carried away from one: it is hidden while it
+        // plays, so there is nothing in the crate to reach for.
+        const app = useAppStore.getState()
+        const music = useMediaStore.getState()
+        if (
+          app.focusedFixture &&
+          app.held === null &&
+          app.heldRecord === null &&
+          music.playing &&
+          music.deck === app.focusedFixture
+        ) {
+          const taken = music.playing
+          music.stop()
+          app.setHeldRecord(taken)
           return
         }
         // Draw the book under the crosshair out of the shelf to look at its
@@ -430,10 +437,15 @@ export function Player() {
         }
       } else if (e.code === 'KeyG') {
         e.preventDefault()
-        // Unpack the box you are looking at onto the shelves. Deliberately not
-        // E: emptying a box is a hundred books moving at once, and it must not
-        // be what happens when you meant to pick one up and hit the cardboard.
-        const { held, focusedBox } = useAppStore.getState()
+        // Unpack the box you are looking at onto the shelves, or — with the
+        // marker in hand — wipe the board you are looking at. Deliberately not
+        // E in either case: both throw away a lot of work at once, and neither
+        // must be what happens when you meant to pick one book up, or draw.
+        const { held, focusedBox, heldMarker, boardTarget } = useAppStore.getState()
+        if (heldMarker !== null) {
+          if (boardTarget) useLibraryStore.getState().wipeBoard(boardTarget)
+          return
+        }
         if (held === null && focusedBox) {
           useLibraryStore.getState().emptyBoxOntoShelves(focusedBox)
         }
@@ -594,14 +606,9 @@ export function Player() {
   }, [mode])
 
   /**
-   * Stepping away from the catalogue puts you back behind your own eyes.
-   *
-   * The terminal releases the pointer when it opens, because a panel you type
-   * into is a panel you have to be able to click. Every other way out of a panel
-   * leaves the lock to be taken back by a click on the room — but the terminal is
-   * opened with `E` from a stride away and closed with `Esc` from the same spot,
-   * so a hand that never touched the mouse was made to go and find it again. `Esc`
-   * is user activation, which is what makes taking the lock back here allowed.
+   * Take the pointer back when the catalogue closes. It is opened with `E` and
+   * closed with `Esc`, so nothing else would reclaim the lock. `Esc` counts as
+   * user activation, which is what makes this allowed.
    */
   const searching = useAppStore((s) => s.searching)
   const wasSearching = useRef(false)
@@ -619,13 +626,7 @@ export function Player() {
 
   // --- movement --------------------------------------------------------
 
-  /**
-   * Put the camera where the player is.
-   *
-   * One place rather than three assignments in three branches, because the
-   * hand-off off a closed book has to apply to all of them — including the
-   * seated one, which returns early.
-   */
+  /** Put the camera where the player is. One place, so the hand-off applies to all three branches. */
   const eye = useMemo(() => new THREE.Vector3(), [])
   const aim = useMemo(() => new THREE.Euler(0, 0, 0, 'YXZ'), [])
   const want = useMemo(() => new THREE.Quaternion(), [])
@@ -807,18 +808,9 @@ export function Player() {
 
     player.speed = Math.hypot(velocity.current.x, velocity.current.z)
 
-    /**
-     * Head bob, advanced by *distance walked* rather than by time, so it never
-     * runs on while you stand still and never skates while you are blocked
-     * against a wall — `player.speed` is what actually moved, not what was asked
-     * for. Its weight eases in and out separately, so starting and stopping do
-     * not begin and end mid-step.
-     *
-     * Two components, because a walk is not a pogo stick: the vertical one is at
-     * twice the stride (one dip per foot) and the sideways one is at the stride
-     * itself (a sway onto each leg in turn). Both are small enough to be felt
-     * rather than seen.
-     */
+    // Head bob, advanced by *distance walked* rather than by time, so it never
+    // runs on while you stand still. Two components: vertical at twice the
+    // stride (one dip per foot), sideways at the stride (a sway onto each leg).
     bob.current += delta * player.speed * 7.5
     const want = Math.min(1, player.speed / WALK)
     bobWeight.current += (want - bobWeight.current) * approach(6, delta)

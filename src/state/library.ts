@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import { library } from '../services'
 import type {
+  BoardStroke,
   IndexedBook,
   LayoutDocument,
   LoosePlacement,
   PinnedSheet,
+  RecordPlacement,
   ScanProgress,
   ScanSummary,
 } from '../services/types'
@@ -83,6 +85,15 @@ type LibraryState = {
    * pointing at them.
    */
   pins: PinnedSheet[]
+  /** Whiteboard id -> what has been drawn on it, oldest stroke first. */
+  drawings: Record<string, BoardStroke[]>
+  /**
+   * Records you have had an opinion about: `filed` is the crate you put one in,
+   * `looseRecords` is where you set one down. Everything else is dealt out of
+   * the music folder in its own order, so both are usually empty.
+   */
+  filedRecords: Record<string, string>
+  looseRecords: Record<string, RecordPlacement>
   /** Furniture that has been shoved somewhere else. Boxes, in practice. */
   placements: Record<string, FurnitureOverride>
 
@@ -133,6 +144,16 @@ type LibraryState = {
   pinUp: (sheet: Omit<PinnedSheet, 'id'>) => PinnedSheet
   /** Take a sheet down, by id. Returns it, so it can go into your hand. */
   unpin: (id: string) => PinnedSheet | undefined
+  /** Add a finished stroke to a whiteboard. */
+  drawOn: (boardId: string, stroke: BoardStroke) => void
+  /** Wipe a whiteboard clean. Returns how many strokes went. */
+  wipeBoard: (boardId: string) => number
+  /** File a record into a particular crate, and keep it there. */
+  fileRecord: (trackId: string, crateId: string) => void
+  /** Set a record down somewhere that is not a crate. */
+  putRecordDown: (trackId: string, placement: RecordPlacement) => void
+  /** Forget where a record was put, so it goes back to its dealt place. */
+  freeRecord: (trackId: string) => void
   /** Shove a piece of furniture. Only the moving boxes accept this. */
   moveFurniture: (id: string, at: [number, number], facing: number, elevation?: number) => void
   bookAt: (id: string) => IndexedBook | undefined
@@ -220,6 +241,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       furniture: state.placements,
       labels: state.labels,
       pins: state.pins,
+      drawings: state.drawings,
+      records: { filed: state.filedRecords, loose: state.looseRecords },
     }
     await library.saveLayout(document).catch((e) => set({ error: String(e) }))
   }
@@ -278,6 +301,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     readProgress: {},
     labels: {},
     pins: [],
+    drawings: {},
+    filedRecords: {},
+    looseRecords: {},
     placements: {},
 
     loaded: false,
@@ -312,6 +338,53 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({ pins: get().pins.filter((sheet) => sheet.id !== id) })
       scheduleSave()
       return found
+    },
+
+    drawOn: (boardId, stroke) => {
+      set({ drawings: { ...get().drawings, [boardId]: [...(get().drawings[boardId] ?? []), stroke] } })
+      scheduleSave()
+    },
+
+    wipeBoard: (boardId) => {
+      const gone = get().drawings[boardId]?.length ?? 0
+      if (gone === 0) return 0
+      set({ drawings: omit(get().drawings, boardId) })
+      scheduleSave()
+      return gone
+    },
+
+    /**
+     * Filing, setting down and letting go of a record.
+     *
+     * All three are one small write, because a record's place is one entry
+     * rather than an arrangement: unlike a shelf, a crate has no order worth
+     * keeping — see `Records.tsx` for why the rest of the collection is dealt
+     * rather than laid out.
+     */
+    fileRecord: (trackId, crateId) => {
+      set({
+        filedRecords: { ...get().filedRecords, [trackId]: crateId },
+        looseRecords: omit(get().looseRecords, trackId),
+      })
+      scheduleSave()
+    },
+
+    putRecordDown: (trackId, placement) => {
+      set({
+        looseRecords: { ...get().looseRecords, [trackId]: placement },
+        filedRecords: omit(get().filedRecords, trackId),
+      })
+      scheduleSave()
+    },
+
+    freeRecord: (trackId) => {
+      const { filedRecords, looseRecords } = get()
+      if (!(trackId in filedRecords) && !(trackId in looseRecords)) return
+      set({
+        filedRecords: omit(filedRecords, trackId),
+        looseRecords: omit(looseRecords, trackId),
+      })
+      scheduleSave()
     },
 
     load: async () => {
@@ -378,6 +451,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           loose,
           labels: layout?.labels ?? {},
           pins,
+          drawings: layout?.drawings ?? {},
+          // Deliberately not filtered against the music folder: a record whose
+          // file is momentarily missing — an unmounted drive, a folder being
+          // reorganised — should find its crate again when the file comes back,
+          // and an entry for a track nobody has is inert.
+          filedRecords: layout?.records?.filed ?? {},
+          looseRecords: layout?.records?.loose ?? {},
           placements,
           hasSavedLayout: layout !== null,
           loaded: true,

@@ -37,6 +37,8 @@ export type Settings = {
   showBody: boolean
   /** Master volume for the record player and the television, 0 to 1. */
   volume: number
+  /** How loud the rain is, on top of the master volume. 0 silences it. */
+  rainVolume: number
   /**
    * Whether sound is placed in the room — quieter from the kitchen, and off to
    * your left when the deck is. Off falls back to one volume everywhere, which
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lowPerformance: false,
   showBody: true,
   volume: 0.8,
+  rainVolume: 0.35,
   positionalAudio: true,
   sensitivity: 1,
 }
@@ -68,6 +71,7 @@ function read(): Settings {
       lowPerformance: parsed.lowPerformance ?? DEFAULT_SETTINGS.lowPerformance,
       showBody: parsed.showBody ?? DEFAULT_SETTINGS.showBody,
       volume: clamp(parsed.volume ?? DEFAULT_SETTINGS.volume, 0, 1),
+      rainVolume: clamp(parsed.rainVolume ?? DEFAULT_SETTINGS.rainVolume, 0, 1),
       positionalAudio: parsed.positionalAudio ?? DEFAULT_SETTINGS.positionalAudio,
       sensitivity: clamp(parsed.sensitivity ?? DEFAULT_SETTINGS.sensitivity, 0.2, 3),
     }
@@ -138,6 +142,7 @@ function persist(state: Settings) {
         lowPerformance: state.lowPerformance,
         showBody: state.showBody,
         volume: state.volume,
+        rainVolume: state.rainVolume,
         positionalAudio: state.positionalAudio,
         sensitivity: state.sensitivity,
       } satisfies Settings),

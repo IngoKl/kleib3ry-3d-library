@@ -219,14 +219,17 @@ far a staircase climbs), and `on` (whether a lamp starts lit).
 | --- | --- |
 | `armchair` `sofa` `diningchair` `bench` | solid, and you can sit — look at it and press `E` |
 | `table` `sidetable` `footstool` `kitchencounter` | solid, and you can put a book down on it |
-| `floorlamp` `pendant` `fireplace` | light. `E` switches it; the state goes to `lights.json` |
+| `bathtub` `basin` `toilet` | solid; the first two take a book on their rim |
+| `floorlamp` `pendant` `fireplace` `fairylights` | light. `E` switches it; the state goes to `lights.json` |
+| `lightswitch` | hung like a picture; `E` works every light in the library at once |
 | `recordplayer` `coffeemaker` | `E` works it. Give it a `y` so it stands on something |
 | `crt` `tapecrate` | a television and a crate that fills itself from your `video/` folder |
 | `computer` | the catalogue terminal: `E` searches the whole library and says where a thing is |
 | `postits` | a pad of notes; `E` peels one off to write on |
-| `whiteboard` | hung like a picture; `E` pins a page or a note to it |
+| `marker` | a whiteboard marker; `E` takes it, then the left mouse button draws |
+| `whiteboard` | hung like a picture; `E` pins a page or a note to it, and the marker writes on it |
 | `recordshelf` | a crate that fills itself from your `music/` folder |
-| `picture` | a framed image from `artwork/`; `y` is the centre of the frame |
+| `picture` `clock` | hung on a wall; `y` is the centre of it |
 | `plant` | solid; `height` varies it |
 | `rug` | not solid; `size` sets its footprint |
 | `stairs` | a ramp underfoot, treads to look at; `size` is [width, run] and `rise` is how far up |
@@ -247,7 +250,7 @@ list of book ids, and a map from box id to the books in that box:
 
 ```json
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "rows": {
     "west-0:0": ["a3f1…", "9c02…"],
     "west-0:1": ["71bd…"]
@@ -292,10 +295,11 @@ has is dropped on load, the same way a shelf entry is.
 
 Version 2 rekeyed `rows` from shelf index to shelf id; version 3 added
 `bookmarks`; version 4 added `boxes` and stopped shelving newly indexed books
-for you; version 5 added `loose`, `progress`, `labels` and `furniture`. Older
-documents still load — everything added since has been optional — but a version
-2 file will not have its shelves where you left them if it predates the rekey,
-since the old keys named positions rather than bookcases.
+for you; version 5 added `loose`, `progress`, `labels` and `furniture`; version
+6 added `drawings` and `records`. Older documents still load — everything added
+since has been optional — but a version 2 file will not have its shelves where
+you left them if it predates the rekey, since the old keys named positions
+rather than bookcases.
 
 ### Pages and notes
 
@@ -322,6 +326,38 @@ the id.
 
 On load, a page whose book the index has lost is dropped — it is a page of
 nothing. A note is nobody's but yours and always stays.
+
+### Records you have moved
+
+`books.json` also carries `records`, and it is deliberately sparse: a record
+nobody has touched is dealt into a crate from the `music/` folder's own order,
+so the usual state of this key is empty.
+
+```json
+"records": {
+  "filed": { "b71c…": "records" },
+  "loose": { "2ad9…": { "x": -1.3, "y": 0.78, "z": -1.5, "yaw": 2.4 } }
+}
+```
+
+`filed` is a record you carried to a particular crate; `loose` is one you set
+down on a table. One entry each rather than an ordering, because unlike a shelf
+a crate has no order worth keeping. `Q` with a record in hand clears both.
+
+### What is drawn on the whiteboards
+
+`drawings` maps a `whiteboard`'s furniture id to the lines on it, oldest first.
+
+```json
+"drawings": {
+  "board": [{ "ink": 0, "points": [0.21, 0.62, 0.24, 0.61, 0.29, 0.58] }]
+}
+```
+
+`points` are flattened `u, v` pairs in board space — across from the left edge
+and up from the bottom, both 0 to 1 — so resizing a board in `library.json`
+keeps its drawing instead of scattering it. `ink` is which pen, as an index into
+the three in the tray.
 
 ## `lights.json` — which lamps are on, and what the weather is doing
 

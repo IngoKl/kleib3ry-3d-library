@@ -39,9 +39,9 @@ export const library: LibraryService = isTauri()
  * either card so the menu and the settings panel cannot come to disagree.
  */
 export const DRIVER_LABELS: Record<DriverKind, string> = {
-  tauri: 'desktop app',
-  http: 'container',
-  browser: 'stand-in — no filesystem',
+  tauri: 'Desktop App',
+  http: 'Container',
+  browser: 'Stand-in — no filesystem',
 }
 
 export type { DriverKind, LibraryService } from './types'

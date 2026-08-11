@@ -141,6 +141,22 @@ declare global {
       focusedPin: () => string | null
       /** Where each whiteboard is drawn, measured off its meshes. */
       boards: () => { id: string; bottom: number; top: number }[]
+      heldMarker: () => string | null
+      boardTarget: () => string | null
+      takeMarkerForTest: (id: string) => void
+      inkForTest: () => number
+      drawingsOn: (boardId: string) => { ink: number; points: number[] }[]
+      wipeBoardForTest: (boardId: string) => number
+      heldRecord: () => string | null
+      takeRecordForTest: (id: string | null) => void
+      fileRecordForTest: (id: string, crateId: string) => void
+      putRecordDownForTest: (
+        id: string,
+        at: { x: number; y: number; z: number; yaw: number },
+      ) => void
+      filedRecords: () => Record<string, string>
+      looseRecords: () => Record<string, { x: number; y: number; z: number; yaw: number }>
+      recordCrates: () => Record<string, string | null>
       reader: () => ReaderStatus
       readForTest: (id: string) => Promise<ReaderStatus>
       setModeForTest: (mode: string) => void
@@ -210,6 +226,26 @@ async function settled(page: Page, condition: () => boolean, timeout = 4000) {
     // never having happened — which reads as the room being wrong, and sends the
     // sweep on to try another twenty-nine poses for no reason.
     if (await page.evaluate(condition)) return true
+    await page.waitForTimeout(50)
+  } while (Date.now() < deadline)
+  return false
+}
+
+/**
+ * The same, for a condition that needs a value from this side.
+ *
+ * `page.evaluate` serialises the function, so a closure over an id is a
+ * `ReferenceError` in the page rather than a value.
+ */
+async function settledWith(
+  page: Page,
+  arg: string[],
+  condition: (value: string[]) => boolean,
+  timeout = 4000,
+) {
+  const deadline = Date.now() + timeout
+  do {
+    if (await page.evaluate(condition, arg)) return true
     await page.waitForTimeout(50)
   } while (Date.now() < deadline)
   return false
@@ -1445,6 +1481,157 @@ test('a tape comes out of the crate and goes into the television', async ({ page
   expect(reported, `neither playing nor complaining: ${JSON.stringify(watching)}`).toBe(true)
 })
 
+test('a record filed by hand stays in the crate you put it in', async ({ page }) => {
+  await boot(page)
+
+  const records = await page.evaluate(() => window.__app.records())
+  expect(records.length, 'nothing in music/').toBeGreaterThan(0)
+  const record = records[0]!
+
+  await page.evaluate((id) => window.__app.takeRecordForTest(id), record)
+  await expect(page.getByTestId('held-record-card')).toBeVisible()
+
+  // Into a crate on purpose. The deal fills crates from the music folder's own
+  // order, so the entry is only worth anything if it beats the deal.
+  const crates = (await page.evaluate(() => window.__app.furniture()))
+    .filter((item) => item.kind === 'recordshelf')
+    .map((item) => item.id)
+  expect(crates.length, 'this world has no record crate').toBeGreaterThan(0)
+  const crate = crates[crates.length - 1]!
+
+  await page.evaluate(([id, into]) => window.__app.fileRecordForTest(id!, into!), [record, crate])
+  await page.evaluate(() => window.__app.takeRecordForTest(null))
+  expect(await page.evaluate(() => window.__app.filedRecords())).toEqual({ [record]: crate })
+
+  const filed = await settledWith(
+    page,
+    [record, crate],
+    ([id, into]) => window.__app.recordCrates()[id!] === into,
+    8000,
+  )
+  expect(filed, 'the record did not end up in the crate it was filed into').toBe(true)
+
+  await reboot(page)
+  expect(await page.evaluate(() => window.__app.filedRecords())).toEqual({ [record]: crate })
+
+  // Q is the way out of any arrangement: back to wherever the folder deals it.
+  await page.evaluate((id) => window.__app.takeRecordForTest(id), record)
+  await page.keyboard.press('KeyQ')
+  const letGo = await settled(page, () => window.__app.heldRecord() === null, 5000)
+  expect(letGo, 'Q did not put the record back').toBe(true)
+  expect(await page.evaluate(() => window.__app.filedRecords())).toEqual({})
+})
+
+test('a record set down on a table stays on the table, and survives a reload', async ({ page }) => {
+  await boot(page)
+
+  const records = await page.evaluate(() => window.__app.records())
+  expect(records.length, 'nothing in music/').toBeGreaterThan(0)
+  const record = records[0]!
+
+  const table = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.kind === 'table',
+  )!
+
+  // Aiming a sleeve at a table top from a headless driver is a pose hunt; what
+  // this is about is that a record put down has a place of its own.
+  await page.evaluate((id) => window.__app.takeRecordForTest(id), record)
+  await page.evaluate(
+    ([id, x, y, z]) =>
+      window.__app.putRecordDownForTest(String(id), {
+        x: Number(x),
+        y: Number(y),
+        z: Number(z),
+        yaw: 0,
+      }),
+    [record, table.x, table.y + 0.75, table.z],
+  )
+  await page.evaluate(() => window.__app.takeRecordForTest(null))
+
+  expect(Object.keys(await page.evaluate(() => window.__app.looseRecords()))).toEqual([record])
+
+  // A record that is out of the crates is not drawn in one.
+  const outOfCrate = await settledWith(
+    page,
+    [record],
+    ([id]) => window.__app.recordCrates()[id!] === null,
+    8000,
+  )
+  expect(outOfCrate, 'a record on a table is still filed in a crate').toBe(true)
+
+  await reboot(page)
+  const again = await page.evaluate(() => window.__app.looseRecords())
+  expect(Object.keys(again), 'the record was not where it was left').toEqual([record])
+})
+
+test('the marker draws on the whiteboard, and the board keeps it', async ({ page }) => {
+  await boot(page)
+
+  const board = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.kind === 'whiteboard',
+  )!
+  expect(await page.evaluate((id) => window.__app.drawingsOn(id), board.id)).toEqual([])
+
+  const marker = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.kind === 'marker',
+  )!
+  await page.evaluate((id) => window.__app.takeMarkerForTest(id), marker.id)
+  await expect(page.getByTestId('held-marker-card')).toBeVisible()
+
+  // Stand a stride off the board and look at it. It hangs on the office's south
+  // wall facing north, so this is one pose rather than a hunt.
+  await page.evaluate(
+    ([x, z]) => window.__app.teleport(x!, z! - 1.4, Math.PI),
+    [board.x, board.z],
+  )
+  await page.evaluate(() => window.__app.look(Math.PI, 0))
+  const aimed = await settled(page, () => window.__app.boardTarget() !== null, 8000)
+  expect(aimed, 'never found the whiteboard with the marker in hand').toBe(true)
+
+  // Hold the button and sweep the crosshair: the line follows the head.
+  await page.mouse.down()
+  for (const yaw of [-0.12, -0.06, 0, 0.06, 0.12]) {
+    await page.evaluate((y) => window.__app.look(Math.PI + y, 0), yaw)
+    await page.waitForTimeout(150)
+  }
+  await page.mouse.up()
+
+  const drawn = await settledWith(
+    page,
+    [board.id],
+    ([id]) => window.__app.drawingsOn(id!).length > 0,
+    8000,
+  )
+  const strokes = await page.evaluate((id) => window.__app.drawingsOn(id), board.id)
+  expect(drawn, `nothing was drawn: ${JSON.stringify(strokes)}`).toBe(true)
+  expect(strokes[0]!.points.length, 'a stroke of one point is not a line').toBeGreaterThan(4)
+
+  // It is part of the library, so it comes back with it.
+  await reboot(page)
+  const after = await page.evaluate((id) => window.__app.drawingsOn(id), board.id)
+  expect(after.length, 'the drawing did not survive a reload').toBe(strokes.length)
+
+  // And G wipes it. Pressed for real rather than called: the marker has to
+  // still be in hand and the board still under the crosshair after a reload,
+  // and neither survives one — so both are set up again first.
+  await page.evaluate((id) => window.__app.takeMarkerForTest(id), marker.id)
+  await page.evaluate(
+    ([x, z]) => window.__app.teleport(x!, z! - 1.4, Math.PI),
+    [board.x, board.z],
+  )
+  await page.evaluate(() => window.__app.look(Math.PI, 0))
+  expect(await settled(page, () => window.__app.boardTarget() !== null, 8000)).toBe(true)
+
+  await page.keyboard.press('KeyG')
+  const wiped = await settledWith(
+    page,
+    [board.id],
+    ([id]) => window.__app.drawingsOn(id!).length === 0,
+    5000,
+  )
+  expect(wiped, 'G did not wipe the board').toBe(true)
+})
+
 test('a page torn out of a book pins to a wall, and the book keeps its own', async ({ page }) => {
   await boot(page)
 
@@ -1728,7 +1915,7 @@ test('low performance mode is a switch, and the room survives it', async ({ page
   // the room has to come back rather than come back empty.
   await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.rooms).toBe(9)
+  expect(stats.rooms).toBe(10)
   expect(stats.books).toBeGreaterThan(100)
   expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([])
 })

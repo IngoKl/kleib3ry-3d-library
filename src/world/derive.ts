@@ -64,6 +64,11 @@ export const FURNITURE_SIZE: Record<
   // own sides. A tape is 23 cm, so 22 leaves the labels standing proud.
   tapecrate: { width: 0.56, depth: 0.22, height: 0.22, solid: true, surface: true },
   kitchencounter: { width: 1.8, depth: 0.62, height: 0.92, solid: true, surface: true },
+  // A surface, so the deck in the bathroom has somewhere honest to stand and a
+  // book put down on the edge of the bath stays where a book put down there does.
+  bathtub: { width: 1.7, depth: 0.76, height: 0.56, solid: true, surface: true },
+  toilet: { width: 0.4, depth: 0.68, height: 0.78, solid: true, surface: false },
+  basin: { width: 0.6, depth: 0.44, height: 0.86, solid: true, surface: true },
   recordplayer: { width: 0.46, depth: 0.38, height: 0.18, solid: false, surface: false },
   // A portable television, which is to say a heavy one: deep, because the tube
   // is, and solid because it stands on the floor on its own stand.
@@ -76,13 +81,22 @@ export const FURNITURE_SIZE: Record<
   // A pad of notes. Small enough that its footprint is only ever used to work
   // out where the crosshair has to be pointing.
   postits: { width: 0.13, depth: 0.13, height: 0.035, solid: false, surface: false },
+  // A whiteboard marker, lying wherever it was left. Its footprint is only ever
+  // used to work out whether the crosshair is on it.
+  marker: { width: 0.14, depth: 0.06, height: 0.05, solid: false, surface: false },
   fireplace: { width: 1.2, depth: 0.5, height: 1.5, solid: true, surface: false },
   floorlamp: { width: 0.36, depth: 0.36, height: 1.66, solid: true, surface: false },
   pendant: { width: 0.3, depth: 0.3, height: 0.3, solid: false, surface: false },
+  // A string of bulbs. `size` is [length, sag] and `y` is the height it is
+  // strung at, so it runs along whatever it is hung across.
+  fairylights: { width: 3.0, depth: 0.08, height: 0.2, solid: false, surface: false },
+  // A plate on the wall. Its footprint is only used to find the crosshair.
+  lightswitch: { width: 0.09, depth: 0.03, height: 0.13, solid: false, surface: false },
   rug: { width: 2.2, depth: 1.6, height: 0.012, solid: false, surface: false },
   plant: { width: 0.42, depth: 0.42, height: 0.95, solid: true, surface: false },
   picture: { width: 0.6, depth: 0.05, height: 0.8, solid: false, surface: false },
   whiteboard: { width: 1.8, depth: 0.06, height: 1.1, solid: false, surface: false },
+  clock: { width: 0.34, depth: 0.06, height: 0.34, solid: false, surface: false },
   stairs: { width: 1.0, depth: 3.0, height: 2.6, solid: false, surface: false },
   // A pair of treads hanging off the edge of a deck. Not solid: the whole point
   // is to walk down it, and the walk controller reads the *floor*, not the
@@ -98,13 +112,23 @@ export const FURNITURE_SIZE: Record<
  * rather than from the document — nobody hanging a whiteboard is thinking about
  * how far it sticks out.
  */
-export const WALL_MOUNTED = new Set<FurnitureKind>(['picture', 'whiteboard'])
+export const WALL_MOUNTED = new Set<FurnitureKind>([
+  'picture',
+  'whiteboard',
+  'clock',
+  'lightswitch',
+])
 
 /** Furniture you can sit in. A footstool is for feet. */
 export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair', 'bench', 'bed'])
 
 /** Furniture that emits light, and can therefore be switched. */
-export const LAMPS = new Set<FurnitureKind>(['floorlamp', 'pendant', 'fireplace'])
+export const LAMPS = new Set<FurnitureKind>([
+  'floorlamp',
+  'pendant',
+  'fireplace',
+  'fairylights',
+])
 
 /** Furniture you operate rather than sit on or fill: press E and something happens. */
 export const APPLIANCES = new Set<FurnitureKind>([
@@ -113,6 +137,8 @@ export const APPLIANCES = new Set<FurnitureKind>([
   'coffeemaker',
   'computer',
   'postits',
+  'marker',
+  'lightswitch',
 ])
 
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -218,12 +244,11 @@ export function wallPanels(room: RoomSpec, wall: Wall): Panel[] {
   return panels.filter((panel): panel is Panel => panel !== null)
 }
 
-/** The glazing itself, so a window reads as glass rather than as a hole. */
-export function windowPanes(room: RoomSpec): Panel[] {
-  const panes: Panel[] = []
+/** The hole each of a room's openings leaves, whether or not it is filled. */
+function openingPanels(room: RoomSpec): { panel: Panel; opening: Opening }[] {
+  const out: { panel: Panel; opening: Opening }[] = []
   for (const wall of wallsOf(room)) {
     for (const opening of openingsOn(room, wall)) {
-      if (opening.kind !== 'window' || !opening.glazed) continue
       const panel = wallPanel(
         room,
         wall,
@@ -232,10 +257,34 @@ export function windowPanes(room: RoomSpec): Panel[] {
         opening.sill,
         opening.sill + opening.height,
       )
-      if (panel) panes.push(panel)
+      if (panel) out.push({ panel, opening })
     }
   }
-  return panes
+  return out
+}
+
+/** The glazing itself, so a window reads as glass rather than as a hole. */
+export function windowPanes(room: RoomSpec): Panel[] {
+  return openingPanels(room)
+    .filter(({ opening }) => opening.kind === 'window' && opening.glazed)
+    .map(({ panel }) => panel)
+}
+
+/**
+ * Where a room's openings are, and whether anything is in them.
+ *
+ * For whatever has to know how *open* a room is — the rain you can hear is the
+ * obvious one. A door lets in the whole weather; a pane lets in some of it.
+ */
+export type OpeningSpot = { x: number; y: number; z: number; glazed: boolean }
+
+export function openingSpots(room: RoomSpec): OpeningSpot[] {
+  return openingPanels(room).map(({ panel, opening }) => ({
+    x: panel.position[0],
+    y: panel.position[1],
+    z: panel.position[2],
+    glazed: opening.glazed,
+  }))
 }
 
 export const WALLS: readonly Wall[] = ['north', 'south', 'east', 'west']
@@ -707,8 +756,17 @@ export function deriveWorld(
           roomId: room.id,
           x: derived.x,
           // Where the bulb is, not where the fitting starts: a floor lamp lights
-          // from its shade and a pendant from just under its own body.
-          y: baseY + (item.kind === 'floorlamp' ? 1.44 : item.kind === 'fireplace' ? 0.4 : 0.12),
+          // from its shade, a pendant from just under its own body, and a string
+          // of fairy lights from the line it hangs on.
+          y:
+            baseY +
+            (item.kind === 'floorlamp'
+              ? 1.44
+              : item.kind === 'fireplace'
+                ? 0.4
+                : item.kind === 'fairylights'
+                  ? -0.06
+                  : 0.12),
           z: derived.z,
           defaultOn: item.on ?? true,
         })

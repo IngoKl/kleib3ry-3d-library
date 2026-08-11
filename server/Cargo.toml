@@ -3,6 +3,7 @@ name = "kleib3ry_server"
 version = "0.1.0"
 description = "Serve a kleib3ry library folder over HTTP, for the container"
 authors = ["iklei"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"
 

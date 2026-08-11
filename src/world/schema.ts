@@ -81,6 +81,10 @@ export type FurnitureKind =
   | 'recordshelf'
   | 'tapecrate'
   | 'kitchencounter'
+  // plumbing
+  | 'bathtub'
+  | 'toilet'
+  | 'basin'
   // things that do something
   | 'recordplayer'
   | 'crt'
@@ -88,14 +92,18 @@ export type FurnitureKind =
   | 'fireplace'
   | 'computer'
   | 'postits'
+  | 'marker'
   // light
   | 'floorlamp'
   | 'pendant'
+  | 'fairylights'
+  | 'lightswitch'
   // dressing
   | 'rug'
   | 'plant'
   | 'picture'
   | 'whiteboard'
+  | 'clock'
   // structure
   | 'stairs'
   | 'step'
@@ -346,18 +354,25 @@ export const FURNITURE_KINDS = [
   'recordshelf',
   'tapecrate',
   'kitchencounter',
+  'bathtub',
+  'toilet',
+  'basin',
   'recordplayer',
   'crt',
   'coffeemaker',
   'fireplace',
   'computer',
   'postits',
+  'marker',
   'floorlamp',
   'pendant',
+  'fairylights',
+  'lightswitch',
   'rug',
   'plant',
   'picture',
   'whiteboard',
+  'clock',
   'stairs',
   'step',
 ] as const

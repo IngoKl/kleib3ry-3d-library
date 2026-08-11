@@ -13,12 +13,9 @@ import { useWorldStore } from '../state/world'
 const REACH = 2.6
 
 /**
- * The single per-frame raycast that drives everything you can point at.
- *
- * Empty-handed it looks for a book, on a shelf or in a box, or for something to
- * sit in or unpack; holding one it looks for a place to put it, a shelf or a
- * box. Both run at 30 Hz — with a thousand-odd instances this is the most
- * expensive thing in the loop, and a crosshair does not need more.
+ * The single per-frame raycast that drives everything you can point at. What it
+ * offers depends on what is in your hands. It runs at 30 Hz: with a thousand-odd
+ * instances this is the most expensive thing in the loop.
  */
 
 /** Furniture id off a hit anywhere in a piece's several meshes. */
@@ -46,13 +43,9 @@ function pinIdOf(hit: THREE.Intersection | undefined): string | null {
 const UPRIGHT = 0.55
 
 /**
- * Somewhere to stick a sheet, from a hit on a wall or a whiteboard.
- *
- * Only a near-vertical face counts: a floor is not somewhere you pin a page, and
- * neither is the underside of a loft. And the *normal* is what decides which way
- * the sheet faces, rather than the wall's own orientation — which is what makes
- * this work identically for the four walls of a room, a whiteboard hung on one
- * of them, and any wall a document invents later.
+ * Somewhere to stick a sheet, from a hit on a wall or a whiteboard. Only a
+ * near-vertical face counts, and the *normal* decides which way the sheet faces
+ * — so this works for any wall a document invents.
  */
 function pinFrom(hit: THREE.Intersection | undefined): {
   x: number
@@ -61,13 +54,9 @@ function pinFrom(hit: THREE.Intersection | undefined): {
   yaw: number
 } | null {
   if (!hit || !hit.normal) return null
-  // A raycast hands back the normal in the *hit object's* own space, not the
-  // world's. The room shells are built as boxes already at their world
-  // coordinates, so nobody noticed — but a whiteboard is a group turned to face
-  // the room it hangs in, and its face reported a normal of +Z whichever way it
-  // was hung. A note pinned to the office board was therefore stuck facing into
-  // the plaster, with its paper 4 mm inside the frame: found by the crosshair,
-  // and invisible.
+  // A raycast hands back the normal in the *hit object's* own space. A
+  // whiteboard is a turned group, so it must be taken to world space or a sheet
+  // pinned to one faces into the plaster.
   const normal = hit.normal.clone().transformDirection(hit.object.matrixWorld)
   if (Math.abs(normal.y) > 1 - UPRIGHT) return null
   return {
@@ -107,6 +96,7 @@ export function Interaction() {
       store.setSurfaceTarget(null)
       store.setPinTarget(null)
       store.setFocusedPin(null)
+      store.setBoardTarget(null)
       store.setFocusedCat(false)
       return
     }
@@ -128,6 +118,7 @@ export function Interaction() {
       store.setSurfaceTarget(null)
       store.setPinTarget(null)
       store.setFocusedPin(null)
+      store.setBoardTarget(null)
       store.setFocusedCat(false)
       return
     }
@@ -143,8 +134,11 @@ export function Interaction() {
     // offer, and only the empty-handed branch turns it back on.
     store.setFocusedCat(false)
 
-    // Holding a record: the deck takes it, a crate takes it back. Nothing else
-    // is offered — the sleeve fills the hand a book would need.
+    /**
+     * Holding a record: the deck takes it, a crate files it, a table takes it
+     * down flat. Nothing else is offered — the sleeve fills the hand a book
+     * would need.
+     */
     if (store.heldRecord !== null) {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
@@ -155,7 +149,6 @@ export function Interaction() {
       store.setFocusedTape(null)
       store.setTapeCrateTarget(null)
       store.setFocusedShelf(null)
-      store.setSurfaceTarget(null)
 
       const kindOf = (id: string | null) =>
         id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
@@ -168,18 +161,27 @@ export function Interaction() {
         if (hit && id && kindOf(id) === 'recordplayer') deck = { distance: hit.distance, id }
       }
 
-      // The crate carcass, or the records already filed in it — pointing into
-      // a full crate should read as "put it back", not as a miss.
+      // A crate files it; any other top takes it lying down. Both come off the
+      // same hit, because a crate *is* a surface — which is what lets a record
+      // player stand on one.
       let crate: { distance: number; id: string } | null = null
+      let top: { distance: number; hit: THREE.Intersection; id: string } | null = null
       const tops = sceneRefs.surfaces
       if (tops) {
         const hit = raycaster.intersectObject(tops, true)[0]
         const id = furnitureIdOf(hit)
-        if (hit && id && kindOf(id) === 'recordshelf') crate = { distance: hit.distance, id }
+        if (hit && id) {
+          if (kindOf(id) === 'recordshelf') crate = { distance: hit.distance, id }
+          else if (hit.normal !== undefined && hit.normal.y > 0.5) {
+            top = { distance: hit.distance, hit, id }
+          }
+        }
       }
-      const filed = sceneRefs.records
-      if (filed) {
-        const hit = raycaster.intersectObject(filed, false)[0]
+      // The records already in a crate — pointing into a full one should read as
+      // "put it back", not as a miss.
+      const shelved = sceneRefs.records
+      if (shelved) {
+        const hit = raycaster.intersectObject(shelved, false)[0]
         const owner =
           hit?.instanceId === undefined ? undefined : sceneRefs.recordCrates[hit.instanceId]
         if (hit && owner && (!crate || hit.distance < crate.distance)) {
@@ -189,9 +191,42 @@ export function Interaction() {
 
       store.setFocusedFixture(deck && (!crate || deck.distance < crate.distance) ? deck.id : null)
       store.setCrateTarget(crate && (!deck || crate.distance <= deck.distance) ? crate.id : null)
+      store.setSurfaceTarget(
+        top && !crate && (!deck || top.distance < deck.distance)
+          ? { furnitureId: top.id, x: top.hit.point.x, y: top.hit.point.y, z: top.hit.point.z }
+          : null,
+      )
       return
     }
     store.setCrateTarget(null)
+
+    /**
+     * Holding the marker: whiteboards, and nothing else.
+     *
+     * The board is not a *target* the way a shelf is — you draw by holding the
+     * mouse button and moving your head, which `Drawing.tsx` reads directly. This
+     * is only what tells the HUD there is something in front of you to write on,
+     * and what `G` wipes.
+     */
+    if (store.heldMarker !== null) {
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedSeat(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedRecord(null)
+      store.setFocusedTape(null)
+      store.setFocusedShelf(null)
+      store.setSurfaceTarget(null)
+      store.setFocusedFixture(null)
+      store.setFocusedPin(null)
+
+      const boards = sceneRefs.boards
+      const hit = boards ? raycaster.intersectObject(boards, true)[0] : undefined
+      store.setBoardTarget(furnitureIdOf(hit))
+      return
+    }
+    store.setBoardTarget(null)
 
     /**
      * Holding a tape: the television takes it, the crate takes it back. Nothing
@@ -305,31 +340,16 @@ export function Interaction() {
       store.setBoxTarget(null)
       store.setSurfaceTarget(null)
 
-      /**
-       * The cat, if it is in front of you and nearer than anything else.
-       *
-       * Nearest rather than outright, which it used to be: a cat that happened
-       * to sit down in front of a bookcase would take the whole case's worth of
-       * books off the crosshair, because it won a comparison it was never in.
-       * Not offered at all while you are sitting, for the same reason a chair
-       * is not — `E` from a seat means stand up.
-       */
+      // The cat, if it is nearer than anything else. Not offered while you are
+      // sitting, for the same reason a chair is not: `E` from a seat means stand up.
       let animal: { distance: number } | null = null
       const pet = store.seat === null ? sceneRefs.cat : null
       if (pet) {
         const hit = raycaster.intersectObject(pet, true)[0]
         if (hit) {
-          /**
-           * …and only if there is no wall in the way.
-           *
-           * Nothing else in here tests for an occluder — a book behind a wall
-           * within arm's reach is already offered, and has been forever, because
-           * every candidate is raycast against its own group and the nearest
-           * wins. That is fine for furniture, which does not move: you have to
-           * deliberately stand nose to the plaster to notice. The cat walks into
-           * the next room on its own, so without this it is quite normal to be
-           * offered a fuss through a wall.
-           */
+          // …and only if there is no wall in the way. Nothing else here tests
+          // for an occluder, because nothing else moves into the next room on
+          // its own.
           const shells = sceneRefs.walls
           const wall = shells ? raycaster.intersectObject(shells, true)[0] : undefined
           if (!wall || wall.distance > hit.distance) animal = { distance: hit.distance }
@@ -474,16 +494,10 @@ export function Interaction() {
         const cardboard = box && (!best || box.distance < best.distance) ? box.id : null
         store.setFocusedBox(best?.inBox ?? cardboard)
 
-        // A record and a lamp are only offered when nothing readable is nearer,
-        // so reaching past the crate for a book cannot start the music. The
-        // two also exclude each other symmetrically — E prefers the record, so
-        // if only the fixture guarded against the record, a lamp in front of a
-        // crate would hand E to the record *behind* it.
         // A record, a tape and a lamp are only offered when nothing readable is
         // nearer, so reaching past a crate for a book cannot start the music.
-        // They also exclude *each other*, symmetrically: E prefers whichever is
-        // closest, and it took a lamp standing in front of a crate to learn that
-        // guarding only one of them hands E to the thing behind it.
+        // They exclude each other symmetrically: guarding only one hands E to
+        // whatever is behind it.
         const nearer = (candidate: { distance: number } | null) =>
           candidate !== null && (!best || candidate.distance < best.distance)
         const closest = (candidate: { distance: number } | null, others: ({ distance: number } | null)[]) =>

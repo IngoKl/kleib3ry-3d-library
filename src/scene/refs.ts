@@ -35,8 +35,8 @@ export const sceneRefs: {
   /** The records in the crates, and which track each instance is. */
   records: THREE.InstancedMesh | null
   recordIds: string[]
-  /** `recordCrates[instanceId]` — which crate that record is filed in. */
-  recordCrates: string[]
+  /** `recordCrates[instanceId]` — which crate that record is in, null if it is out. */
+  recordCrates: (string | null)[]
   /** The tapes in the crates, and which tape each instance is. */
   tapes: THREE.InstancedMesh | null
   tapeIds: string[]

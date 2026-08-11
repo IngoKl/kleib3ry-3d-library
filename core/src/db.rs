@@ -109,6 +109,15 @@ fn migrate(conn: &Connection) -> Result<()> {
         conn.pragma_update(None, "user_version", 1)?;
     }
 
+    if version < 2 {
+        // Rows written before this column existed default to 0, which is older
+        // than any `PROBE_VERSION`, so they are re-probed by the next scan.
+        conn.execute_batch(
+            "ALTER TABLE books ADD COLUMN probe_version INTEGER NOT NULL DEFAULT 0;",
+        )?;
+        conn.pragma_update(None, "user_version", 2)?;
+    }
+
     Ok(())
 }
 
@@ -140,8 +149,8 @@ pub fn upsert_book(conn: &Connection, book: &Book, mtime: i64) -> Result<()> {
         params![book.path, book.id],
     )?;
     conn.execute(
-        "INSERT INTO books (id, path, format, title, author, cover, page_count, size_bytes, mtime, indexed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "INSERT INTO books (id, path, format, title, author, cover, page_count, size_bytes, mtime, indexed_at, probe_version)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
          ON CONFLICT (id) DO UPDATE SET
              path = excluded.path,
              format = excluded.format,
@@ -151,7 +160,8 @@ pub fn upsert_book(conn: &Connection, book: &Book, mtime: i64) -> Result<()> {
              page_count = excluded.page_count,
              size_bytes = excluded.size_bytes,
              mtime = excluded.mtime,
-             indexed_at = excluded.indexed_at",
+             indexed_at = excluded.indexed_at,
+             probe_version = excluded.probe_version",
         params![
             book.id,
             book.path,
@@ -163,6 +173,7 @@ pub fn upsert_book(conn: &Connection, book: &Book, mtime: i64) -> Result<()> {
             book.size_bytes as i64,
             mtime,
             book.indexed_at,
+            crate::probe::PROBE_VERSION,
         ],
     )?;
     Ok(())
@@ -183,17 +194,22 @@ pub fn refresh_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
-/// True when the file on disk is unchanged since the last index, so the
-/// expensive probe can be skipped.
+/// True when the file on disk is unchanged since the last index *and* the row
+/// was written by the current probes, so the expensive probe can be skipped.
+///
+/// The probe version is part of it because a file that has not changed can
+/// still be described wrongly: a row written before the EPUB probe measured
+/// length carries no page count, and no amount of rescanning would ever have
+/// replaced it.
 pub fn is_current(conn: &Connection, id: &str, size: u64, mtime: i64) -> Result<bool> {
-    let found: Option<(i64, i64)> = conn
+    let found: Option<(i64, i64, i64)> = conn
         .query_row(
-            "SELECT size_bytes, mtime FROM books WHERE id = ?1",
+            "SELECT size_bytes, mtime, probe_version FROM books WHERE id = ?1",
             params![id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?;
-    Ok(found == Some((size as i64, mtime)))
+    Ok(found == Some((size as i64, mtime, crate::probe::PROBE_VERSION)))
 }
 
 pub fn list_books(conn: &Connection) -> Result<Vec<Book>> {
@@ -272,6 +288,9 @@ mod tests {
         }
     }
 
+    /// The newest step `migrate` knows how to apply. Bumped with each one.
+    const SCHEMA_VERSION: i64 = 2;
+
     #[test]
     fn migrate_is_idempotent() {
         let conn = open_in_memory().unwrap();
@@ -279,7 +298,19 @@ mod tests {
         let version: i64 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    /// A database written before the probes learned something has to be
+    /// re-probed, or the improvement never reaches a library already indexed.
+    #[test]
+    fn a_row_from_an_older_probe_is_not_current() {
+        let conn = open_in_memory().unwrap();
+        upsert_book(&conn, &sample("a", "First"), 10).unwrap();
+        assert!(is_current(&conn, "a", 4096, 10).unwrap());
+
+        conn.execute("UPDATE books SET probe_version = 0", []).unwrap();
+        assert!(!is_current(&conn, "a", 4096, 10).unwrap());
     }
 
     #[test]

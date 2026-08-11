@@ -51,10 +51,11 @@ export type BookLayout = {
  * 2 rekeyed rows from shelf index to shelf id; 3 added bookmarks; 4 added which
  * box a book is in, and stopped shelving newly indexed books automatically; 5
  * added books put down in the room, reading progress, shelf labels, and where
- * the boxes have been shoved to. Older documents still load — every field added
+ * the boxes have been shoved to; 6 added whiteboard drawings and the records
+ * you have filed or set down. Older documents still load — every field added
  * since has been optional.
  */
-export const LAYOUT_SCHEMA_VERSION = 5
+export const LAYOUT_SCHEMA_VERSION = 6
 
 export type Reconciliation = {
   rows: Record<RowKey, string[]>

@@ -267,6 +267,14 @@ map is wet without anybody having said so. One canvas serves every pane in the
 building and is repainted fifteen times a second — water on glass moves slowly,
 and the upload is the cost, not the drawing.
 
+You can hear it too. [src/scene/rainSound.ts](../src/scene/rainSound.ts)
+synthesises the rain rather than playing a file: looping filtered noise through a
+low-pass whose cutoff tracks how much sky is over you. `Sound.tsx` works that out
+from the document — outdoors is all of it, a porch nearly all of it, and indoors
+is what leaks through the openings `openingSpots` derives, so standing at a
+window sounds different from standing at the hearth. Its level is its own slider,
+because weather that is right for one person is a downpour for the next.
+
 ## Sound
 
 The deck and the television are furniture with positions, and you have a
@@ -277,6 +285,12 @@ distance when one cannot. The fallback is the load-bearing part: every failure
 mode of Web Audio lands on "distance but no direction", which is most of the
 effect and is never silence. The elements themselves are still plain `<audio>`
 and `<video>` for all the reasons `state/media.ts` gives.
+
+A building may have more than one record player, so `state/media.ts` records
+*which* deck a record went on. There is one audio element and one record playing,
+so the deck is what tells the scene where in the house the music is coming from —
+and what stops every other deck in the building drawing the same disc on its
+platter.
 
 The forest moved to [src/world/forest.ts](../src/world/forest.ts) for the same
 reason. Trees are grown once in `deriveWorld` and both drawn and collided with
@@ -291,11 +305,11 @@ through branches is what walking in a forest is.
 | module | holds | notes |
 | --- | --- | --- |
 | `state/store.ts` | session and UI: mode, crosshair focus, what is in your hands | zustand |
-| `state/library.ts` | the catalogue, the shelving, bookmarks, progress, pins | zustand; debounces layout saves by 600 ms |
+| `state/library.ts` | the catalogue, the shelving, bookmarks, progress, pins, board drawings, records you have moved | zustand; debounces layout saves by 600 ms |
 | `state/world.ts` | the parsed document and the derived world | zustand |
 | `state/lights.ts` | which lamps are on, whether it is night, whether it is raining | zustand |
 | `state/settings.ts` | what is about *this machine*, not this library | zustand + `localStorage` |
-| `state/media.ts` | `music/` and `artwork/`, and the record on the deck | zustand |
+| `state/media.ts` | `music/` and `artwork/`, and which record is on which deck | zustand |
 | `state/video.ts` | `video/`, and the tape in the machine | zustand |
 | `state/covers.ts` | cover images, two queues, one rate limit | plain module |
 | `state/player.ts` | position, yaw, pitch, crouch, zoom | **plain mutable object** |
@@ -418,6 +432,43 @@ swinging, so the swap is atomic or it does not happen yet.
 `P` tears a copy of the page out — the book keeps its own page, and the sheet
 records which book and which page number, so it is rasterised from the same file
 next time it is drawn. "Tear out" is the gesture, not the effect.
+
+---
+
+## Drawing on a whiteboard
+
+[src/scene/board.ts](../src/scene/board.ts) owns the strokes and the canvas each
+board's face carries. Two decisions:
+
+- a stroke is stored in **board space** — `u` across, `v` up, both 0 to 1 —
+  rather than in metres or pixels, so a board resized in `library.json` keeps its
+  drawing and the texture resolution stays a rendering decision;
+- the **live stroke is a plain mutable object**, not store state. It gains a
+  point per frame, so a render per point would be a render per frame; it is
+  written to the layout once, when you let go.
+
+[src/scene/Drawing.tsx](../src/scene/Drawing.tsx) reads the held mouse button and
+raycasts the crosshair against `sceneRefs.boards`. It is the one continuous input
+in the app, which is why it is its own file rather than another branch in
+`Player.tsx` alongside the one-shot verbs.
+
+---
+
+## Records are things, not a list
+
+Records are *dealt* — every `recordshelf` takes a slice of the music folder in
+folder order — so a few hundred sleeves have somewhere to be with nothing
+written down. What is written down is only what you have had an opinion about: a
+record carried to another crate, or set down on a table. Both are one entry
+rather than an ordering, because unlike a shelf a crate has no order worth
+keeping, and the deal honours explicit filings first so putting one away is not
+immediately undone.
+
+The consequence worth stating: there is **one of each record**. It is on
+whichever deck you carried it to, a deck with nothing on it does not help itself
+to the first record in the folder, and `F` takes one back off — otherwise a
+record carried to a deck could never be carried away from one, since it is hidden
+while it plays.
 
 ---
 

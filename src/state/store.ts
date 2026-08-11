@@ -1,14 +1,11 @@
 import { create } from 'zustand'
 import { library } from '../services'
+import { MARKER_INKS } from '../data/inks'
 import type { DriverKind } from '../services/types'
 
 /**
- * Where you are: on your feet in the room, or docked to an open book.
- *
- * Not a setting. There used to be a row of mode buttons including an "edit"
- * camera that edited nothing and a "read" that froze you with no book to look
- * at; you never pick a mode now. You walk, and opening a book puts you in it
- * until you close it.
+ * Where you are: on your feet in the room, or docked to an open book. Not a
+ * setting — you walk, and opening a book puts you in it until you close it.
  */
 export type Mode = 'walk' | 'read'
 
@@ -118,6 +115,19 @@ type AppState = {
   pinTarget: PinTarget | null
   /** Id of a pinned sheet under the crosshair, one you could take down. */
   focusedPin: string | null
+  /**
+   * The whiteboard marker in your hand, by furniture id.
+   *
+   * Its own slot rather than a kind of `held`, for the same reason a record has
+   * one: a marker is not a book, and the crosshair offers a different set of
+   * things while you are carrying it. It never moves — a marker in your hand is
+   * the marker on the tray, hidden — so there is nothing to write down.
+   */
+  heldMarker: string | null
+  /** Which pen the marker is drawing in, as an index into the marker inks. */
+  markerInk: number
+  /** Whiteboard under the crosshair while holding the marker — one you could draw on. */
+  boardTarget: string | null
   /** True while the note field is open, so movement keys stay typed. */
   noting: boolean
   /**
@@ -156,12 +166,8 @@ type AppState = {
   /** True while the settings panel is open. Settings are not HUD. */
   settingsOpen: boolean
   /**
-   * False until you have chosen a library and pressed enter on the main menu.
-   *
-   * The room loads *behind* the menu rather than after it, so that choosing a
-   * library is a decision rather than a wait — but nothing you do reaches the
-   * room until you have gone in, which is what keeps a keystroke aimed at the
-   * menu from also being a step forward.
+   * False until you have gone in from the main menu. The room loads behind it,
+   * so nothing you press reaches the room until you have.
    */
   started: boolean
 
@@ -195,6 +201,10 @@ type AppState = {
   setHeldPin: (sheet: HeldSheet | null) => void
   setPinTarget: (target: PinTarget | null) => void
   setFocusedPin: (id: string | null) => void
+  setHeldMarker: (id: string | null) => void
+  /** Move to the next pen in the tray. Returns the ink now in the marker. */
+  cycleInk: () => number
+  setBoardTarget: (id: string | null) => void
   setNoting: (open: boolean) => void
   setSearching: (open: boolean) => void
   setFocusedCat: (near: boolean) => void
@@ -318,6 +328,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   heldPin: null,
   pinTarget: null,
   focusedPin: null,
+  heldMarker: null,
+  markerInk: 0,
+  boardTarget: null,
   noting: false,
   brewing: null,
   jumpTo: null,
@@ -386,6 +399,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setFocusedPin: (focusedPin) => {
     if (get().focusedPin !== focusedPin) set({ focusedPin })
+  },
+  setHeldMarker: (heldMarker) => set({ heldMarker }),
+  cycleInk: () => {
+    const markerInk = (get().markerInk + 1) % MARKER_INKS.length
+    set({ markerInk })
+    return markerInk
+  },
+  // Written off the per-frame raycast, so it guards against no-op writes.
+  setBoardTarget: (boardTarget) => {
+    if (get().boardTarget !== boardTarget) set({ boardTarget })
   },
   setNoting: (noting) => set({ noting }),
   setSearching: (searching) => set({ searching }),
@@ -469,13 +492,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 }))
 
 /**
- * Whether a keystroke is meant for the room.
- *
- * There are now four things that take the keyboard away from it — a shelf
- * label, a note, the catalogue search, and the settings panel — plus the main
- * menu, which the room is behind rather than in. Each of the three key handlers
- * used to carry its own list of them, and each list was a different length; the
- * one that had not heard about the search let `W` be both a letter and a step.
+ * Whether a keystroke is meant for the room. One list, because every key handler
+ * needs the same answer: a shelf label, a note, the catalogue search, the
+ * settings panel and the main menu all take the keyboard away from it.
  */
 export function roomHasKeyboard(): boolean {
   const state = useAppStore.getState()

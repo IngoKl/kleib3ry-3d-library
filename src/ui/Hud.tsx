@@ -16,25 +16,31 @@ import { ControlsCard } from './ControlsCard'
 import { SettingsCard } from './SettingsCard'
 import { MainMenu } from './MainMenu'
 
+/** What each pen in the whiteboard tray is called on the card. */
+const INK_NAMES = ['Blue Marker', 'Red Marker', 'Green Marker']
+
+/** What the crosshair calls each thing you can operate. Lamps fall through. */
+const FIXTURE_NAMES: Partial<Record<string, string>> = {
+  recordplayer: 'Record Player',
+  crt: 'Television',
+  coffeemaker: 'Coffee Maker',
+  computer: 'The Catalogue',
+  postits: 'A Pad of Notes',
+  marker: 'A Whiteboard Marker',
+  fireplace: 'The Fire',
+  pendant: 'Ceiling Light',
+  fairylights: 'Fairy Lights',
+  lightswitch: 'Light Switch',
+}
+
 /**
- * The overlay.
+ * The overlay. Two things only:
  *
- * It used to be one long panel down the right-hand side carrying everything the
- * app could say about itself — the library folder, the scan button, the record
- * count, the night switch, the renderer statistics — which meant the room was
- * permanently behind a column of administration. What is left here is only the
- * two things an overlay is for:
+ *   - what is under the crosshair, and which key acts on it — the cards;
+ *   - what the app is doing that nobody asked for: a scan, a parse error, a
+ *     library still in its boxes.
  *
- *   - **what is under the crosshair, and which key acts on it.** Those are the
- *     cards, and they are the interface;
- *   - **what the app is doing that you did not ask for**: a scan running, a
- *     document that will not parse, a library still in its boxes. Errors and
- *     progress are not settings and must not be behind a panel.
- *
- * Everything else moved. Choosing a library is the main menu, because it is a
- * decision you make before you are in a room; the switches are the settings
- * panel, because a switch you set once a month should not be in front of you
- * for the other thirty days.
+ * Choosing a library is the main menu; the switches are the settings panel.
  */
 export function Hud() {
   const mode = useAppStore((s) => s.mode)
@@ -56,6 +62,9 @@ export function Hud() {
   const heldPin = useAppStore((s) => s.heldPin)
   const pinTarget = useAppStore((s) => s.pinTarget)
   const focusedPin = useAppStore((s) => s.focusedPin)
+  const heldMarker = useAppStore((s) => s.heldMarker)
+  const markerInk = useAppStore((s) => s.markerInk)
+  const boardTarget = useAppStore((s) => s.boardTarget)
   const focusedCat = useAppStore((s) => s.focusedCat)
   const pins = useLibraryStore((s) => s.pins)
   const heldTape = useAppStore((s) => s.heldTape)
@@ -87,6 +96,7 @@ export function Hud() {
   const tracks = useMediaStore((s) => s.tracks)
   const nowPlaying = useMediaStore((s) => s.playing)
   const paused = useMediaStore((s) => s.paused)
+  const deck = useMediaStore((s) => s.deck)
   const tapes = useVideoStore((s) => s.tapes)
   const watching = useVideoStore((s) => s.playing)
   const watchPaused = useVideoStore((s) => s.paused)
@@ -125,46 +135,39 @@ export function Hud() {
     ? world?.furniture.find((item) => item.id === focusedFixture)
     : undefined
   const fixtureLit = fixture ? (lightsOn[fixture.id] ?? (fixture.on ?? true)) : false
-  const fixtureName =
-    fixture?.kind === 'recordplayer'
-      ? 'record player'
-      : fixture?.kind === 'crt'
-        ? 'television'
-        : fixture?.kind === 'coffeemaker'
-          ? 'coffee maker'
-          : fixture?.kind === 'computer'
-            ? 'the catalogue'
-            : fixture?.kind === 'postits'
-              ? 'a pad of notes'
-              : fixture?.kind === 'fireplace'
-                ? 'the fire'
-                : fixture?.kind === 'pendant'
-                  ? 'ceiling light'
-                  : 'lamp'
-  const fixtureVerb =
-    fixture && LAMPS.has(fixture.kind)
-      ? fixtureLit
-        ? 'switch it off'
-        : 'switch it on'
-      : fixture?.kind === 'recordplayer'
-        ? nowPlaying && !paused
-          ? 'pause'
-          : 'play'
-        : fixture?.kind === 'crt'
-          ? // An empty set says so rather than helping itself to a tape: putting
-            // one in is a thing you do with your hands.
-            watching === null
-            ? 'no tape in it'
-            : watchPaused
-              ? 'play'
-              : 'pause'
-          : fixture?.kind === 'computer'
-            ? 'look something up'
-            : fixture?.kind === 'postits'
-              ? 'take one and write on it'
-              : brewing === fixture?.id
-                ? 'brewing…'
-                : 'put the coffee on'
+  // What a switch plate would do next. Only asked when one is under the
+  // crosshair — it walks every lamp in the building.
+  const anyLightOn =
+    fixture?.kind === 'lightswitch' &&
+    (world?.lights ?? []).some((lamp) => lightsOn[lamp.id] ?? lamp.defaultOn)
+  const fixtureName = (fixture && FIXTURE_NAMES[fixture.kind]) ?? 'Lamp'
+
+  /** What E would do to the thing under the crosshair, in the words of the room. */
+  const fixtureVerb = (() => {
+    if (!fixture) return ''
+    if (LAMPS.has(fixture.kind)) return fixtureLit ? 'switch it off' : 'switch it on'
+    switch (fixture.kind) {
+      case 'lightswitch':
+        return anyLightOn ? 'switch every light off' : 'switch every light on'
+      // A deck with nothing on it says so, and there is one of each record: it
+      // is on whichever deck you carried it to, and no other.
+      case 'recordplayer':
+        if (nowPlaying === null || deck !== fixture.id) return 'no record on it'
+        return paused ? 'play' : 'pause'
+      // An empty set says so rather than taking a tape by itself.
+      case 'crt':
+        if (watching === null) return 'no tape in it'
+        return watchPaused ? 'play' : 'pause'
+      case 'computer':
+        return 'look something up'
+      case 'postits':
+        return 'take one and write on it'
+      case 'marker':
+        return 'pick it up'
+      default:
+        return brewing === fixture.id ? 'brewing…' : 'put the coffee on'
+    }
+  })()
 
   /** Anything the app wants to say that nobody asked it to. */
   const notices = useMemo(
@@ -199,6 +202,7 @@ export function Hud() {
                 tapeCrateTarget ||
                 pinTarget ||
                 focusedPin ||
+                boardTarget ||
                 focusedCat ||
                 surfaceTarget
                   ? 'crosshair-active'
@@ -215,7 +219,7 @@ export function Hud() {
             <div className="focus-card" data-testid="focus-card">
               <p className="focus-title">{focused.title}</p>
               <p className="focus-author">
-                {focused.author ?? 'unknown'} · {focused.format}
+                {focused.author ?? 'Unknown'} · {focused.format}
                 {focused.pageCount ? ` · ${focused.pageCount} pp` : ''}
               </p>
               {/* A book in a box lies cover up, so there is nothing to turn round —
@@ -223,38 +227,37 @@ export function Hud() {
                   The box it is lying in is offered alongside it, because otherwise
                   you would have to find a patch of bare cardboard to point at. */}
               <p className="focus-key">
-                <kbd>E</kbd> take
+                <kbd>E</kbd> Take
                 {focusedBox ? (
                   <>
                     {' · '}
-                    <kbd>G</kbd> shelve this box (
+                    <kbd>G</kbd> Shelve this box (
                     {(boxes[focusedBox]?.length ?? 0).toLocaleString()})
                     {browsing && (
                       <>
                         {' · '}
                         <kbd>,</kbd>
-                        <kbd>.</kbd> browse
+                        <kbd>.</kbd> Browse
                       </>
                     )}
                   </>
                 ) : (
                   <>
                     {' · '}
-                    <kbd>F</kbd> {drawn ? 'put back' : 'show cover'}
+                    <kbd>F</kbd> {drawn ? 'Put back' : 'Show cover'}
                   </>
                 )}
               </p>
             </div>
           )}
 
-          {/* The cat. Its own card, and the only one that is about somebody
-              rather than something. */}
+          {/* The cat: the only card that is about somebody rather than something. */}
           {walking && focusedCat && (
             <div className="focus-card" data-testid="cat-card">
-              <p className="focus-title">the cat</p>
-              <p className="focus-author">{purring ? 'purring' : 'looking at you'}</p>
+              <p className="focus-title">The Cat</p>
+              <p className="focus-author">{purring ? 'Purring' : 'Looking at you'}</p>
               <p className="focus-key">
-                <kbd>E</kbd> give it a fuss · <kbd>F</kbd> ask it for a book
+                <kbd>E</kbd> Give it a fuss · <kbd>F</kbd> Ask it for a book
               </p>
             </div>
           )}
@@ -276,7 +279,7 @@ export function Hud() {
             !seat && (
               <div className="focus-card" data-testid="shelf-card">
                 <p className="focus-key">
-                  <kbd>L</kbd> write on this bookcase
+                  <kbd>L</kbd> Write on this bookcase
                 </p>
               </div>
             )}
@@ -284,74 +287,101 @@ export function Hud() {
           {walking && focusedSeat && !seat && (
             <div className="focus-card" data-testid="seat-card">
               <p className="focus-key">
-                <kbd>E</kbd> sit down{held ? ' with it' : ''}
+                <kbd>E</kbd> Sit down{held ? ' with it' : ''}
               </p>
             </div>
           )}
 
           {walking && focusedRecord && !held && (
             <div className="focus-card" data-testid="record-card">
-              <p className="focus-title">{record?.album ?? record?.title ?? 'a record'}</p>
-              <p className="focus-author">{record?.artist ?? 'unknown'}</p>
+              <p className="focus-title">{record?.album ?? record?.title ?? 'A Record'}</p>
+              <p className="focus-author">{record?.artist ?? 'Unknown'}</p>
               <p className="focus-key">
-                <kbd>E</kbd> take it out
+                <kbd>E</kbd> Pick it up
               </p>
             </div>
           )}
 
           {walking && heldRecord && (
             <div className="held-card" data-testid="held-record-card">
-              <p className="held-label">holding a record</p>
+              <p className="held-label">Holding a Record</p>
               <p className="focus-title">
-                {heldRecordTrack?.album ?? heldRecordTrack?.title ?? 'a record'}
+                {heldRecordTrack?.album ?? heldRecordTrack?.title ?? 'A Record'}
               </p>
-              <p className="focus-author">{heldRecordTrack?.artist ?? 'unknown'}</p>
+              <p className="focus-author">{heldRecordTrack?.artist ?? 'Unknown'}</p>
               <p className="focus-key">
                 {focusedFixture ? (
                   <>
-                    <kbd>E</kbd> put it on
+                    <kbd>E</kbd> Put it on
                   </>
                 ) : crateTarget ? (
                   <>
-                    <kbd>E</kbd> file it back
+                    <kbd>E</kbd> File it here
+                  </>
+                ) : surfaceTarget ? (
+                  <>
+                    <kbd>E</kbd> Set it down here
                   </>
                 ) : (
-                  <span className="warn">aim at the deck, or at a crate</span>
+                  <span className="warn">Aim at the deck, a crate or a table</span>
                 )}
                 {' · '}
-                <kbd>Q</kbd> file it back
+                <kbd>Q</kbd> File it back
               </p>
             </div>
           )}
 
-          {/* A sheet in hand. Its own card rather than a line on the book card,
-              because you can be holding both — a page torn out of the book still in
-              your other hand is the whole point of the gesture. */}
+          {/* The marker. Drawing is a held mouse button rather than a key, which
+              is the only thing on any card that is not. */}
+          {walking && heldMarker && (
+            <div className="held-card" data-testid="held-marker-card">
+              <p className="held-label">Holding a Marker</p>
+              <p className="focus-title">{INK_NAMES[markerInk] ?? 'Marker'}</p>
+              <p className="focus-key">
+                {boardTarget ? (
+                  <>hold the left mouse button to draw</>
+                ) : (
+                  <span className="warn">Aim at a whiteboard</span>
+                )}
+                {' · '}
+                <kbd>F</kbd> Change pen{boardTarget ? ' · ' : ''}
+                {boardTarget && (
+                  <>
+                    <kbd>G</kbd> Wipe the board
+                  </>
+                )}
+                {' · '}
+                <kbd>Q</kbd> Put it back
+              </p>
+            </div>
+          )}
+
+          {/* A sheet in hand. Its own card because you can be holding a book too. */}
           {walking && heldPin && (
             <div className="held-card" data-testid="held-sheet-card">
               <p className="held-label">
-                {heldPin.kind === 'page' ? 'holding a page' : 'holding a note'}
+                {heldPin.kind === 'page' ? 'Holding a Page' : 'Holding a Note'}
               </p>
               <p className="focus-title">
                 {heldPin.kind === 'page'
-                  ? (byId.get(heldPin.bookId)?.title ?? 'a page')
+                  ? (byId.get(heldPin.bookId)?.title ?? 'A Page')
                   : heldPin.text}
               </p>
               {heldPin.kind === 'page' && (
-                <p className="focus-author">page {heldPin.page} · the book keeps its own</p>
+                <p className="focus-author">Page {heldPin.page} · the book keeps its own</p>
               )}
               <p className="focus-key">
                 {pinTarget ? (
                   <>
-                    <kbd>E</kbd> pin it up
+                    <kbd>E</kbd> Pin it up
                   </>
                 ) : (
-                  <span className="warn">aim at a wall, or at the whiteboard</span>
+                  <span className="warn">Aim at a wall, or at the whiteboard</span>
                 )}
                 {!held && (
                   <>
                     {' · '}
-                    <kbd>Q</kbd> throw it away
+                    <kbd>Q</kbd> Throw it away
                   </>
                 )}
               </p>
@@ -363,47 +393,47 @@ export function Hud() {
               <p className="focus-title">
                 {(() => {
                   const sheet = pins.find((item) => item.id === focusedPin)
-                  if (!sheet) return 'a sheet of paper'
+                  if (!sheet) return 'A Sheet of Paper'
                   return sheet.kind === 'note'
-                    ? (sheet.text ?? 'a note')
-                    : (byId.get(sheet.bookId ?? '')?.title ?? 'a page')
+                    ? (sheet.text ?? 'A Note')
+                    : (byId.get(sheet.bookId ?? '')?.title ?? 'A Page')
                 })()}
               </p>
               <p className="focus-key">
-                <kbd>E</kbd> take it down
+                <kbd>E</kbd> Take it down
               </p>
             </div>
           )}
 
           {walking && focusedTape && !held && (
             <div className="focus-card" data-testid="tape-card">
-              <p className="focus-title">{tape?.title ?? 'a tape'}</p>
-              <p className="focus-author">{tape?.series ?? 'unlabelled'}</p>
+              <p className="focus-title">{tape?.title ?? 'A Tape'}</p>
+              <p className="focus-author">{tape?.series ?? 'Unlabelled'}</p>
               <p className="focus-key">
-                <kbd>E</kbd> take it out
+                <kbd>E</kbd> Take it out
               </p>
             </div>
           )}
 
           {walking && heldTape && (
             <div className="held-card" data-testid="held-tape-card">
-              <p className="held-label">holding a tape</p>
-              <p className="focus-title">{heldTapeItem?.title ?? 'a tape'}</p>
-              <p className="focus-author">{heldTapeItem?.series ?? 'unlabelled'}</p>
+              <p className="held-label">Holding a Tape</p>
+              <p className="focus-title">{heldTapeItem?.title ?? 'A Tape'}</p>
+              <p className="focus-author">{heldTapeItem?.series ?? 'Unlabelled'}</p>
               <p className="focus-key">
                 {focusedFixture ? (
                   <>
-                    <kbd>E</kbd> put it in
+                    <kbd>E</kbd> Put it in
                   </>
                 ) : tapeCrateTarget ? (
                   <>
-                    <kbd>E</kbd> put it back
+                    <kbd>E</kbd> Put it back
                   </>
                 ) : (
-                  <span className="warn">aim at the television, or at the crate</span>
+                  <span className="warn">Aim at the television, or at the crate</span>
                 )}
                 {' · '}
-                <kbd>Q</kbd> put it back
+                <kbd>Q</kbd> Put it back
               </p>
             </div>
           )}
@@ -413,23 +443,30 @@ export function Hud() {
               <p className="focus-title">{fixtureName}</p>
               <p className="focus-key">
                 <kbd>E</kbd> {fixtureVerb}
+                {/* The one deck with the record on it also offers it back. */}
+                {fixture?.kind === 'recordplayer' && deck === fixture.id && nowPlaying && (
+                  <>
+                    {' · '}
+                    <kbd>F</kbd> Take the record off
+                  </>
+                )}
               </p>
             </div>
           )}
 
           {walking && carriedBox && (
             <div className="held-card" data-testid="carry-card">
-              <p className="held-label">carrying</p>
+              <p className="held-label">Carrying</p>
               <p className="focus-title">{carriedBox}</p>
               <p className="focus-key">
-                <kbd>X</kbd> set it down
+                <kbd>X</kbd> Set it down
               </p>
             </div>
           )}
 
           {walking && focusedBox && !focused && !held && !seat && (
             <div className="focus-card" data-testid="box-card">
-              <p className="focus-title">moving box</p>
+              <p className="focus-title">Moving Box</p>
               <p className="focus-author">
                 {view && view.total > view.shown
                   ? `${(view.offset + 1).toLocaleString()}–${(
@@ -440,7 +477,7 @@ export function Hud() {
               <p className="focus-key">
                 {boxes[focusedBox]?.length ? (
                   <>
-                    <kbd>G</kbd> shelve them all
+                    <kbd>G</kbd> Shelve them all
                     {browsing && (
                       <>
                         {' · '}
@@ -450,7 +487,7 @@ export function Hud() {
                     )}
                   </>
                 ) : (
-                  <span className="dim">empty</span>
+                  <span className="dim">Empty</span>
                 )}
               </p>
             </div>
@@ -458,13 +495,13 @@ export function Hud() {
 
           {walking && seat && (
             <div className="held-card" data-testid="seated-card">
-              <p className="held-label">sitting</p>
+              <p className="held-label">Sitting</p>
               <p className="focus-key">
-                <kbd>E</kbd> stand up
+                <kbd>E</kbd> Stand up
                 {held && (
                   <>
                     {' · '}
-                    <kbd>R</kbd> read
+                    <kbd>R</kbd> Read
                   </>
                 )}
               </p>
@@ -473,44 +510,44 @@ export function Hud() {
 
           {walking && held && (
             <div className="held-card" data-testid="held-card">
-              <p className="held-label">holding</p>
+              <p className="held-label">Holding</p>
               <p className="focus-title">{held.title}</p>
-              <p className="focus-author">{held.author ?? 'unknown'}</p>
+              <p className="focus-author">{held.author ?? 'Unknown'}</p>
               <p className="focus-key">
                 {shelfTarget ? (
                   <>
-                    <kbd>E</kbd> shelve here
+                    <kbd>E</kbd> Shelve here
                   </>
                 ) : boxTarget ? (
                   <>
-                    <kbd>E</kbd> drop in the box
+                    <kbd>E</kbd> Drop in the box
                   </>
                 ) : surfaceTarget ? (
                   <>
-                    <kbd>E</kbd> set it down here
+                    <kbd>E</kbd> Set it down here
                   </>
                 ) : (
-                  <span className="warn">look at a shelf, a box or a table</span>
+                  <span className="warn">Look at a shelf, a box or a table</span>
                 )}
                 {' · '}
-                <kbd>Q</kbd> drop it · <kbd>O</kbd> leave it open · <kbd>R</kbd> read
+                <kbd>Q</kbd> Drop it · <kbd>O</kbd> Leave it open · <kbd>R</kbd> Read
               </p>
             </div>
           )}
 
           {mode === 'read' && reading && (
             <div className="held-card" data-testid="reading-card">
-              <p className="held-label">reading</p>
+              <p className="held-label">Reading</p>
               <p className="focus-title">{reading.title}</p>
               {readerFailure ? (
                 <p className="focus-key" data-testid="reader-failure">
-                  this book will not open — {readerFailure} · <kbd>Esc</kbd> close
+                  This book will not open — {readerFailure} · <kbd>Esc</kbd> Close
                 </p>
               ) : (
                 <p className="focus-key">
-                  drag a page across · <kbd>←</kbd>
-                  <kbd>→</kbd> turn · <kbd>B</kbd> bookmark · <kbd>P</kbd> copy this page ·{' '}
-                  <kbd>J</kbd> go to page · <kbd>Esc</kbd> close
+                  Drag a page across · <kbd>←</kbd>
+                  <kbd>→</kbd> Turn · <kbd>B</kbd> Bookmark · <kbd>P</kbd> Copy this page ·{' '}
+                  <kbd>J</kbd> Go to page · <kbd>Esc</kbd> Close
                 </p>
               )}
             </div>
@@ -518,12 +555,12 @@ export function Hud() {
 
           {walking && !pointerLocked && (
             <div className="lock-hint" data-testid="lock-hint">
-              click to look around · <kbd>W</kbd>
+              Click to look around · <kbd>W</kbd>
               <kbd>A</kbd>
               <kbd>S</kbd>
-              <kbd>D</kbd> move · <kbd>E</kbd> take, shelve, sit, switch on · <kbd>Q</kbd> drop ·{' '}
-              <kbd>G</kbd> empty a box · <kbd>V</kbd> call the cat · <kbd>F1</kbd> all controls ·{' '}
-              <kbd>F2</kbd> settings
+              <kbd>D</kbd> Move · <kbd>E</kbd> Take, shelve, sit, switch on · <kbd>Q</kbd> Drop ·{' '}
+              <kbd>G</kbd> Empty a box · <kbd>V</kbd> Call the cat · <kbd>F1</kbd> All controls ·{' '}
+              <kbd>F2</kbd> Settings
             </div>
           )}
 
@@ -542,7 +579,7 @@ export function Hud() {
 
             {scanning && progress && (
               <p className="note" data-testid="scan-progress">
-                scanning {progress.done} / {progress.total} — {progress.current}
+                Scanning {progress.done} / {progress.total} — {progress.current}
               </p>
             )}
 
@@ -567,10 +604,10 @@ export function Hud() {
 
             <div className="row-controls">
               <button data-testid="open-settings" onClick={() => setSettingsOpen(true)}>
-                settings <kbd>F2</kbd>
+                Settings <kbd>F2</kbd>
               </button>
               <button data-testid="open-controls" onClick={() => setControlsOpen(!controlsOpen)}>
-                controls <kbd>F1</kbd>
+                Controls <kbd>F1</kbd>
               </button>
             </div>
           </div>

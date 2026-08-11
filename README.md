@@ -6,34 +6,39 @@ music folder and a television wired to your videos.
 
 *Status: you can walk it, live in it, and read in it.*
 
-The default library is a cabin in the woods: a great room with a hearth, a loft
-up a flight of stairs, a reading corner with a bedroom above it looking over the
-lake, a kitchen, an office with a whiteboard, and a porch looking into the
-forest. Twenty bookcases and ~1,700 books, first-person movement with collisions
-and stairs, a crosshair that finds a book and takes it off the shelf, and
-page-by-page reading on a curved mesh — **PDF or EPUB**. There is a lake through
-the north window; out past the porch steps there is grass, a forest you can walk
-into, a path round the water, and a trail to a second building, the lake house on
-the far shore.
+The default library is a cabin in the woods: a great room with a hearth and a
+clock, a loft up a flight of stairs, a reading corner with a bedroom above it
+looking over the lake, a kitchen, a bathroom off it, an office with a whiteboard,
+and a porch looking into the forest. Twenty bookcases and ~1,700 books,
+first-person movement with collisions and stairs, a crosshair that finds a book
+and takes it off the shelf, and page-by-page reading on a curved mesh — **PDF or
+EPUB**. There is a lake through the north window; out past the porch steps there
+is grass, a forest you can walk into, a path round the water, and a trail to a
+second building, the lake house on the far shore.
 
 **The room is furnished as well as shelved.** A record player wired to your
 `music/` folder, a television and a crate of tapes wired to your `video/` folder,
-framed pictures from your `artwork/` folder, lamps you can switch on and off,
-tables you can leave a book on — face down and open at the page you were reading
-— and a floor you can simply drop one onto.
+framed pictures from your `artwork/` folder, lamps you can switch one at a time
+or all at once from the switch by the door, fairy lights on the porch, tables you
+can leave a book on — face down and open at the page you were reading — and a
+floor you can simply drop one onto. Records are things you carry: take one out of
+a crate, put it on either deck, file it in whichever crate you like, or leave it
+on a table.
 
 **And it is somewhere you can leave things.** Tear a copy of a page out of a book
 — the book keeps its own — and pin it to the office whiteboard, or to any wall in
-the house. Type a note and stick that up too. Sheets have a body: an edge, a
-shadow, and a corner lifting off the plaster.
+the house. Type a note and stick that up too. Take the marker off the desk and
+write on the board itself. Sheets have a body: an edge, a shadow, and a corner
+lifting off the plaster.
 
 **There is an index, and there is weather, and there is a cat.** The terminal on
 the office desk searches every book, record, tape and picture the library knows
 about and tells you which case, which shelf and which room — and then you walk
 there, because a library that teleports you is a library with no rooms in it.
-Rain falls outside and beads on the windows. The cat roams, sleeps, comes when
-you call it more often than not, purrs when you make a fuss of it, and will go
-and fetch you a book off a shelf if you ask.
+Rain falls outside, beads on the windows, and you can hear it — loud on the
+grass, muffled indoors, louder again by a window. The cat roams, sleeps, comes
+when you call it more often than not, purrs when you make a fuss of it, and will
+go and fetch you a book off a shelf if you ask.
 
 **A library arrives in boxes.** A freshly indexed collection is stacked in the
 four moving boxes on the floor, and the shelves start empty: unpacking is yours
@@ -134,3 +139,8 @@ and set in type by the app itself.
 filesystem through one interface, which is why the hosted mode exists at all: the
 HTTP driver and the whole container were added without a single change above that
 seam.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). © 2026 Ingo Kleiber. The demo library has its own
+credits in [its README](demo-data/demo-library/README.md).

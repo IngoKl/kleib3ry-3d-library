@@ -3,6 +3,7 @@ name = "kleib3ry_core"
 version = "0.1.0"
 description = "Indexing, persistence and format probing for kleib3ry — no shell, no window"
 authors = ["iklei"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"
 

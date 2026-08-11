@@ -4,6 +4,16 @@ pub mod pdf;
 
 use std::path::Path;
 
+/// What the probes currently know how to extract.
+///
+/// A scan skips any file whose size and mtime are unchanged, so an improvement
+/// to a probe would otherwise never reach a book already in the index — no
+/// amount of rescanning helps, because nothing about the file changed. Bumping
+/// this re-probes every row written by an older build, once.
+///
+/// 1: EPUB page counts are measured from the documents inside the archive.
+pub const PROBE_VERSION: i64 = 1;
+
 /// A cover image exactly as it was stored inside the book, so it can be written
 /// to the cache without a re-encode.
 #[derive(Debug, Clone, PartialEq)]

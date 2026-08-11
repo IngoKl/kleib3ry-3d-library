@@ -60,16 +60,16 @@ function worldWith(edit: (doc: WorldDocument) => void) {
 test.describe('world document', () => {
   test('the default the app writes for you actually parses', () => {
     // The cabin: a great room, the loft inside its volume, a reading corner
-    // with the bedroom on top of it, a kitchen, an office and a porch — and
-    // then, a trail away across the site, the lake house and its deck. Two
-    // buildings in one document, which the format always allowed and nothing
-    // had ever done.
+    // with the bedroom on top of it, a kitchen, a bathroom off it, an office
+    // and a porch — and then, a trail away, the lake house and its deck. Two
+    // buildings in one document, which the format always allowed.
     expect(WORLD.rooms.map((r) => r.id)).toEqual([
       'main',
       'loft',
       'reading',
       'bedroom',
       'kitchen',
+      'bathroom',
       'office',
       'porch',
       'lakehouse',
@@ -84,6 +84,13 @@ test.describe('world document', () => {
     expect(WORLD.furniture.some((f) => f.kind === 'crt')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'tapecrate')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'whiteboard')).toBe(true)
+    // The marker that writes on it, and the clock in the great room.
+    expect(WORLD.furniture.some((f) => f.kind === 'marker')).toBe(true)
+    expect(WORLD.furniture.some((f) => f.kind === 'clock')).toBe(true)
+    // The bathroom has a deck and deliberately no crate to go with it.
+    const bath = WORLD.furniture.filter((f) => f.roomId === 'bathroom')
+    expect(bath.some((f) => f.kind === 'recordplayer')).toBe(true)
+    expect(bath.some((f) => f.kind === 'recordshelf')).toBe(false)
   })
 
   test('no window has the floor of the room above running through it', () => {

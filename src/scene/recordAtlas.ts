@@ -14,6 +14,10 @@ import { hashId } from '../data/dimensions'
  * big for the grid falls back to plain coloured card past the last cell.
  */
 
+/** Sleeve proportions. A 12" record is square and about 4 mm in its sleeve. */
+export const SLEEVE_SIZE = 0.315
+export const SLEEVE_THICKNESS = 0.004
+
 const CELL = 128
 const COLUMNS = 12
 const ROWS = 12

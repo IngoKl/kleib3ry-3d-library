@@ -48,9 +48,16 @@ export function Handling() {
 
       if (e.code === 'KeyQ') {
         e.preventDefault()
-        // A record has no loose life on the floor: letting go of one files it
-        // back into its crate, wherever you are standing.
+        // The marker goes back on its tray, wherever you are standing.
+        if (app.heldMarker) {
+          app.setHeldMarker(null)
+          return
+        }
+        // A record has no loose life on the floor: letting go of one sends it
+        // back to the crate the folder deals it into, forgetting wherever you
+        // had filed or put it. Putting one somewhere on purpose is E.
         if (app.heldRecord) {
+          shelf.freeRecord(app.heldRecord)
           app.setHeldRecord(null)
           return
         }

@@ -3,6 +3,7 @@ name = "kleib3ry"
 version = "0.1.0"
 description = "kleib3ry — a 3D personal library"
 authors = ["iklei"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"
 # `src/bin/scan.rs` is a dev-only harness, so bare `cargo run` (which is what

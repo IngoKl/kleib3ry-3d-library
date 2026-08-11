@@ -1,9 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { library } from '../services'
 import { sceneRefs } from './refs'
 import { MATERIALS } from './materials'
+import { drawing, makeBoardCanvas } from './board'
+import { MARKER_INKS, inkAt } from '../data/inks'
+import { useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
 import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
@@ -45,6 +49,9 @@ const SLATE = '#3f4440'
 const STEEL = '#7e8177'
 const LEAF = '#3f6b42'
 const TERRACOTTA = '#9c5a3c'
+// Glazed white with a hint of the room in it. Pure white in a timber cabin reads
+// as a hole rather than as a bath.
+const PORCELAIN = '#e6e4dd'
 // The beige-grey of every television ever sold in 1987, and the dead green a
 // switched-off tube actually is — not black, which is what a dark grey box in a
 // dim room reads as when you get it wrong.
@@ -340,6 +347,75 @@ function Pendant({ lit }: { lit: boolean }) {
   )
 }
 
+/**
+ * A string of bulbs, sagging between its two ends.
+ *
+ * `size` is [length, sag] and `y` is the height it is strung at. The flex is
+ * drawn as short segments following the same catenary the bulbs hang from, so
+ * the line and the lights cannot drift apart.
+ */
+function FairyLights({ width, sag, lit }: { width: number; sag: number; lit: boolean }) {
+  const bulbs = Math.max(4, Math.round(width / 0.26))
+  // Normalised -1..1 across the span, so the shape is the same at any length.
+  const dip = (t: number) => -sag * (1 - t * t)
+
+  return (
+    <group>
+      {Array.from({ length: bulbs * 3 }, (_, i) => {
+        const t = (i / (bulbs * 3 - 1)) * 2 - 1
+        const next = ((i + 1) / (bulbs * 3 - 1)) * 2 - 1
+        const x = (t * width) / 2
+        const dx = ((next - t) * width) / 2
+        const dy = dip(next) - dip(t)
+        return (
+          <mesh
+            key={`flex${i}`}
+            position={[x + dx / 2, dip(t) + dy / 2, 0]}
+            rotation-z={Math.atan2(dy, dx)}
+          >
+            <boxGeometry args={[Math.hypot(dx, dy), 0.005, 0.005]} />
+            <meshStandardMaterial color="#2f2a24" roughness={1} />
+          </mesh>
+        )
+      })}
+      {Array.from({ length: bulbs }, (_, i) => {
+        const t = (i / (bulbs - 1)) * 2 - 1
+        return (
+          <mesh key={`bulb${i}`} position={[(t * width) / 2, dip(t) - 0.035, 0]}>
+            <sphereGeometry args={[0.018, 8, 6]} />
+            <meshStandardMaterial
+              color={lit ? '#ffe6b0' : '#cdc4b2'}
+              emissive={lit ? '#ffcf82' : '#000000'}
+              emissiveIntensity={lit ? 1.4 : 0}
+              roughness={0.5}
+            />
+          </mesh>
+        )
+      })}
+    </group>
+  )
+}
+
+/**
+ * A switch plate. One press works every light in the library, which is what a
+ * switch by the door is actually for.
+ */
+function LightSwitch({ width, height, allOn }: { width: number; height: number; allOn: boolean }) {
+  return (
+    <group>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[width, height, 0.012]} />
+        <meshStandardMaterial color="#e8e3d8" roughness={0.6} />
+      </mesh>
+      {/* The rocker, tipped the way the lights are. */}
+      <mesh position={[0, allOn ? 0.012 : -0.012, 0.012]} rotation-x={allOn ? 0.28 : -0.28}>
+        <boxGeometry args={[width * 0.52, height * 0.44, 0.01]} />
+        <meshStandardMaterial color="#d5cfc2" roughness={0.5} />
+      </mesh>
+    </group>
+  )
+}
+
 function Fireplace({ width, height, lit }: { width: number; height: number; lit: boolean }) {
   const openingW = width * 0.55
   const openingH = height * 0.42
@@ -470,6 +546,176 @@ function KitchenCounter({ width, depth, height }: { width: number; depth: number
       <mesh position={[width * 0.3, height + 0.14, -depth * 0.28]}>
         <cylinderGeometry args={[0.015, 0.015, 0.28, 8]} />
         <meshStandardMaterial color={STEEL} roughness={0.25} metalness={0.8} />
+      </mesh>
+    </group>
+  )
+}
+
+/**
+ * A bath: a tub with a rim you can sit on and leave a book on, and a mixer at
+ * the head end. The water is a plane a hair under the rim rather than a volume —
+ * from anywhere you stand, a bath is its surface.
+ */
+function Bathtub({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const wall = 0.055
+  return (
+    <group>
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, height, depth]} />
+        <meshStandardMaterial color={PORCELAIN} roughness={0.28} />
+      </mesh>
+      {/* The well, sunk into the top. */}
+      <mesh position={[0, height - 0.02, 0]}>
+        <boxGeometry args={[width - wall * 2, 0.04, depth - wall * 2]} />
+        <meshStandardMaterial color="#cfd6d4" roughness={0.35} />
+      </mesh>
+      <mesh position={[0, height - 0.06, 0]}>
+        <boxGeometry args={[width - wall * 2.4, 0.01, depth - wall * 2.4]} />
+        <meshStandardMaterial color="#8fb6bd" roughness={0.15} transparent opacity={0.72} />
+      </mesh>
+      <mesh position={[-width / 2 + 0.1, height + 0.12, 0]} castShadow>
+        <cylinderGeometry args={[0.015, 0.015, 0.24, 8]} />
+        <meshStandardMaterial color={STEEL} roughness={0.24} metalness={0.8} />
+      </mesh>
+      <mesh position={[-width / 2 + 0.17, height + 0.22, 0]} rotation-z={Math.PI / 2}>
+        <cylinderGeometry args={[0.012, 0.012, 0.14, 8]} />
+        <meshStandardMaterial color={STEEL} roughness={0.24} metalness={0.8} />
+      </mesh>
+    </group>
+  )
+}
+
+/** A cistern, a pan and a lid. Facing points the seat into the room. */
+function Toilet({ width, depth, height }: { width: number; depth: number; height: number }) {
+  return (
+    <group>
+      <mesh position={[0, height * 0.72, -depth / 2 + 0.09]} castShadow receiveShadow>
+        <boxGeometry args={[width, height * 0.56, 0.18]} />
+        <meshStandardMaterial color={PORCELAIN} roughness={0.3} />
+      </mesh>
+      <mesh position={[0, 0.2, depth * 0.06]} castShadow receiveShadow>
+        <cylinderGeometry args={[width * 0.36, width * 0.26, 0.4, 14]} />
+        <meshStandardMaterial color={PORCELAIN} roughness={0.3} />
+      </mesh>
+      <mesh position={[0, 0.42, depth * 0.06]} castShadow>
+        <cylinderGeometry args={[width * 0.44, width * 0.42, 0.05, 16]} />
+        <meshStandardMaterial color="#e9e6df" roughness={0.5} />
+      </mesh>
+    </group>
+  )
+}
+
+/** A basin on a pedestal, with a mirror-less tap. */
+function Basin({ width, depth, height }: { width: number; depth: number; height: number }) {
+  return (
+    <group>
+      <mesh position={[0, height * 0.4, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[width * 0.2, width * 0.26, height * 0.8, 12]} />
+        <meshStandardMaterial color={PORCELAIN} roughness={0.32} />
+      </mesh>
+      <mesh position={[0, height - 0.06, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, 0.12, depth]} />
+        <meshStandardMaterial color={PORCELAIN} roughness={0.28} />
+      </mesh>
+      <mesh position={[0, height - 0.02, 0.02]}>
+        <boxGeometry args={[width - 0.14, 0.03, depth - 0.14]} />
+        <meshStandardMaterial color="#d3d8d5" roughness={0.36} />
+      </mesh>
+      <mesh position={[0, height + 0.08, -depth / 2 + 0.06]} castShadow>
+        <cylinderGeometry args={[0.014, 0.014, 0.16, 8]} />
+        <meshStandardMaterial color={STEEL} roughness={0.24} metalness={0.8} />
+      </mesh>
+    </group>
+  )
+}
+
+/**
+ * A wall clock, telling the machine's own time.
+ *
+ * The hands are turned in a frame loop rather than re-rendered: a clock that
+ * re-rendered React sixty times a second to move a minute hand would be the most
+ * expensive ornament in the building. The seconds are read from the system clock
+ * every frame and the hands are set from that, so it stays right after a pause,
+ * a tab switch or a laptop lid.
+ */
+function Clock({ size }: { size: number }) {
+  const hour = useRef<THREE.Group>(null)
+  const minute = useRef<THREE.Group>(null)
+  const second = useRef<THREE.Group>(null)
+
+  useFrame(() => {
+    const now = new Date()
+    const seconds = now.getSeconds() + now.getMilliseconds() / 1000
+    const minutes = now.getMinutes() + seconds / 60
+    const hours = (now.getHours() % 12) + minutes / 60
+    // Negative because a hand sweeps clockwise and Z is out of the face.
+    if (hour.current) hour.current.rotation.z = -(hours / 12) * Math.PI * 2
+    if (minute.current) minute.current.rotation.z = -(minutes / 60) * Math.PI * 2
+    if (second.current) second.current.rotation.z = -(seconds / 60) * Math.PI * 2
+  })
+
+  const radius = size / 2
+  const hand = (length: number, thickness: number, colour: string, z: number) => (
+    <mesh position={[0, length / 2 - thickness, z]}>
+      <boxGeometry args={[thickness, length, 0.006]} />
+      <meshStandardMaterial color={colour} roughness={0.6} />
+    </mesh>
+  )
+
+  return (
+    <group>
+      {/* The case: a cylinder laid on its side, so it faces the room. */}
+      <mesh rotation-x={Math.PI / 2} castShadow receiveShadow>
+        <cylinderGeometry args={[radius, radius, 0.05, 28]} />
+        <meshStandardMaterial color={OAK} roughness={0.6} />
+      </mesh>
+      <mesh position={[0, 0, 0.026]}>
+        <circleGeometry args={[radius * 0.88, 28]} />
+        <meshStandardMaterial color="#f2ece0" roughness={0.85} />
+      </mesh>
+      {/* Twelve marks, the quarters longer — enough to read the time by from
+          across the great room, which is the only distance it is seen from. */}
+      {Array.from({ length: 12 }, (_, i) => {
+        const angle = (i / 12) * Math.PI * 2
+        const long = i % 3 === 0
+        const at = radius * 0.75
+        return (
+          <mesh
+            key={i}
+            position={[Math.sin(angle) * at, Math.cos(angle) * at, 0.028]}
+            rotation-z={-angle}
+          >
+            <boxGeometry args={[long ? 0.018 : 0.009, long ? 0.05 : 0.03, 0.004]} />
+            <meshStandardMaterial color="#2c2620" roughness={0.8} />
+          </mesh>
+        )
+      })}
+      <group ref={hour}>{hand(radius * 0.52, 0.016, '#2c2620', 0.031)}</group>
+      <group ref={minute}>{hand(radius * 0.76, 0.011, '#2c2620', 0.033)}</group>
+      <group ref={second}>{hand(radius * 0.8, 0.005, '#8c3a2c', 0.035)}</group>
+      <mesh position={[0, 0, 0.037]} rotation-x={Math.PI / 2}>
+        <cylinderGeometry args={[0.012, 0.012, 0.008, 10]} />
+        <meshStandardMaterial color={BRASS} roughness={0.4} metalness={0.7} />
+      </mesh>
+    </group>
+  )
+}
+
+/** A whiteboard marker: a barrel, a cap and a nib, in whatever ink it holds. */
+function Marker({ width, colour }: { width: number; colour: string }) {
+  return (
+    <group rotation-z={Math.PI / 2}>
+      <mesh position={[0, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.011, 0.011, width * 0.72, 10]} />
+        <meshStandardMaterial color={colour} roughness={0.5} />
+      </mesh>
+      <mesh position={[0, width * 0.44, 0]} castShadow>
+        <cylinderGeometry args={[0.013, 0.013, width * 0.28, 10]} />
+        <meshStandardMaterial color="#2a2724" roughness={0.6} />
+      </mesh>
+      <mesh position={[0, -width * 0.4, 0]}>
+        <coneGeometry args={[0.009, 0.03, 8]} />
+        <meshStandardMaterial color="#efeae0" roughness={0.9} />
       </mesh>
     </group>
   )
@@ -913,15 +1159,38 @@ function Desk({ width, depth, height }: { width: number; depth: number; height: 
 }
 
 /**
- * A whiteboard. Aluminium frame, a pen tray, and a face you can pin things to.
+ * A whiteboard. Aluminium frame, a pen tray, and a face you can pin to and draw
+ * on.
  *
  * Hung like a picture — `size` is width by height and `y` is the centre of the
  * board — because that is how anybody hanging one thinks about it. What makes it
- * more than a white picture is that it is published to `sceneRefs.pinnable`, so
- * the crosshair offers it as somewhere a torn-out page can go.
+ * more than a white picture is that it is published to `sceneRefs.boards`, so the
+ * crosshair offers it both as somewhere a torn-out page can go and as somewhere
+ * the marker will write.
+ *
+ * The face carries a canvas painted from the saved strokes. Repainting the whole
+ * list happens on an *edit* — a stroke finished, a board wiped, a library loaded
+ * — while the line under your hand is extended a segment at a time; see `board.ts`
+ * for why the live stroke is not in a store.
  */
-function Whiteboard({ width, height }: { width: number; height: number }) {
+function Whiteboard({ id, width, height }: { id: string; width: number; height: number }) {
   const frame = 0.03
+  const strokes = useLibraryStore((s) => s.drawings[id])
+  const painter = useMemo(() => makeBoardCanvas(width, height), [width, height])
+  useEffect(() => () => painter.dispose(), [painter])
+
+  useLayoutEffect(() => painter.repaint(strokes ?? []), [painter, strokes])
+
+  // The live stroke gains points outside React, so the only way to notice is to
+  // look. One integer compared per frame per board, against a hand that is not
+  // usually holding a marker at all.
+  const seen = useRef(drawing.revision)
+  useFrame(() => {
+    if (drawing.revision === seen.current) return
+    seen.current = drawing.revision
+    if (drawing.boardId === id) painter.extend()
+  })
+
   return (
     <group>
       <mesh castShadow receiveShadow>
@@ -931,17 +1200,21 @@ function Whiteboard({ width, height }: { width: number; height: number }) {
       {/* The face, a hair proud of the frame so the two never z-fight. */}
       <mesh position={[0, 0, 0.027]} receiveShadow>
         <planeGeometry args={[width, height]} />
-        <meshStandardMaterial color={BOARD_WHITE} roughness={0.32} />
+        <meshStandardMaterial color={BOARD_WHITE} map={painter.texture} roughness={0.32} />
       </mesh>
       {/* Pen tray along the bottom edge, tipped up to hold what is in it. */}
       <mesh position={[0, -height / 2 - frame, 0.05]} rotation-x={-0.35} castShadow>
         <boxGeometry args={[width * 0.55, 0.02, 0.07]} />
         <meshStandardMaterial color={ALUMINIUM} roughness={0.45} metalness={0.5} />
       </mesh>
-      {[-0.09, 0, 0.09].map((x, i) => (
-        <mesh key={x} position={[x, -height / 2 - frame + 0.02, 0.062]} rotation-z={Math.PI / 2}>
+      {MARKER_INKS.map((ink, i) => (
+        <mesh
+          key={ink}
+          position={[(i - 1) * 0.09, -height / 2 - frame + 0.02, 0.062]}
+          rotation-z={Math.PI / 2}
+        >
           <cylinderGeometry args={[0.008, 0.008, 0.1, 8]} />
-          <meshStandardMaterial color={['#2b3a55', '#7d3b32', '#3f5a4a'][i]} roughness={0.5} />
+          <meshStandardMaterial color={ink} roughness={0.5} />
         </mesh>
       ))}
     </group>
@@ -1184,12 +1457,30 @@ function Step({ width, depth, height }: { width: number; depth: number; height: 
   )
 }
 
+/**
+ * Whether anything in the library is lit, for the switch plates to show.
+ *
+ * Only asked when there is a switch on screen: it walks every lamp in the
+ * building, and no other piece of furniture cares.
+ */
+function useAnyLightOn(wanted: boolean): boolean {
+  const lamps = useWorldStore((s) => s.world?.lights)
+  const on = useLightStore((s) => s.on)
+  if (!wanted || !lamps) return false
+  return lamps.some((lamp) => on[lamp.id] ?? lamp.defaultOn)
+}
+
 function Piece({ item, source }: { item: DerivedFurniture; source: string | null }) {
   const lit = useLightStore((s) => (LAMPS.has(item.kind) ? s.isOn(item.id, item.on ?? true) : false))
-  const playing = useMediaStore((s) => s.playing)
+  // A record is on one deck at a time, so only that deck shows it. Reading
+  // `playing` alone put the same disc on the platter of every deck in the house.
+  const playing = useMediaStore((s) => (s.deck === item.id ? s.playing : null))
   const paused = useMediaStore((s) => s.paused)
   const tape = useVideoStore((s) => (item.kind === 'crt' ? s.playing : null))
   const brewing = useAppStore((s) => s.brewing === item.id)
+  const heldMarker = useAppStore((s) => (item.kind === 'marker' ? s.heldMarker === item.id : false))
+  const ink = useAppStore((s) => (item.kind === 'marker' ? s.markerInk : 0))
+  const allOn = useAnyLightOn(item.kind === 'lightswitch')
   // The terminal's screen lights when its search is open, so the thing you are
   // typing into is visibly the thing in front of you.
   const searching = useAppStore((s) => (item.kind === 'computer' ? s.searching : false))
@@ -1220,12 +1511,27 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <FloorLamp lit={lit} />
       case 'pendant':
         return <Pendant lit={lit} />
+      case 'fairylights':
+        return <FairyLights width={item.width} sag={item.size?.[1] ?? 0.18} lit={lit} />
+      case 'lightswitch':
+        return <LightSwitch width={item.width} height={item.height} allOn={allOn} />
       case 'fireplace':
         return <Fireplace width={item.width} height={item.height} lit={lit} />
       case 'plant':
         return <Plant height={item.height} />
       case 'kitchencounter':
         return <KitchenCounter width={item.width} depth={item.depth} height={item.height} />
+      case 'bathtub':
+        return <Bathtub width={item.width} depth={item.depth} height={item.height} />
+      case 'toilet':
+        return <Toilet width={item.width} depth={item.depth} height={item.height} />
+      case 'basin':
+        return <Basin width={item.width} depth={item.depth} height={item.height} />
+      case 'clock':
+        return <Clock size={item.width} />
+      case 'marker':
+        // Hidden while it is in your hand, the way a record leaves its crate.
+        return heldMarker ? null : <Marker width={item.width} colour={inkAt(ink)} />
       case 'coffeemaker':
         return <CoffeeMaker brewing={brewing} />
       case 'computer':
@@ -1247,7 +1553,7 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
       case 'picture':
         return <Picture item={item} source={source} />
       case 'whiteboard':
-        return <Whiteboard width={item.width} height={item.height} />
+        return <Whiteboard id={item.id} width={item.width} height={item.height} />
       case 'box':
         return <MovingBox width={item.width} depth={item.depth} />
       case 'stairs':
@@ -1417,6 +1723,7 @@ export function FurnitureLights() {
       {world.lights.map((lamp) => {
         const lit = on[lamp.id] ?? lamp.defaultOn
         const fire = lamp.kind === 'fireplace'
+        const fairy = lamp.kind === 'fairylights'
         return (
           <pointLight
             key={lamp.id}
@@ -1424,11 +1731,13 @@ export function FurnitureLights() {
             // larger than they look: at the 2 m from a pendant to the table
             // under it, 4.5 cd arrives as just over 1. Argued down twice from
             // hotter values: intensity makes the glare pool by the fitting,
-            // distance is what carries a soft edge into the corners.
-            intensity={!lit ? 0 : fire ? 4.5 : lamp.kind === 'pendant' ? 4.5 : 2.8}
+            // distance is what carries a soft edge into the corners. A string
+            // of bulbs is dimmer than any of them and reaches further, which is
+            // what makes it decoration rather than lighting.
+            intensity={!lit ? 0 : fire || lamp.kind === 'pendant' ? 4.5 : fairy ? 1.8 : 2.8}
             position={[lamp.x, lamp.y, lamp.z]}
-            distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : 5.6}
-            color={fire ? '#ff9346' : BULB}
+            distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : fairy ? 7 : 5.6}
+            color={fire ? '#ff9346' : fairy ? '#ffcf82' : BULB}
           />
         )
       })}

@@ -14,6 +14,7 @@ import { LooseBooks } from './scene/LooseBooks'
 import { Records } from './scene/Records'
 import { Interaction } from './scene/Interaction'
 import { Handling } from './scene/Handling'
+import { Drawing } from './scene/Drawing'
 import { PlacementGhost } from './scene/PlacementGhost'
 import { Player } from './scene/Player'
 import { HeldBook } from './scene/HeldBook'
@@ -302,6 +303,36 @@ export default function App() {
         error: useVideoStore.getState().error,
       }),
       heldTape: () => useAppStore.getState().heldTape,
+      /**
+       * The whiteboard marker, and what has been drawn with it.
+       *
+       * `takeMarkerForTest` is the same one line `E` on the marker runs. Aiming
+       * at a 14 cm pen on a desk from a headless driver is a pose hunt, and what
+       * these tests are about is what the marker then does — the same argument
+       * `emptyBoxForTest` makes about a box.
+       */
+      heldMarker: () => useAppStore.getState().heldMarker,
+      boardTarget: () => useAppStore.getState().boardTarget,
+      takeMarkerForTest: (id: string) => useAppStore.getState().setHeldMarker(id),
+      inkForTest: () => useAppStore.getState().markerInk,
+      drawingsOn: (boardId: string) => useLibraryStore.getState().drawings[boardId] ?? [],
+      wipeBoardForTest: (boardId: string) => useLibraryStore.getState().wipeBoard(boardId),
+
+      /** Records: what is in hand, what has been filed by hand, what is put down. */
+      heldRecord: () => useAppStore.getState().heldRecord,
+      takeRecordForTest: (id: string | null) => useAppStore.getState().setHeldRecord(id),
+      fileRecordForTest: (id: string, crateId: string) =>
+        useLibraryStore.getState().fileRecord(id, crateId),
+      putRecordDownForTest: (id: string, at: { x: number; y: number; z: number; yaw: number }) =>
+        useLibraryStore.getState().putRecordDown(id, at),
+      filedRecords: () => ({ ...useLibraryStore.getState().filedRecords }),
+      looseRecords: () => ({ ...useLibraryStore.getState().looseRecords }),
+      /** Which crate each record is drawn in, off the scene rather than the store. */
+      recordCrates: () =>
+        Object.fromEntries(
+          sceneRefs.recordIds.map((id, i) => [id, sceneRefs.recordCrates[i] ?? null]),
+        ),
+
       /** Sheets pinned up round the house, and the one in your hand. */
       pins: () => useLibraryStore.getState().pins.map((sheet) => ({ ...sheet })),
       heldPin: () => useAppStore.getState().heldPin,
@@ -415,6 +446,7 @@ export default function App() {
         <PlacementGhost />
         <Interaction />
         <Handling />
+        <Drawing />
         <Player />
         <Body />
         <Sound />

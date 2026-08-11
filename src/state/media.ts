@@ -23,12 +23,21 @@ type MediaState = {
   /** Track id currently on the deck, playing or paused. */
   playing: string | null
   paused: boolean
+  /**
+   * Which record player it is on, by furniture id.
+   *
+   * There can be more than one deck in a building — the cabin has one in the
+   * great room and one in the bathroom — and they share the single audio
+   * element, so this is what tells the scene where in the house the music is
+   * coming from. Null until something has been put on.
+   */
+  deck: string | null
   /** Why the last attempt to play failed, for the HUD. */
   error: string | null
 
   load: () => Promise<void>
   /** Put a record on. Passing the one already on the deck toggles the pause. */
-  play: (id: string) => void
+  play: (id: string, deck?: string) => void
   stop: () => void
   /** Next record in shelf order, so a side plays through rather than stopping. */
   next: () => void
@@ -68,6 +77,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   loaded: false,
   playing: null,
   paused: false,
+  deck: null,
   error: null,
 
   load: async () => {
@@ -81,11 +91,12 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 
   trackAt: (id) => get().tracks.find((track) => track.id === id),
 
-  play: (id) => {
+  play: (id, deck) => {
     const track = get().trackAt(id)
     if (!track) return
 
     const player = audio()
+    if (deck !== undefined) set({ deck })
 
     // The record already on the deck: lift the needle, or put it back down.
     if (get().playing === id) {
@@ -123,7 +134,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
       element.pause()
       element.removeAttribute('src')
     }
-    set({ playing: null, paused: false })
+    set({ playing: null, paused: false, deck: null })
   },
 
   next: () => {
@@ -131,6 +142,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     if (tracks.length === 0) return
     const at = tracks.findIndex((track) => track.id === playing)
     const following = tracks[(at + 1) % tracks.length]
+    // No deck passed: a side playing on by itself stays on the deck it is on.
     if (following) get().play(following.id)
   },
 

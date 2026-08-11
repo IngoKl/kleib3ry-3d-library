@@ -71,21 +71,20 @@ export const DEFAULT_WORLD_TEXT = `{
         // from outside is a window with a plank through it. 1.38 leaves a hand's
         // width of plaster between the head of the window and the boards.
         { "wall": "north", "at": 0, "width": 4.6, "height": 1.38, "sill": 0.8, "kind": "window" },
-        // The third window is on the *east* wall, north of the flight, and used
-        // to be on the west one. There is nowhere on the west wall for a window
-        // to go: the reading corner is built against it from z = -1.6 to 3.4 and
-        // the three bookcases stand along the rest, so what that window looked
-        // out at was 24 cm of air and then the reading corner's blank east wall
-        // — plaster filling three quarters of the opening with a sliver of
-        // forest past the corner. Here it has open ground beyond it. Its head
-        // clears the loft floor for the same reason the north one's does: the
-        // slab hangs from 2.28, and 0.85 + 1.35 stops at 2.2.
-        { "wall": "east", "at": -3.0, "width": 1.4, "height": 1.35, "sill": 0.85, "kind": "window" },
+        // The third window. It has been on the west wall (the reading corner is
+        // built against that one) and on the east wall (the bathroom is now
+        // built against that one); both times it looked at 24 cm of air and
+        // then a neighbour's blank plaster. The north wall is the one side of
+        // this room nothing will ever abut, so here it stays. Its head clears
+        // the loft floor for the same reason the big one's does: the slab hangs
+        // from 2.28, and 0.85 + 1.35 stops at 2.2.
+        { "wall": "north", "at": 4.2, "width": 1.2, "height": 1.35, "sill": 0.85, "kind": "window" },
         { "wall": "south", "at": 0.3, "width": 1.6, "height": 1.4, "sill": 0.95, "kind": "window" },
         // Doors need a matching door in the next room's facing wall. The east
         // door sits towards the south end of its wall because the staircase
-        // owns the north end — a door opening into the side of a flight is a
-        // door you cannot use.
+        // owns the north end, and the bathroom is built against the north half
+        // of it — a door opening into the side of a flight is a door you cannot
+        // use.
         { "wall": "west", "at": 0.9, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "east", "at": 2.1, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
         { "wall": "south", "at": 2.6, "width": 1.3, "height": 2.1, "sill": 0, "kind": "door" }
@@ -138,6 +137,13 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "fern", "kind": "plant", "at": [4.4, -3.5], "facing": 0 },
         { "id": "palm", "kind": "plant", "at": [-4.5, 2.0], "facing": 0, "height": 1.35 },
 
+        // The clock, telling this machine's own time. It hangs on the last
+        // 90 cm of north wall west of the chimney breast — the mantel and its
+        // picture own everything from x = -4.08 eastwards — and, like the
+        // picture, its top has to stay under the loft floor at 2.28. Like a
+        // picture, "y" is the centre of its face and "size" is the dial.
+        { "id": "clock", "kind": "clock", "at": [-4.55, -3.96], "facing": 0, "y": 1.95, "size": [0.34, 0.34] },
+
         // Ceiling lights. "on": false starts one dark; switching a light in the
         // app is remembered in .library/lights.json, not written back here.
         //
@@ -145,6 +151,11 @@ export const DEFAULT_WORLD_TEXT = `{
         // the loft floor ends at z = 1.4 — a pendant on a long flex under a
         // loft is a pendant inside the floor above it. The low one lights the
         // hearth end, where the ceiling is the loft.
+        // The switch by the porch door: one press works every light in the
+        // library, not just this room's. Hung like a picture, so "y" is the
+        // middle of the plate. There is a second one in the bedroom.
+        { "id": "main-switch", "kind": "lightswitch", "at": [3.6, 3.97], "facing": 180, "y": 1.15 },
+
         { "id": "main-pendant-w", "kind": "pendant", "at": [-2.6, 2.6], "facing": 0, "y": 2.9 },
         { "id": "main-pendant-e", "kind": "pendant", "at": [2.6, 2.6], "facing": 0, "y": 2.9 },
         { "id": "hearth-pendant", "kind": "pendant", "at": [-1.5, -1.5], "facing": 0, "y": 1.95 },
@@ -212,6 +223,10 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "loft-chair", "kind": "armchair", "at": [-1.7, 0.8], "facing": 20 },
         { "id": "loft-stool", "kind": "footstool", "at": [-1.7, -0.05], "facing": 20 },
         { "id": "loft-table", "kind": "sidetable", "at": [-0.6, 0.95], "facing": 0 },
+        // The couch, east of the chair and turned to the same television, with
+        // the side table between the two. A sofa is 1.86 wide, so at x = 0.75 it
+        // runs to 1.68 — clear of the stairwell hole, which starts at 3.675.
+        { "id": "loft-sofa", "kind": "sofa", "at": [0.75, 0.75], "facing": 5 },
         { "id": "loft-lamp", "kind": "floorlamp", "at": [-2.7, 1.0], "facing": 0 },
         { "id": "loft-plant", "kind": "plant", "at": [0.5, -2.3], "facing": 0, "height": 0.8 },
         { "id": "picture-2", "kind": "picture", "at": [-4.94, 1.6], "facing": 90, "y": 1.5, "size": [0.7, 0.9] },
@@ -315,8 +330,9 @@ export const DEFAULT_WORLD_TEXT = `{
 
       "furniture": [
         // The bed stands along the east wall, head to the north, so waking up
-        // is looking at the lake.
-        { "id": "bed", "kind": "bed", "at": [1.95, -0.7], "facing": 0 },
+        // is looking at the lake. A bed is 2.05 deep and its headboard is the
+        // -Z face, so -2.5 + 1.025 is what puts the board against the plaster.
+        { "id": "bed", "kind": "bed", "at": [1.95, -1.475], "facing": 0 },
         { "id": "bedroom-rug", "kind": "rug", "at": [0.2, 0.6], "facing": 0, "size": [2.6, 2.0] },
         // The reading chair, pointed out of the window.
         { "id": "bedroom-chair", "kind": "armchair", "at": [-0.7, -1.7], "facing": 175 },
@@ -324,7 +340,11 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "bedroom-lamp", "kind": "floorlamp", "at": [-1.55, -2.05], "facing": 0, "on": false },
         { "id": "bedroom-plant", "kind": "plant", "at": [2.3, 1.9], "facing": 0, "height": 0.8 },
         { "id": "picture-4", "kind": "picture", "at": [2.74, -1.6], "facing": 270, "y": 1.5, "size": [0.6, 0.8] },
-        { "id": "bedroom-pendant", "kind": "pendant", "at": [0.0, 0.5], "facing": 0, "y": 1.85 }
+        { "id": "bedroom-pendant", "kind": "pendant", "at": [0.0, 0.5], "facing": 0, "y": 1.85 },
+        // The other switch, at the head of the stairs. Same thing it does
+        // downstairs: every light in the library, on or off together — which is
+        // the one you want from a bed.
+        { "id": "bedroom-switch", "kind": "lightswitch", "at": [-1.0, 2.44], "facing": 180, "y": 1.15 }
       ]
     },
 
@@ -338,8 +358,14 @@ export const DEFAULT_WORLD_TEXT = `{
       "openings": [
         // World z = 2.1, matching the great room's east door.
         { "wall": "west", "at": 0.7, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
+        // The one window. The north wall used to have a second, and the bathroom
+        // is now built against it — so what that window showed was the back of
+        // the bathroom's plaster. The east wall is the only side of this room
+        // with the forest behind it, which is why the big one is there.
         { "wall": "east", "at": 0, "width": 1.6, "height": 1.2, "sill": 1.05, "kind": "window" },
-        { "wall": "north", "at": 0.8, "width": 1.0, "height": 1.1, "sill": 1.15, "kind": "window" },
+        // Through to the bathroom, at world x = 6.19. The dining set was moved
+        // east to keep this lane bare.
+        { "wall": "north", "at": -1.05, "width": 0.9, "height": 2.05, "sill": 0, "kind": "door" },
         // Through to the office, at world x = 8.44. It sits at the east end of
         // the wall because the west end of it is the run of counter.
         { "wall": "south", "at": 1.2, "width": 1.0, "height": 2.05, "sill": 0, "kind": "door" }
@@ -354,13 +380,58 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "counter-south", "kind": "kitchencounter", "at": [-0.6, 1.39], "facing": 180 },
         { "id": "counter-east", "kind": "kitchencounter", "at": [1.69, -0.4], "facing": 270 },
         { "id": "coffee", "kind": "coffeemaker", "at": [-1.15, 1.35], "facing": 180, "y": 0.92 },
-        { "id": "kitchen-table", "kind": "table", "at": [-0.5, -0.75], "facing": 0, "size": [1.1, 0.72] },
-        { "id": "kitchen-chair-1", "kind": "diningchair", "at": [-0.5, -0.05], "facing": 180 },
-        { "id": "kitchen-chair-2", "kind": "diningchair", "at": [-0.5, -1.45], "facing": 0 },
-        // In the south-west corner, clear of both doorways: it used to stand in the
-        // south-east one, which is where the door to the office now is.
+        // Chairs at the ends rather than at the sides: the north side of the
+        // table is now the way through to the bathroom.
+        { "id": "kitchen-table", "kind": "table", "at": [0.0, -0.6], "facing": 0, "size": [1.1, 0.72] },
+        { "id": "kitchen-chair-1", "kind": "diningchair", "at": [0.0, 0.15], "facing": 180 },
+        { "id": "kitchen-chair-2", "kind": "diningchair", "at": [0.9, -0.6], "facing": 270 },
+        // North-west corner. It stands clear of all three doorways: the great
+        // room's at z = 0.15 to 1.25, the office's on the south wall, and the
+        // bathroom's lane at x = -1.5 to -0.6.
         { "id": "kitchen-plant", "kind": "plant", "at": [-1.75, -1.4], "facing": 0, "height": 0.55 },
-        { "id": "kitchen-pendant", "kind": "pendant", "at": [-0.5, -0.75], "facing": 0 }
+        { "id": "kitchen-pendant", "kind": "pendant", "at": [0.0, -0.6], "facing": 0 }
+      ]
+    },
+
+    {
+      "id": "bathroom",
+      "name": "Bathroom",
+      // Directly north of the kitchen, on the kitchen's own footprint, so the
+      // two walls sit flush and the two roofs meet: -0.3 (the kitchen's edge)
+      // - 0.24 (two wall thicknesses) - 1.4 (half of 2.8) = -1.94.
+      "origin": [7.24, -1.94],
+      "size": [4, 2.8],
+      // Lower than the kitchen's 2.7, so the kitchen's gable clears this roof.
+      "height": 2.5,
+      "floor": "stone",
+
+      "openings": [
+        // World x = 6.19, matching the kitchen's north door.
+        { "wall": "south", "at": -1.05, "width": 0.9, "height": 2.05, "sill": 0, "kind": "door" },
+        // High and small, over the bath, looking north at the water.
+        { "wall": "north", "at": 0, "width": 1.0, "height": 0.8, "sill": 1.35, "kind": "window" },
+        // North end of the east wall, over the basin. The picture has the other
+        // end of it — the two used to be centred on the same wall, one through
+        // the other.
+        { "wall": "east", "at": 0.7, "width": 0.9, "height": 0.9, "sill": 1.3, "kind": "window" }
+      ],
+
+      "shelves": [],
+
+      "furniture": [
+        // The bath along the north wall, under its window. Everything else keeps
+        // out of the lane from the door at x = -1.05 straight north.
+        { "id": "bath", "kind": "bathtub", "at": [0.0, -1.0], "facing": 0 },
+        { "id": "loo", "kind": "toilet", "at": [-1.6, 0.6], "facing": 90 },
+        { "id": "basin", "kind": "basin", "at": [1.6, 0.5], "facing": 270 },
+        { "id": "bath-mat", "kind": "rug", "at": [0.0, 0.35], "facing": 0, "size": [1.4, 0.9] },
+        // A deck and no crate: the records live in the great room, so a side of
+        // something in here is something you carried in.
+        { "id": "bath-table", "kind": "sidetable", "at": [1.55, -0.9], "facing": 0 },
+        { "id": "bath-deck", "kind": "recordplayer", "at": [1.55, -0.9], "facing": 180, "y": 0.56 },
+        { "id": "bath-plant", "kind": "plant", "at": [-1.7, -1.05], "facing": 0, "height": 0.6 },
+        { "id": "picture-7", "kind": "picture", "at": [1.94, -0.7], "facing": 270, "y": 1.5, "size": [0.5, 0.4] },
+        { "id": "bath-pendant", "kind": "pendant", "at": [0, 0.2], "facing": 0, "y": 2.05 }
       ]
     },
 
@@ -405,6 +476,12 @@ export const DEFAULT_WORLD_TEXT = `{
         // board, or to any wall in the library. T writes a note, and there is a
         // pad of them on the desk.
         { "id": "board", "kind": "whiteboard", "at": [0, 2.54], "facing": 180, "y": 1.55, "size": [3.6, 1.4] },
+
+        // The marker for it, on the desk. E picks it up, then hold the left
+        // mouse button and the line follows the crosshair; F changes pen and G
+        // wipes the board. It never moves — the marker in your hand is this one,
+        // hidden — so nothing about it is written down.
+        { "id": "marker", "kind": "marker", "at": [-0.5, 1.32], "facing": 8, "y": 0.75 },
 
         // The desk faces the board, at the west end so the doorway lane is
         // clear. The terminal on it is the library's index: E on it searches
@@ -481,6 +558,10 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "porch-bench", "kind": "bench", "at": [-3.0, 0.1], "facing": 90 },
         { "id": "porch-plant", "kind": "plant", "at": [3.1, -1.4], "facing": 0, "height": 0.7 },
         { "id": "porch-lamp", "kind": "pendant", "at": [-1.0, 0.1], "facing": 0, "y": 2.2, "on": false },
+        // Strung along the inside of the south railing, over the seating end.
+        // "size" is [length, sag] and "y" is the line it hangs from — the shed
+        // roof is low on this side, so 2.15 keeps the bulbs under it.
+        { "id": "porch-lights", "kind": "fairylights", "at": [-1.0, 1.78], "facing": 0, "y": 2.15, "size": [4.4, 0.16] },
 
         // Down onto the grass, straight out of the cabin's south door. The
         // treads are decoration: the drop from the decking to the ground is
@@ -568,7 +649,10 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "deck-table", "kind": "table", "at": [0.9, 0.0], "facing": 0, "size": [0.9, 0.7], "height": 0.7 },
         { "id": "deck-chair", "kind": "diningchair", "at": [0.9, 0.8], "facing": 180 },
         { "id": "deck-plant", "kind": "plant", "at": [2.0, -0.7], "facing": 0, "height": 0.6 },
-        { "id": "deck-lamp", "kind": "pendant", "at": [0, 0], "facing": 0, "y": 1.95, "on": false }
+        { "id": "deck-lamp", "kind": "pendant", "at": [0, 0], "facing": 0, "y": 1.95, "on": false },
+        // Along the north railing, facing the water. This deck's roof only
+        // reaches 2.3, so the line hangs at 1.9.
+        { "id": "deck-lights", "kind": "fairylights", "at": [0, -1.08], "facing": 0, "y": 1.9, "size": [4.0, 0.14] }
       ]
     }
   ]

@@ -115,6 +115,22 @@ The exceptions are `loose` — a book put down on a table or dropped on the floo
 and `pins`, the pages and notes stuck to walls. Both store real positions, because
 "there, where I put it" cannot be derived from an ordering. Keep them the only two.
 
+**Records are dealt, not arranged.** Every `recordshelf` takes a slice of `music/`
+in folder order, so nothing has to be written down for a few hundred sleeves to
+have somewhere to be. Only what you have moved is stored — `records.filed` (one
+crate id) and `records.loose` (one point) in `books.json` — and the deal honours
+explicit filings first, or putting a record away would be undone by the next
+deal. There is one of each record: it is on whichever deck you carried it to,
+`state/media.ts` remembers *which* deck, an empty deck does nothing, and `F`
+takes one back off.
+
+**A whiteboard is drawn on with the mouse held down.** [src/scene/board.ts](src/scene/board.ts)
+stores strokes in board space (u across, v up, 0 to 1) so a resized board keeps
+its drawing; the live stroke is a plain mutable object outside the store, because
+it gains a point per frame, and lands in the layout once when you let go.
+[src/scene/Drawing.tsx](src/scene/Drawing.tsx) is the only continuous input in the
+app, which is why it is not another branch in `Player.tsx`.
+
 **The app never writes to `library.json`.** That file is hand-edited prose with
 comments in it. Everything the app decides about the room — where you shoved the
 boxes (`furniture`), what you wrote on a shelf (`labels`), which lamps are off
@@ -186,7 +202,11 @@ in the format, because a building is rooms somewhere else.
 
 **Book identity is content-based, not path-based.** `book_id` in
 [core/src/index.rs](core/src/index.rs) hashes file length plus the first
-64 KiB, so moving or renaming a file keeps its shelf position and progress.
+64 KiB, so moving or renaming a file keeps its shelf position and progress. A
+scan skips any file whose size and mtime are unchanged, so an improved probe
+would never reach a book already indexed — `probe::PROBE_VERSION` is stored per
+row and a bump re-probes every older row once. Bump it whenever a probe learns
+to extract something new.
 
 **State is split by lifetime.** `state/store.ts` holds session/UI state (mode, crosshair
 focus, held book, held tape, held sheet, driver, whether you have gone in yet).
@@ -199,9 +219,16 @@ change every frame and must not trigger React renders.
 
 **A room fact goes in the library folder; a machine fact does not.** Which lamps
 are on, whether it is night and whether it is raining live in `lights.json` and
-travel with the library. Low performance mode, the body, the volume and the mouse
-sensitivity live in `state/settings.ts`, backed by `localStorage` — a folder you
-sync to another computer must not carry an assertion about that computer's GPU.
+travel with the library. Low Performance Mode, the body, the volumes and the
+mouse sensitivity live in `state/settings.ts`, backed by `localStorage` — a
+folder you sync to another computer must not carry an assertion about that
+computer's GPU.
+
+**The rain is synthesised, not sampled.** [src/scene/rainSound.ts](src/scene/rainSound.ts)
+is looping filtered noise through a low-pass whose cutoff tracks how much sky is
+over you; `Sound.tsx` derives that from the room you are in and the openings in
+it. Every failure — no `AudioContext`, a context that will not start — falls back
+to silence rather than throwing.
 
 **The HUD is what is under the crosshair and what is going wrong; everything else
 is behind a key.** The main menu (`src/ui/MainMenu.tsx`) chooses a library while
@@ -245,7 +272,13 @@ time it is drawn. "Tear out" is the gesture, not the effect.
 
 ## Conventions
 
-- Comments explain *why* a decision was made, not what the code does. Match that.
+- Comments explain *why* a decision was made, and do it **briefly**: a line or
+  two, no narrative, no history of what it used to be, no arguing with the
+  reader. If a comment needs a paragraph, the reasoning belongs in `docs/`.
+- **UI text is Headline Case** for anything that is a label, a title, a heading
+  or a button — "Low Performance Mode", "Clear the Shelves", "Holding a Record".
+  Sentence case for the phrases after a `<kbd>` and for anything that is a real
+  sentence.
 - TS is strict with `noUncheckedIndexedAccess` and `noUnusedLocals`; `tsconfig.json`
   covers `src`, `tests`, `scripts`, and the config files.
 - `tests/collision.spec.ts` and `tests/world.spec.ts` unit-test pure modules through the

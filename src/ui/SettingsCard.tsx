@@ -11,17 +11,8 @@ import { useSettings } from '../state/settings'
 import { floorAt, supportAt } from '../world/derive'
 
 /**
- * Settings.
- *
- * Everything that used to live down the right-hand side of the screen. The
- * reason for moving it is not tidiness: a panel that is always open is a panel
- * you are always reading past, and the room is the point. A switch you touch
- * once a month belongs behind a key.
- *
- * The sections are ordered by how often anybody opens them for that reason —
- * display first, because "the room is stuttering" is the one thing somebody
- * comes here to fix; the library folder last, because by the time you are in a
- * room you have already chosen it.
+ * Settings, behind F2. Sections are ordered by how often they are opened:
+ * display first, the library folder last.
  */
 
 function Toggle({
@@ -98,14 +89,7 @@ function Slider({
 
 export function SettingsCard() {
   const open = useAppStore((s) => s.settingsOpen)
-  /**
-   * The renderer's numbers, on a poll.
-   *
-   * They live here rather than in the HUD because a permanent frame counter over
-   * the room is a development tool wearing an interface's clothes — and because
-   * the one moment anybody wants them is the moment they have opened this panel
-   * to look for low performance mode.
-   */
+  /** The renderer's numbers, on a poll. Here rather than permanently on screen. */
   const [render, setRender] = useState<RenderMetrics>({ ...metrics })
   useEffect(() => {
     if (!open) return
@@ -113,14 +97,8 @@ export function SettingsCard() {
     return () => clearInterval(id)
   }, [open])
 
-  /**
-   * Give the mouse back.
-   *
-   * A panel full of buttons and sliders opened while the pointer is captured is
-   * a panel you cannot touch — the same reason the note field and the catalogue
-   * release it. Nothing takes the lock back: clicking the room does that, which
-   * is the gesture that already means "I am in there again".
-   */
+  // Give the mouse back: a panel of buttons under a captured pointer is unusable.
+  // Clicking the room takes the lock again.
   useEffect(() => {
     if (open && document.pointerLockElement) document.exitPointerLock()
   }, [open])
@@ -154,8 +132,8 @@ export function SettingsCard() {
   const tapes = useVideoStore((s) => s.tapes)
   const videoError = useVideoStore((s) => s.error)
 
-  // Books lying on a floor, as opposed to left on a table — the same test the
-  // action itself applies, so the count on the button is the count that moves.
+  // Books on a floor rather than left on a table — the same test the action
+  // applies, so the count on the button is the count that moves.
   const strayCount = useMemo(() => {
     if (!world) return 0
     return Object.values(loose).filter((at) => {
@@ -170,35 +148,35 @@ export function SettingsCard() {
   return (
     <div className="settings-card" data-testid="settings-card">
       <div className="settings-head">
-        <p className="field-label">settings</p>
+        <p className="field-label">Settings</p>
         <button onClick={() => setOpen(false)}>
-          close <kbd>F2</kbd>
+          Close <kbd>F2</kbd>
         </button>
       </div>
 
-      <p className="controls-heading">display</p>
+      <p className="controls-heading">Display</p>
       <Toggle
-        label="low performance mode"
+        label="Low Performance Mode"
         hint="No shadows, no window light, one pixel per pixel. For an older machine."
         on={settings.lowPerformance}
         testId="low-performance"
         onChange={(next) => settings.set('lowPerformance', next)}
       />
       <Toggle
-        label="show my body"
+        label="Show My Body"
         hint="Look down and see your own legs."
         on={settings.showBody}
         testId="show-body"
         onChange={(next) => settings.set('showBody', next)}
       />
       <Toggle
-        label="interface"
+        label="Interface"
         hint="The cards and the status strip. H does this too."
         on={!hudHidden}
         onChange={() => toggleHud()}
       />
       <Slider
-        label="mouse sensitivity"
+        label="Mouse Sensitivity"
         value={settings.sensitivity}
         min={0.2}
         max={3}
@@ -207,9 +185,9 @@ export function SettingsCard() {
         onChange={(next) => settings.set('sensitivity', next)}
       />
 
-      <p className="controls-heading">sound</p>
+      <p className="controls-heading">Sound</p>
       <Slider
-        label="volume"
+        label="Volume"
         value={settings.volume}
         min={0}
         max={1}
@@ -217,52 +195,62 @@ export function SettingsCard() {
         format={(value) => `${Math.round(value * 100)}%`}
         onChange={(next) => settings.set('volume', next)}
       />
+      <Slider
+        label="Rain Volume"
+        hint="How loud the weather is, on top of the volume above."
+        value={settings.rainVolume}
+        min={0}
+        max={1}
+        step={0.05}
+        format={(value) => (value === 0 ? 'off' : `${Math.round(value * 100)}%`)}
+        onChange={(next) => settings.set('rainVolume', next)}
+      />
       <Toggle
-        label="sound in the room"
+        label="Sound in the Room"
         hint="The deck and the television get quieter as you walk away, and come from where they stand."
         on={settings.positionalAudio}
         testId="positional-audio"
         onChange={(next) => settings.set('positionalAudio', next)}
       />
       <p className="note">
-        {tracks.length === 0 ? 'nothing in music/ yet' : `${tracks.length} records`} ·{' '}
+        {tracks.length === 0 ? 'Nothing in music/ yet' : `${tracks.length} records`} ·{' '}
         {tapes.length === 0 ? 'nothing in video/ yet' : `${tapes.length} tapes`}
       </p>
       {musicError && <p className="note warn">{musicError}</p>}
       {videoError && <p className="note warn">{videoError}</p>}
 
-      <p className="controls-heading">outside</p>
+      <p className="controls-heading">Outside</p>
       <Toggle
-        label="night"
+        label="Night"
         hint="N does this in the room."
         on={night}
         testId="toggle-night"
         onChange={() => toggleNight()}
       />
       <Toggle
-        label="rain"
-        hint="K does this in the room."
+        label="Rain"
+        hint="K does this in the room. You hear it too — quieter indoors, louder by a window."
         on={rain}
         testId="toggle-rain"
         onChange={() => toggleRain()}
       />
 
-      <p className="controls-heading">this library</p>
+      <p className="controls-heading">This Library</p>
       <p className="path" data-testid="library-root">
-        {!rootLoaded ? 'checking…' : (libraryRoot ?? 'not chosen yet')}
+        {!rootLoaded ? 'Checking…' : (libraryRoot ?? 'Not chosen yet')}
       </p>
       <p className="note" data-testid="world-file">
-        the room: {savePaths?.world ?? 'checking…'} — edit that file and it reloads as you save it
+        The room: {savePaths?.world ?? 'checking…'} — edit that file and it reloads as you save it
       </p>
       <div className="row-controls">
         <button onClick={() => void pickRoot()} disabled={!library.canPickFolder}>
-          choose folder…
+          Choose Folder…
         </button>
         <button
           onClick={() => void scan()}
           disabled={!library.canIndex || scanning || !libraryRoot}
         >
-          {scanning ? 'scanning…' : 'scan'}
+          {scanning ? 'Scanning…' : 'Scan'}
         </button>
       </div>
       {!scanning && lastScan && (
@@ -272,9 +260,7 @@ export function SettingsCard() {
         </p>
       )}
 
-      {/* The way back from an arrangement you have decided against. Buttons
-          rather than keys because each moves the whole library at once, and
-          they say how many rather than asking twice. */}
+      {/* Buttons rather than keys: each moves the whole library at once. */}
       <div className="row-controls">
         <button
           data-testid="pack-everything"
@@ -282,7 +268,7 @@ export function SettingsCard() {
           onClick={() => packEverything()}
           title="Every book off every shelf and back into the boxes"
         >
-          clear the shelves
+          Clear the Shelves
         </button>
         <button
           data-testid="pack-strays"
@@ -290,7 +276,7 @@ export function SettingsCard() {
           onClick={() => packLooseBooks()}
           title="Every book lying on a floor, into the nearest box — books left on tables stay put"
         >
-          box the strays{strayCount > 0 ? ` (${strayCount})` : ''}
+          Box the Strays{strayCount > 0 ? ` (${strayCount})` : ''}
         </button>
       </div>
 
@@ -308,28 +294,26 @@ export function SettingsCard() {
         </p>
       )}
 
-      <p className="controls-heading">the renderer</p>
+      <p className="controls-heading">The Renderer</p>
       <dl>
-        <dt>fps</dt>
+        <dt>FPS</dt>
         <dd>
           {render.fps.toFixed(0)} <span className="dim">min {render.fpsMin.toFixed(0)}</span>
         </dd>
-        <dt>draw calls</dt>
+        <dt>Draw Calls</dt>
         <dd>{render.drawCalls}</dd>
-        <dt>triangles</dt>
+        <dt>Triangles</dt>
         <dd>{render.triangles.toLocaleString()}</dd>
-        {/* Two of the three are shipped modes, so only the stand-in is a
-            warning. Marking the container amber said "something is wrong here"
-            to somebody whose setup was exactly right. */}
-        <dt>running as</dt>
+        {/* Only the stand-in driver is a warning; the container is a shipped mode. */}
+        <dt>Running As</dt>
         <dd className={driver === 'browser' ? 'warn' : 'ok'}>
           {DRIVER_LABELS[driver]} <span className="dim">({driver})</span>
         </dd>
       </dl>
 
       <div className="row-controls settings-foot">
-        <button onClick={() => settings.reset()}>reset settings</button>
-        <button onClick={() => setOpen(false)}>done</button>
+        <button onClick={() => settings.reset()}>Reset Settings</button>
+        <button onClick={() => setOpen(false)}>Done</button>
       </div>
     </div>
   )
