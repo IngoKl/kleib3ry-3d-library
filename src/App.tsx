@@ -16,6 +16,7 @@ import { Handling } from './scene/Handling'
 import { PlacementGhost } from './scene/PlacementGhost'
 import { Player } from './scene/Player'
 import { HeldBook } from './scene/HeldBook'
+import { HeldRecord } from './scene/HeldRecord'
 import { Probe } from './scene/Probe'
 import { Reader } from './reader/Reader'
 import { readerStatus } from './reader/status'
@@ -287,6 +288,7 @@ export default function App() {
         <Handling />
         <Player />
         <HeldBook />
+        <HeldRecord />
         <Reader />
       </Canvas>
       <Hud />

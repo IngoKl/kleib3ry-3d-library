@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { library } from '../services'
 import { metrics, type RenderMetrics } from '../state/metrics'
 import { useLibraryStore } from '../state/library'
@@ -6,9 +6,10 @@ import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
-import { LAMPS } from '../world/derive'
+import { LAMPS, floorAt, supportAt } from '../world/derive'
 import { ShelfLabelField } from './ShelfLabelField'
 import { JumpToPageField } from './JumpToPageField'
+import { ControlsCard } from './ControlsCard'
 
 export function Hud() {
   const [render, setRender] = useState<RenderMetrics>({ ...metrics })
@@ -27,6 +28,13 @@ export function Hud() {
   const drawn = useAppStore((s) => s.drawn)
   const focusedFixture = useAppStore((s) => s.focusedFixture)
   const focusedRecord = useAppStore((s) => s.focusedRecord)
+  const heldRecord = useAppStore((s) => s.heldRecord)
+  const crateTarget = useAppStore((s) => s.crateTarget)
+  const focusedShelf = useAppStore((s) => s.focusedShelf)
+  const hudHidden = useAppStore((s) => s.hudHidden)
+  const controlsOpen = useAppStore((s) => s.controlsOpen)
+  const setControlsOpen = useAppStore((s) => s.setControlsOpen)
+  const toggleHud = useAppStore((s) => s.toggleHud)
   const surfaceTarget = useAppStore((s) => s.surfaceTarget)
   const carriedBox = useAppStore((s) => s.carriedBox)
   const pointerLocked = useAppStore((s) => s.pointerLocked)
@@ -61,6 +69,19 @@ export function Hud() {
   const toggleNight = useLightStore((s) => s.toggleNight)
   const brewing = useAppStore((s) => s.brewing)
   const packEverything = useLibraryStore((s) => s.packEverything)
+  const packLooseBooks = useLibraryStore((s) => s.packLooseBooks)
+  const loose = useLibraryStore((s) => s.loose)
+
+  // Books lying on a floor, as opposed to left on a table — the same test the
+  // action itself applies, so the count on the button is the count that moves.
+  const strayCount = useMemo(() => {
+    if (!world) return 0
+    return Object.values(loose).filter((at) => {
+      const floor = floorAt(world, at.x, at.z, at.y + 0.1)
+      if (floor === null) return true
+      return supportAt(world, at.x, at.z, at.y + 0.1) <= floor + 0.02
+    }).length
+  }, [world, loose])
 
   useEffect(() => {
     const id = setInterval(() => setRender({ ...metrics }), 250)
@@ -77,6 +98,7 @@ export function Hud() {
   const browsing = Boolean(view && view.total > view.shown)
 
   const record = focusedRecord ? tracks.find((track) => track.id === focusedRecord) : undefined
+  const heldRecordTrack = heldRecord ? tracks.find((track) => track.id === heldRecord) : undefined
   const fixture = focusedFixture
     ? world?.furniture.find((item) => item.id === focusedFixture)
     : undefined
@@ -106,6 +128,8 @@ export function Hud() {
 
   return (
     <>
+      {!hudHidden && (
+        <>
       {walking && (
         <div
           className={`crosshair ${
@@ -116,6 +140,7 @@ export function Hud() {
             boxTarget ||
             focusedFixture ||
             focusedRecord ||
+            crateTarget ||
             surfaceTarget
               ? 'crosshair-active'
               : ''
@@ -162,20 +187,64 @@ export function Hud() {
         </div>
       )}
 
-      {walking && focusedSeat && !held && !seat && (
+      {/* A bare bookcase offers its label. Only when nothing else is under the
+          crosshair — a case full of books is spoken for by the book card. */}
+      {walking &&
+        focusedShelf &&
+        !focused &&
+        !focusedBox &&
+        !focusedSeat &&
+        !focusedRecord &&
+        !focusedFixture &&
+        !held &&
+        !heldRecord &&
+        !seat && (
+          <div className="focus-card" data-testid="shelf-card">
+            <p className="focus-key">
+              <kbd>L</kbd> write on this bookcase
+            </p>
+          </div>
+        )}
+
+      {walking && focusedSeat && !seat && (
         <div className="focus-card" data-testid="seat-card">
           <p className="focus-key">
-            <kbd>E</kbd> sit down
+            <kbd>E</kbd> sit down{held ? ' with it' : ''}
           </p>
         </div>
       )}
 
       {walking && focusedRecord && !held && (
         <div className="focus-card" data-testid="record-card">
-          <p className="focus-title">{record?.title ?? 'a record'}</p>
+          <p className="focus-title">{record?.album ?? record?.title ?? 'a record'}</p>
           <p className="focus-author">{record?.artist ?? 'unknown'}</p>
           <p className="focus-key">
-            <kbd>E</kbd> {nowPlaying === focusedRecord ? 'lift the needle' : 'put it on'}
+            <kbd>E</kbd> take it out
+          </p>
+        </div>
+      )}
+
+      {walking && heldRecord && (
+        <div className="held-card" data-testid="held-record-card">
+          <p className="held-label">holding a record</p>
+          <p className="focus-title">
+            {heldRecordTrack?.album ?? heldRecordTrack?.title ?? 'a record'}
+          </p>
+          <p className="focus-author">{heldRecordTrack?.artist ?? 'unknown'}</p>
+          <p className="focus-key">
+            {focusedFixture ? (
+              <>
+                <kbd>E</kbd> put it on
+              </>
+            ) : crateTarget ? (
+              <>
+                <kbd>E</kbd> file it back
+              </>
+            ) : (
+              <span className="warn">aim at the deck, or at a crate</span>
+            )}
+            {' · '}
+            <kbd>Q</kbd> file it back
           </p>
         </div>
       )}
@@ -288,18 +357,14 @@ export function Hud() {
         </div>
       )}
 
-      <ShelfLabelField />
-      <JumpToPageField />
-
       {walking && !pointerLocked && (
         <div className="lock-hint" data-testid="lock-hint">
           click to look around · <kbd>W</kbd>
           <kbd>A</kbd>
           <kbd>S</kbd>
-          <kbd>D</kbd> move · <kbd>shift</kbd> run · <kbd>ctrl</kbd> kneel ·{' '}
-          <kbd>E</kbd> take, shelve, sit, switch on · <kbd>Q</kbd> drop · <kbd>O</kbd> leave open ·{' '}
-          <kbd>G</kbd> empty a box · <kbd>X</kbd> carry a box · <kbd>L</kbd> label a shelf ·{' '}
-          <kbd>F</kbd> show cover · <kbd>N</kbd> night
+          <kbd>D</kbd> move · <kbd>E</kbd> take, shelve, sit, switch on · <kbd>Q</kbd> drop ·{' '}
+          <kbd>G</kbd> empty a box · <kbd>L</kbd> label a shelf · <kbd>N</kbd> night ·{' '}
+          <kbd>H</kbd> hide hud · <kbd>F1</kbd> all controls
         </div>
       )}
 
@@ -362,6 +427,14 @@ export function Hud() {
             >
               clear the shelves
             </button>
+            <button
+              data-testid="pack-strays"
+              disabled={strayCount === 0}
+              onClick={() => packLooseBooks()}
+              title="Every book lying on a floor, into the nearest box — books left on tables stay put"
+            >
+              box the strays{strayCount > 0 ? ` (${strayCount})` : ''}
+            </button>
           </div>
 
           {/* A newly indexed library is entirely in boxes, which is only
@@ -411,9 +484,17 @@ export function Hud() {
         </div>
 
         <div className="row">
-          <button onClick={() => setStatsOpen((open) => !open)}>
-            {statsOpen ? 'hide' : 'show'} stats
-          </button>
+          <div className="row-controls">
+            <button data-testid="open-controls" onClick={() => setControlsOpen(!controlsOpen)}>
+              controls <kbd>F1</kbd>
+            </button>
+            <button onClick={() => toggleHud()} title="Press H to bring it back">
+              hide hud <kbd>H</kbd>
+            </button>
+            <button onClick={() => setStatsOpen((open) => !open)}>
+              {statsOpen ? 'hide' : 'show'} stats
+            </button>
+          </div>
         </div>
 
         {statsOpen && (
@@ -431,6 +512,15 @@ export function Hud() {
           </dl>
         )}
       </div>
+        </>
+      )}
+
+      {/* Typed conversations and the key legend outlive the chrome: hiding the
+          HUD should not eat a label mid-sentence or the card that says how to
+          bring it back. */}
+      <ShelfLabelField />
+      <JumpToPageField />
+      <ControlsCard />
     </>
   )
 }

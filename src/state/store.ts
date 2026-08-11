@@ -80,6 +80,17 @@ type AppState = {
   focusedFixture: string | null
   /** Record under the crosshair, by track id. */
   focusedRecord: string | null
+  /** Record in hand, by track id. Separate from `held`: a sleeve is not a book. */
+  heldRecord: string | null
+  /** Record crate under the crosshair while holding a record — file it back. */
+  crateTarget: string | null
+  /**
+   * Bookcase carcass under the crosshair, whether or not a book is.
+   *
+   * Exists for `L`: labelling an *empty* case used to be impossible, because the
+   * only routes to a shelf id went through a held book or a shelved one.
+   */
+  focusedShelf: string | null
   /** Where a held book would land on a table, in world metres, and on what. */
   surfaceTarget: SurfaceTarget | null
   /** Moving box being carried about the room, or null. */
@@ -99,6 +110,15 @@ type AppState = {
   jumpTo: number | null
   /** True while the "go to page" field is open, so movement keys stay typed. */
   jumping: boolean
+  /**
+   * Whether the overlay is drawn at all. The room is the point; the HUD is
+   * scaffolding, and being able to strike it is what makes screenshots worth
+   * taking. The label and page fields ignore this — they are conversations you
+   * started, not chrome.
+   */
+  hudHidden: boolean
+  /** True while the controls card is open. */
+  controlsOpen: boolean
 
   setMode: (mode: Mode) => void
   setSeat: (id: string | null) => void
@@ -116,6 +136,11 @@ type AppState = {
   setPointerLocked: (locked: boolean) => void
   setFocusedFixture: (id: string | null) => void
   setFocusedRecord: (id: string | null) => void
+  setHeldRecord: (id: string | null) => void
+  setCrateTarget: (id: string | null) => void
+  setFocusedShelf: (id: string | null) => void
+  toggleHud: () => void
+  setControlsOpen: (open: boolean) => void
   setSurfaceTarget: (target: SurfaceTarget | null) => void
   setCarriedBox: (id: string | null) => void
   setLabelling: (shelfId: string | null) => void
@@ -183,6 +208,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   pointerLocked: false,
   focusedFixture: null,
   focusedRecord: null,
+  heldRecord: null,
+  crateTarget: null,
+  focusedShelf: null,
+  hudHidden: false,
+  controlsOpen: false,
   surfaceTarget: null,
   carriedBox: null,
   labelling: null,
@@ -224,6 +254,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setFocusedRecord: (focusedRecord) => {
     if (get().focusedRecord !== focusedRecord) set({ focusedRecord })
   },
+  setHeldRecord: (heldRecord) => set({ heldRecord }),
+  setCrateTarget: (crateTarget) => {
+    if (get().crateTarget !== crateTarget) set({ crateTarget })
+  },
+  setFocusedShelf: (focusedShelf) => {
+    if (get().focusedShelf !== focusedShelf) set({ focusedShelf })
+  },
+  toggleHud: () => set({ hudHidden: !get().hudHidden }),
+  setControlsOpen: (controlsOpen) => set({ controlsOpen }),
   setSurfaceTarget: (surfaceTarget) => {
     if (!sameSurface(get().surfaceTarget, surfaceTarget)) set({ surfaceTarget })
   },

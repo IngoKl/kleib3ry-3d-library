@@ -287,6 +287,61 @@ button:disabled {
   color: var(--dim);
 }
 
+/* The full key legend. A sibling of .field-card in spirit, but it does not
+   take the keyboard: you can walk around with it open. */
+.controls-card {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: rgba(16, 13, 11, 0.94);
+  border: 1px solid rgba(236, 229, 216, 0.22);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  width: min(560px, calc(100vw - 40px));
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.controls-heading {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.controls-list {
+  display: block;
+  margin: 0 0 4px;
+}
+
+.controls-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.controls-row dt {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.controls-row dd {
+  margin: 0;
+  text-align: left;
+  color: var(--dim);
+}
+
+.controls-card .row-controls {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
 .lock-hint {
   position: fixed;
   bottom: 22px;

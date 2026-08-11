@@ -99,10 +99,11 @@ export const DEFAULT_WORLD_TEXT = `{
 
         // A picture over the hearth. With no "source" it takes whatever is next
         // in your artwork/ folder, so dropping images in is enough. It is sized
-        // to the band of wall it actually has: above the mantel (1.57) and
-        // below the underside of the loft floor (2.28) — a taller frame here
-        // stands in the mantel or vanishes into the ceiling.
-        { "id": "picture-1", "kind": "picture", "at": [-3.4, -3.96], "facing": 0, "y": 1.92, "size": [0.9, 0.55] },
+        // to the band of wall it actually has — above the mantel (1.57) and
+        // below the underside of the loft floor (2.28) — *including the frame*,
+        // which adds 4.5 cm on every side beyond "size". The first cut of this
+        // ignored the frame and the picture stood in the mantel.
+        { "id": "picture-1", "kind": "picture", "at": [-3.4, -3.96], "facing": 0, "y": 1.96, "size": [0.78, 0.42] },
 
         { "id": "fern", "kind": "plant", "at": [4.4, -3.5], "facing": 0 },
         { "id": "palm", "kind": "plant", "at": [-4.5, 2.0], "facing": 0, "height": 1.35 },
@@ -190,37 +191,95 @@ export const DEFAULT_WORLD_TEXT = `{
     {
       "id": "reading",
       "name": "Reading corner",
-      // 5 (the cabin's edge) + 0.24 (two wall thicknesses) + 2.2 (half of 4.4).
-      "origin": [-7.44, 0.9],
-      "size": [4.4, 4.4],
+      // 5 (the cabin's edge) + 0.24 (two wall thicknesses) + 2.8 (half of 5.6).
+      // Grown from 4.4 x 4.4 when the bedroom arrived: a flight of stairs in a
+      // four-metre room owned the place, so the room got the extra metre and
+      // the flight got a longer, shallower run.
+      "origin": [-8.04, 0.9],
+      "size": [5.6, 5.0],
       "height": 3.0,
+      // The bedroom sits on top: its floor slab is this room's ceiling, so
+      // building a ceiling plane here as well would be two surfaces in one
+      // place, flickering.
+      "ceiling": false,
 
       "openings": [
         { "wall": "east", "at": 0, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
-        { "wall": "west", "at": 0, "width": 2.2, "height": 1.6, "sill": 0.85, "kind": "window" },
+        // No west window: the flight to the bedroom runs the length of that
+        // wall, and a staircase across a window reads as a mistake. The west
+        // light comes into the bedroom above instead.
         { "wall": "north", "at": 1.4, "width": 1.4, "height": 1.4, "sill": 0.95, "kind": "window" }
       ],
 
+      // The north cases sit east of the flight, leaving the corridor along the
+      // west wall clear for boarding it.
       "shelves": [
-        { "id": "reading-n0", "at": [-1.2, -2.025], "facing": 0, "rows": 5 },
-        { "id": "reading-n1", "at": [-0.15, -2.025], "facing": 0, "rows": 5 },
-        { "id": "reading-s0", "at": [-1.2, 2.025], "facing": 180, "rows": 5 },
-        { "id": "reading-s1", "at": [-0.15, 2.025], "facing": 180, "rows": 5 }
+        { "id": "reading-n0", "at": [-0.85, -2.325], "facing": 0, "rows": 5 },
+        { "id": "reading-n1", "at": [0.2, -2.325], "facing": 0, "rows": 5 },
+        { "id": "reading-s0", "at": [-1.2, 2.325], "facing": 180, "rows": 5 },
+        { "id": "reading-s1", "at": [-0.15, 2.325], "facing": 180, "rows": 5 }
       ],
 
       // Everything is kept clear of the line you walk in on, which runs from
-      // the door at local x = 2.2 straight across at z = 0 — so nothing solid
+      // the door at local x = 2.8 straight across at z = 0 — so nothing solid
       // sits within about 0.6 m of that line. A side table in a doorway is
       // exactly the sort of thing you only notice by walking into it.
       "furniture": [
-        { "id": "rug", "kind": "rug", "at": [0.7, 1.3], "facing": 0, "size": [2.6, 2.2] },
-        { "id": "chair", "kind": "armchair", "at": [1.35, 1.35], "facing": 265 },
-        { "id": "stool", "kind": "footstool", "at": [0.5, 1.5], "facing": 265 },
-        { "id": "table", "kind": "sidetable", "at": [1.8, 0.95], "facing": 0 },
-        { "id": "lamp", "kind": "floorlamp", "at": [1.85, 1.85], "facing": 0 },
-        { "id": "reading-plant", "kind": "plant", "at": [-1.8, 1.8], "facing": 0 },
-        { "id": "picture-3", "kind": "picture", "at": [0.9, 2.14], "facing": 180, "y": 1.6, "size": [0.8, 0.6] },
-        { "id": "reading-pendant", "kind": "pendant", "at": [0, 0], "facing": 0 }
+        { "id": "rug", "kind": "rug", "at": [0.9, 1.4], "facing": 0, "size": [3.0, 2.4] },
+        { "id": "chair", "kind": "armchair", "at": [1.6, 1.5], "facing": 265 },
+        { "id": "stool", "kind": "footstool", "at": [0.75, 1.65], "facing": 265 },
+        { "id": "table", "kind": "sidetable", "at": [2.1, 1.05], "facing": 0 },
+        { "id": "lamp", "kind": "floorlamp", "at": [2.25, 2.1], "facing": 0 },
+        { "id": "reading-plant", "kind": "plant", "at": [2.3, -2.05], "facing": 0 },
+        { "id": "picture-3", "kind": "picture", "at": [0.9, 2.44], "facing": 180, "y": 1.6, "size": [0.8, 0.6] },
+        { "id": "reading-pendant", "kind": "pendant", "at": [0, 0], "facing": 0 },
+
+        // Up to the bedroom, along the west wall. Boarded at the north end —
+        // the corridor between the flight and the north cases is kept clear —
+        // and it tops out at z = 2.0, where the bedroom's stairwell hole ends.
+        { "id": "bedroom-stairs", "kind": "stairs", "at": [-2.25, 0.1], "facing": 0, "size": [1.0, 3.8], "rise": 3.22 }
+      ]
+    },
+
+    {
+      "id": "bedroom",
+      "name": "Bedroom",
+      // Directly over the reading corner: same footprint, floor slab resting
+      // on its walls. 3.22 is the reading corner's 3.0 walls plus the 0.22
+      // slab — any lower and the slab stands into the room below.
+      "origin": [-8.04, 0.9],
+      "size": [5.6, 5.0],
+      "elevation": 3.22,
+      "height": 2.3,
+
+      // The stairwell. Ends exactly at z = 2.0, where the flight below
+      // reaches 3.22 — top step and first floorboard at the same height.
+      "holes": [{ "at": [-2.2, 0.5], "size": [1.2, 3.0] }],
+
+      "openings": [
+        // The point of the room: a low, wide window looking north over the
+        // lake, at the height of the bed and the chair.
+        { "wall": "north", "at": -0.3, "width": 2.8, "height": 1.4, "sill": 0.7, "kind": "window" },
+        { "wall": "west", "at": -0.8, "width": 1.2, "height": 1.1, "sill": 0.9, "kind": "window" }
+      ],
+
+      "shelves": [
+        { "id": "bedroom-s0", "at": [-0.35, 2.325], "facing": 180, "rows": 4, "label": "Bedside" },
+        { "id": "bedroom-s1", "at": [0.85, 2.325], "facing": 180, "rows": 4 }
+      ],
+
+      "furniture": [
+        // The bed stands along the east wall, head to the north, so waking up
+        // is looking at the lake.
+        { "id": "bed", "kind": "bed", "at": [1.95, -0.7], "facing": 0 },
+        { "id": "bedroom-rug", "kind": "rug", "at": [0.2, 0.6], "facing": 0, "size": [2.6, 2.0] },
+        // The reading chair, pointed out of the window.
+        { "id": "bedroom-chair", "kind": "armchair", "at": [-0.7, -1.7], "facing": 175 },
+        { "id": "bedroom-table", "kind": "sidetable", "at": [0.2, -1.8], "facing": 0 },
+        { "id": "bedroom-lamp", "kind": "floorlamp", "at": [-1.55, -2.05], "facing": 0 },
+        { "id": "bedroom-plant", "kind": "plant", "at": [2.3, 1.9], "facing": 0, "height": 0.8 },
+        { "id": "picture-4", "kind": "picture", "at": [2.74, -1.6], "facing": 270, "y": 1.5, "size": [0.6, 0.8] },
+        { "id": "bedroom-pendant", "kind": "pendant", "at": [0.0, 0.5], "facing": 0, "y": 1.85 }
       ]
     },
 
@@ -241,9 +300,12 @@ export const DEFAULT_WORLD_TEXT = `{
       "shelves": [],
 
       "furniture": [
-        { "id": "counter-south", "kind": "kitchencounter", "at": [-0.6, 1.39], "facing": 0 },
+        // Both stand against the south wall, so their fronts face *north* into
+        // the room — facing 0 here pointed the drawers (and the coffee maker's
+        // carafe) into the plaster.
+        { "id": "counter-south", "kind": "kitchencounter", "at": [-0.6, 1.39], "facing": 180 },
         { "id": "counter-east", "kind": "kitchencounter", "at": [1.69, -0.4], "facing": 270 },
-        { "id": "coffee", "kind": "coffeemaker", "at": [-1.15, 1.35], "facing": 0, "y": 0.92 },
+        { "id": "coffee", "kind": "coffeemaker", "at": [-1.15, 1.35], "facing": 180, "y": 0.92 },
         { "id": "kitchen-table", "kind": "table", "at": [-0.5, -0.75], "facing": 0, "size": [1.1, 0.72] },
         { "id": "kitchen-chair-1", "kind": "diningchair", "at": [-0.5, -0.05], "facing": 180 },
         { "id": "kitchen-chair-2", "kind": "diningchair", "at": [-0.5, -1.45], "facing": 0 },

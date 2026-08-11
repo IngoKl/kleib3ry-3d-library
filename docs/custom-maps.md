@@ -241,6 +241,7 @@ Common fields: `id`, `kind`, `at`, `facing`. Then:
 | `footstool` | yes | put books on | for feet |
 | `sidetable` | yes | put books on | |
 | `table` | yes | put books on | `size` and `height` both worth setting |
+| `bed` | yes | sit, put books on | headboard is its back; `facing` points the foot into the room |
 | `kitchencounter` | yes | put books on | comes with a sink |
 | `recordshelf` | yes | put books on | fills with records from `music/` |
 | `box` | yes | fill, carry (`X`) | a moving box; books with no shelf pile up in it |

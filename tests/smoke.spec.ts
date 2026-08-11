@@ -455,7 +455,7 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
   await boot(page)
 
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.rooms).toBe(5)
+  expect(stats.rooms).toBe(6)
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 

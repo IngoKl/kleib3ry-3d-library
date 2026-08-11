@@ -1,5 +1,14 @@
 # Ideas / Features
 
+## Open roadmap (carried over from the retired plan.md)
+
+- EPUB reading: pagination to page images, CFI progress
+- Music: playlists and positional audio falloff (scan + record player exist)
+- In-app grid-snap editor for shelves and furniture (the world is hand-edited today)
+- Persistence polish: migrations, rescan reconciliation
+- Packaging: signed installer, auto-update, performance pass
+- Optional: Linux-hosted web build via an HTTP driver
+
 ## Batch 4
 
 ### General

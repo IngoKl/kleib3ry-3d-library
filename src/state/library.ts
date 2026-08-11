@@ -19,7 +19,7 @@ import {
   type PackedBook,
   type RowKey,
 } from '../scene/shelving'
-import type { DerivedWorld, FurnitureOverride } from '../world/derive'
+import { floorAt, supportAt, type DerivedWorld, type FurnitureOverride } from '../world/derive'
 import { boxesIn } from '../world/boxes'
 import {
   LAYOUT_SCHEMA_VERSION,
@@ -105,6 +105,12 @@ type LibraryState = {
    * boxes. Returns how many moved.
    */
   packEverything: () => number
+  /**
+   * Only the strays: every book lying on a *floor* — dropped, tumbled, kicked
+   * about — into the nearest box. Books left deliberately on tables stay put.
+   * Returns how many were picked up.
+   */
+  packLooseBooks: () => number
   /** Add or remove a bookmark at `spread`. Returns true if one is now there. */
   toggleBookmark: (bookId: string, spread: number) => boolean
   /** Remember where you got to in a book, so putting it down keeps the page. */
@@ -575,6 +581,58 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       })
       scheduleSave()
       return before
+    },
+
+    packLooseBooks: () => {
+      const { loose, boxes, savedRows, savedBoxes } = get()
+      const world = currentWorld()
+      if (!world) return 0
+      const crates = boxesIn(world)
+      if (crates.length === 0) return 0
+
+      // A book on a table was *left* there; a book whose only support is the
+      // floor is a stray. The physics settled each one before its placement was
+      // stored, so the stored height is trustworthy.
+      const strays = Object.entries(loose).filter(([, at]) => {
+        const floor = floorAt(world, at.x, at.z, at.y + 0.1)
+        if (floor === null) return true
+        return supportAt(world, at.x, at.z, at.y + 0.1) <= floor + 0.02
+      })
+      if (strays.length === 0) return 0
+
+      const nearestCrate = (x: number, z: number) => {
+        let best = crates[0]!.id
+        let score = Infinity
+        for (const crate of crates) {
+          const d = (crate.x - x) ** 2 + (crate.z - z) ** 2
+          if (d < score) {
+            score = d
+            best = crate.id
+          }
+        }
+        return best
+      }
+
+      const moved = new Set(strays.map(([id]) => id))
+      const nextLoose = { ...loose }
+      const nextBoxes = without(boxes, moved)
+      const nextSavedBoxes = without(savedBoxes, moved)
+      for (const [id, at] of strays) {
+        delete nextLoose[id]
+        const boxId = nearestCrate(at.x, at.z)
+        nextBoxes[boxId] = [...(nextBoxes[boxId] ?? []), id]
+        nextSavedBoxes[boxId] = [...(nextSavedBoxes[boxId] ?? []), id]
+      }
+
+      set({
+        savedRows: without(savedRows, moved),
+        savedBoxes: nextSavedBoxes,
+        loose: nextLoose,
+        boxes: nextBoxes,
+        boxed: flatten(world, nextBoxes),
+      })
+      scheduleSave()
+      return moved.size
     },
   }
 })

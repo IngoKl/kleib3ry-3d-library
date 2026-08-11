@@ -79,36 +79,52 @@ export function Player() {
       const state = useAppStore.getState()
       const {
         held,
+        heldRecord,
         focusedBook,
         focusedSeat,
         focusedFixture,
         focusedRecord,
         shelfTarget,
         boxTarget,
+        crateTarget,
         surfaceTarget,
         seat,
         setHeld,
+        setHeldRecord,
         setSeat,
       } = state
       const shelf = useLibraryStore.getState()
 
       // Sitting down and getting up are both E, which is the same key you use
-      // for everything else you do with your hands. Nothing else is in reach
-      // while you are in a chair, so there is no ambiguity to resolve.
+      // for everything else you do with your hands — and a chair takes you with
+      // a book in hand, because sitting down to read is what it is for.
       if (seat !== null) {
         setSeat(null)
         return
       }
-      if (held === null && focusedSeat !== null) {
+      if (focusedSeat !== null) {
         setSeat(focusedSeat)
         return
       }
 
+      // Holding a record: the deck plays it, a crate takes it back. Its place
+      // in the crate is derived from the folder, so filing it is just letting
+      // go of it.
+      if (heldRecord !== null) {
+        if (focusedFixture) {
+          useMediaStore.getState().play(heldRecord)
+          setHeldRecord(null)
+          return
+        }
+        if (crateTarget) setHeldRecord(null)
+        return
+      }
+
       if (held === null) {
-        // Putting a record on is the same gesture as taking a book down, and it
-        // is offered only when no book is nearer — see `Interaction`.
+        // Taking a record out of the crate is the same gesture as taking a book
+        // down, and it is offered only when no book is nearer — see `Interaction`.
         if (focusedRecord) {
-          useMediaStore.getState().play(focusedRecord)
+          setHeldRecord(focusedRecord)
           return
         }
         if (focusedFixture) {
@@ -220,6 +236,15 @@ export function Player() {
         if (held === null && focusedBox) {
           useLibraryStore.getState().emptyBoxOntoShelves(focusedBox)
         }
+      } else if (e.code === 'KeyH') {
+        e.preventDefault()
+        useAppStore.getState().toggleHud()
+      } else if (e.code === 'F1') {
+        e.preventDefault()
+        const app = useAppStore.getState()
+        app.setControlsOpen(!app.controlsOpen)
+      } else if (e.code === 'Escape' && useAppStore.getState().controlsOpen) {
+        useAppStore.getState().setControlsOpen(false)
       } else if (e.code === 'Escape' && useAppStore.getState().drawn !== null) {
         useAppStore.getState().setDrawn(null)
       } else if (e.code === 'Escape' && useAppStore.getState().seat !== null) {

@@ -74,6 +74,7 @@ export type FurnitureKind =
   | 'footstool'
   | 'sidetable'
   | 'table'
+  | 'bed'
   // storage
   | 'box'
   | 'recordshelf'
@@ -303,6 +304,7 @@ export const FURNITURE_KINDS = [
   'footstool',
   'sidetable',
   'table',
+  'bed',
   'box',
   'recordshelf',
   'kitchencounter',

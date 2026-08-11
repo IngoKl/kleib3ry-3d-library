@@ -5,10 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A 3D personal library: React Three Fiber front end inside a Tauri 2 shell, with a
-Rust core doing indexing, SQLite persistence, and format probing. `docs/plan.md`
-is the living architecture doc and phase plan; read it before any structural change.
-`docs/custom-maps.md` is the guide to the world document — read that before changing
-anything in `src/world/`, because the format is a published interface now.
+Rust core doing indexing, SQLite persistence, and format probing. This file plus
+`docs/` are the architecture record; `docs/ideas.md` holds the wish list and the
+open roadmap. `docs/custom-maps.md` is the guide to the world document — read that
+before changing anything in `src/world/`, because the format is a published
+interface now. `docs/reading-spike.md` records why the reader is a camera dock
+and its DPI budget.
 
 ## Commands
 

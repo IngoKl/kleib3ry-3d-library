@@ -14,7 +14,7 @@ import { useWorldStore } from '../state/world'
  * ground, a lake to the north, a few hundred conifers, and hills behind them.
  *
  * It is all generated from one seed and drawn in a handful of instanced
- * meshes — five draw calls for the entire outdoors — because none of it is
+ * meshes — eight draw calls for the entire outdoors — because none of it is
  * interactive and none of it should ever compete with the books for frame
  * budget. Nothing here is collidable either: you cannot get out of the cabin
  * except onto the porch, and the porch has a railing.
@@ -47,7 +47,18 @@ const LAKE = {
 }
 
 const TRUNK = '#4a3826'
-const NEEDLES = ['#2f4634', '#35503b', '#28402f', '#3d5940']
+const BIRCH_BARK = '#cfc9ba'
+const FIR_NEEDLES = ['#2f4634', '#35503b', '#28402f', '#3d5940']
+const PINE_NEEDLES = ['#2c4234', '#31493c', '#263c2e']
+const BIRCH_LEAVES = ['#5f7d40', '#6f8d4a', '#527239', '#7d9451']
+
+/**
+ * Three species rather than one cone. A forest of identical lollipops is what
+ * reads as cheap: a fir is a stack of skirts, a pine is a bare trunk with its
+ * crown held high, and a birch is a pale stem with a rounded head that breaks
+ * up all that conifer green. Still instanced — one mesh per species part.
+ */
+type Species = 'fir' | 'pine' | 'birch'
 
 type Tree = {
   x: number
@@ -55,6 +66,9 @@ type Tree = {
   height: number
   spread: number
   tint: number
+  /** Random turn about Y, so the low-poly facets do not all face the cabin. */
+  yaw: number
+  species: Species
 }
 
 /** True where a tree would be standing in the lake, the view, or the kitchen. */
@@ -84,66 +98,167 @@ function growForest(keepOut: readonly THREE.Box2[]): Tree[] {
     if (occupied(x, z, keepOut)) continue
     if (distance < 16 && random() > (distance - 8) / 12) continue
 
+    // Mostly firs, a scatter of taller pines above the canopy line, and
+    // birches — shorter, paler — filling in at the front where you can see
+    // them from the windows.
+    const roll = random()
+    const species: Species = roll < 0.55 ? 'fir' : roll < 0.8 ? 'pine' : 'birch'
+    const height =
+      species === 'pine'
+        ? between(random, 9, 17)
+        : species === 'fir'
+          ? between(random, 5.5, 14)
+          : between(random, 4, 8)
+    const spread =
+      species === 'pine'
+        ? between(random, 0.9, 1.6)
+        : species === 'fir'
+          ? between(random, 1.0, 2.1)
+          : between(random, 1.3, 2.3)
+
     trees.push({
       x,
       z,
-      height: between(random, 5.5, 15),
-      spread: between(random, 0.9, 2.1),
-      tint: Math.floor(random() * NEEDLES.length),
+      height,
+      spread,
+      tint: Math.floor(random() * 4),
+      yaw: random() * Math.PI * 2,
+      species,
     })
   }
 
   return trees
 }
 
-/** One instanced mesh per part of a tree: trunks in one, canopies in the other. */
+/**
+ * One instanced mesh per part: every trunk in one draw call, then one call per
+ * species of canopy. Four calls for four hundred trees.
+ */
 function Forest({ trees }: { trees: Tree[] }) {
   const trunks = useRef<THREE.InstancedMesh>(null)
-  const canopies = useRef<THREE.InstancedMesh>(null)
+  const firs = useRef<THREE.InstancedMesh>(null)
+  const pines = useRef<THREE.InstancedMesh>(null)
+  const birches = useRef<THREE.InstancedMesh>(null)
+
+  const bySpecies = useMemo(
+    () => ({
+      fir: trees.filter((tree) => tree.species === 'fir'),
+      pine: trees.filter((tree) => tree.species === 'pine'),
+      birch: trees.filter((tree) => tree.species === 'birch'),
+    }),
+    [trees],
+  )
+
+  // Canopy geometry per species, unit height with the base at y = 0 so an
+  // instance's scale is simply (spread, canopy height, spread).
+  const canopyGeometry = useMemo(() => {
+    const cone = (radius: number, height: number, centreY: number) => {
+      const g = new THREE.ConeGeometry(radius, height, 7)
+      g.translate(0, centreY, 0)
+      return g
+    }
+    // A fir is a stack of skirts, each overlapping the one below.
+    const fir = mergeGeometries([cone(0.62, 0.5, 0.25), cone(0.48, 0.46, 0.52), cone(0.34, 0.44, 0.78)], false)!
+    // A pine carries its crown at the top of a bare trunk.
+    const pine = mergeGeometries([cone(0.5, 0.7, 0.35), cone(0.34, 0.42, 0.79)], false)!
+    // A birch head is rounded, not conical.
+    const birch = new THREE.SphereGeometry(0.5, 7, 5)
+    birch.scale(1, 1.15, 1)
+    birch.translate(0, 0.5, 0)
+    return { fir, pine, birch }
+  }, [])
+  useEffect(
+    () => () => {
+      canopyGeometry.fir.dispose()
+      canopyGeometry.pine.dispose()
+      canopyGeometry.birch.dispose()
+    },
+    [canopyGeometry],
+  )
+
+  /** Where a species' trunk ends and its foliage begins, as fractions of height. */
+  const PROPORTIONS: Record<Species, { trunk: number; canopyFrom: number; girth: number }> = {
+    fir: { trunk: 0.4, canopyFrom: 0.1, girth: 0.16 },
+    pine: { trunk: 0.78, canopyFrom: 0.5, girth: 0.13 },
+    birch: { trunk: 0.6, canopyFrom: 0.38, girth: 0.09 },
+  }
 
   useLayoutEffect(() => {
     const matrix = new THREE.Matrix4()
     const position = new THREE.Vector3()
     const quaternion = new THREE.Quaternion()
+    const turn = new THREE.Quaternion()
+    const up = new THREE.Vector3(0, 1, 0)
     const scale = new THREE.Vector3()
     const colour = new THREE.Color()
 
     trees.forEach((tree, i) => {
-      const trunkHeight = tree.height * 0.42
+      const shape = PROPORTIONS[tree.species]
+      const trunkHeight = tree.height * shape.trunk
       position.set(tree.x, trunkHeight / 2, tree.z)
-      scale.set(tree.spread * 0.16, trunkHeight, tree.spread * 0.16)
-      matrix.compose(position, quaternion, scale)
+      scale.set(tree.spread * shape.girth, trunkHeight, tree.spread * shape.girth)
+      matrix.compose(position, quaternion.identity(), scale)
       trunks.current?.setMatrixAt(i, matrix)
-
-      // The canopy overlaps the trunk, which is what stops a conifer looking
-      // like a lollipop on a stick.
-      const canopyHeight = tree.height * 0.78
-      position.set(tree.x, trunkHeight * 0.55 + canopyHeight / 2, tree.z)
-      scale.set(tree.spread, canopyHeight, tree.spread)
-      matrix.compose(position, quaternion, scale)
-      canopies.current?.setMatrixAt(i, matrix)
-      canopies.current?.setColorAt(i, colour.set(NEEDLES[tree.tint]!))
+      trunks.current?.setColorAt(i, colour.set(tree.species === 'birch' ? BIRCH_BARK : TRUNK))
     })
+
+    const palettes: Record<Species, string[]> = {
+      fir: FIR_NEEDLES,
+      pine: PINE_NEEDLES,
+      birch: BIRCH_LEAVES,
+    }
+    const fill = (mesh: THREE.InstancedMesh | null, list: Tree[]) => {
+      if (!mesh) return
+      list.forEach((tree, i) => {
+        const shape = PROPORTIONS[tree.species]
+        const canopyHeight = tree.height * (1 - shape.canopyFrom)
+        position.set(tree.x, tree.height * shape.canopyFrom, tree.z)
+        scale.set(tree.spread, canopyHeight, tree.spread)
+        matrix.compose(position, turn.setFromAxisAngle(up, tree.yaw), scale)
+        mesh.setMatrixAt(i, matrix)
+        const palette = palettes[tree.species]
+        mesh.setColorAt(i, colour.set(palette[tree.tint % palette.length]!))
+      })
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+      mesh.computeBoundingSphere()
+    }
 
     if (trunks.current) {
       trunks.current.instanceMatrix.needsUpdate = true
+      if (trunks.current.instanceColor) trunks.current.instanceColor.needsUpdate = true
       trunks.current.computeBoundingSphere()
     }
-    if (canopies.current) {
-      canopies.current.instanceMatrix.needsUpdate = true
-      if (canopies.current.instanceColor) canopies.current.instanceColor.needsUpdate = true
-      canopies.current.computeBoundingSphere()
-    }
-  }, [trees])
+    fill(firs.current, bySpecies.fir)
+    fill(pines.current, bySpecies.pine)
+    fill(birches.current, bySpecies.birch)
+  }, [trees, bySpecies, canopyGeometry])
 
   return (
     <group>
       <instancedMesh ref={trunks} args={[undefined, undefined, trees.length]} castShadow>
         <cylinderGeometry args={[0.7, 1, 1, 6]} />
-        <meshStandardMaterial color={TRUNK} roughness={1} />
+        <meshStandardMaterial roughness={1} />
       </instancedMesh>
-      <instancedMesh ref={canopies} args={[undefined, undefined, trees.length]} castShadow>
-        <coneGeometry args={[0.5, 1, 7]} />
+      <instancedMesh
+        ref={firs}
+        args={[canopyGeometry.fir, undefined, bySpecies.fir.length]}
+        castShadow
+      >
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+      <instancedMesh
+        ref={pines}
+        args={[canopyGeometry.pine, undefined, bySpecies.pine.length]}
+        castShadow
+      >
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+      <instancedMesh
+        ref={birches}
+        args={[canopyGeometry.birch, undefined, bySpecies.birch.length]}
+        castShadow
+      >
         <meshStandardMaterial roughness={1} flatShading />
       </instancedMesh>
     </group>
@@ -236,7 +351,7 @@ function Hills() {
   if (!geometry) return null
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial color="#5b6b70" roughness={1} flatShading />
+      <meshStandardMaterial color="#59685f" roughness={1} flatShading />
     </mesh>
   )
 }
@@ -270,7 +385,7 @@ export function Outside() {
       {/* The ground, a whisker below the cabin floor so the two never z-fight. */}
       <mesh position={[0, -0.32, 0]} rotation-x={-Math.PI / 2} receiveShadow>
         <circleGeometry args={[GROUND_RADIUS, 48]} />
-        <meshStandardMaterial color="#4c5a3a" roughness={1} />
+        <meshStandardMaterial color="#4a5c34" roughness={1} />
       </mesh>
 
       {/* A pale shore, so the water meets the grass at something. Under the

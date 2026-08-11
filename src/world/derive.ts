@@ -50,6 +50,8 @@ export const FURNITURE_SIZE: Record<
   footstool: { width: 0.5, depth: 0.42, height: 0.38, solid: true, surface: true },
   sidetable: { width: 0.46, depth: 0.46, height: 0.56, solid: true, surface: true },
   table: { width: 1.3, depth: 0.78, height: 0.74, solid: true, surface: true },
+  // A surface, so a book can be left on the covers — where books end up.
+  bed: { width: 1.5, depth: 2.05, height: 0.55, solid: true, surface: true },
   box: { width: 0.52, depth: 0.4, height: 0.36, solid: true, surface: false },
   recordshelf: { width: 0.9, depth: 0.36, height: 0.78, solid: true, surface: true },
   kitchencounter: { width: 1.8, depth: 0.62, height: 0.92, solid: true, surface: true },
@@ -65,7 +67,7 @@ export const FURNITURE_SIZE: Record<
 }
 
 /** Furniture you can sit in. A footstool is for feet. */
-export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair', 'bench'])
+export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair', 'bench', 'bed'])
 
 /** Furniture that emits light, and can therefore be switched. */
 export const LAMPS = new Set<FurnitureKind>(['floorlamp', 'pendant', 'fireplace'])

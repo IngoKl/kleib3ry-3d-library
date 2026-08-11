@@ -5,12 +5,13 @@ you design, read as physical books — with a record player wired to your music
 folder.
 
 Desktop app: React Three Fiber inside a Tauri 2 shell, with a Rust core doing
-the indexing and page rasterisation. The full architecture and phase plan live
-in [docs/plan.md](docs/plan.md).
+the indexing and page rasterisation. The architecture notes live in
+[CLAUDE.md](CLAUDE.md) and the docs under [docs/](docs/).
 
 **Status: you can walk it, live in it, and read in it.** The default library is
 a cabin in the woods: a great room with a hearth, a loft up a flight of stairs,
-a reading corner, a kitchen, and a porch looking into the forest. Sixteen
+a reading corner with a bedroom above it looking over the lake, a kitchen, and
+a porch looking into the forest. Sixteen
 bookcases and ~1,700 books, first-person movement with collisions and stairs, a
 crosshair that finds a book and takes it off the shelf, and page-by-page reading
 on a curved mesh. There is a lake through the north window.
@@ -61,8 +62,8 @@ Both can run at once — `tauri:dev` reuses a Vite server that is already up.
 | `W` `A` `S` `D` | walk |
 | `shift` | run |
 | `ctrl` | kneel, to read the bottom shelf — held, not toggled |
-| `E` | take the book under the crosshair (off a shelf, out of a box, off a table); put it on the shelf, in the box or on the table you are looking at; sit in a chair; switch a lamp; put a record on; put the coffee on |
-| `Q` | drop what you are holding — it falls, tumbles and stays where it lands |
+| `E` | take the book or record under the crosshair; put it on the shelf, in the box, on the table or on the deck you are looking at; sit down — with a book in hand, if reading is the plan; switch a lamp; put the coffee on |
+| `Q` | drop the book you are holding — it falls, tumbles and stays where it lands; a record files itself back into its crate |
 | `O` | put it down open, at the page you were on |
 | `G` | empty the box you are looking at onto the shelves |
 | `X` | pick up the moving box you are looking at and carry it; `X` again sets it down |
@@ -73,6 +74,8 @@ Both can run at once — `tauri:dev` reuses a Vite server that is already up.
 | `←` `→` | turn pages without dragging; `Esc` closes the book |
 | `B` | put a bookmark in the page you are on, or take it out again |
 | `J` | while reading, go to a page by number |
+| `H` | hide the interface, and bring it back |
+| `F1` | the controls card, in the room |
 
 Bookmarks are slips standing out of the top of the book, placed along its width
 by how far in they are, and each one is a different colour with a stitched edge
@@ -131,8 +134,7 @@ src/                front end
 src-tauri/          Rust core: commands, settings, db, format + tag probes
 tests/              Playwright harness — smoke tests plus world/layout units
 scripts/            asset generation, icon, test corpus
-spikes/reading/     throwaway spike that de-risked 3D page reading
-docs/plan.md            architecture, phase plan, spike amendments
+docs/reading-spike.md   findings from the spike that de-risked 3D page reading
 docs/library-folder.md  the library folder format, and the reconciliation rules
 docs/custom-maps.md     building your own building: rooms, lofts, stairs, light
 docs/ideas.md           the running wish list
@@ -143,8 +145,7 @@ docs/ideas.md           the running wish list
 **Nothing above `src/services/` imports `@tauri-apps/*`.** Everything reaches
 the filesystem through the `LibraryService` interface, which has a native driver
 and a no-filesystem browser driver today. That is what keeps a Linux-hosted web
-build a driver swap instead of a rewrite — see
-[docs/plan.md](docs/plan.md#the-one-architectural-rule).
+build a driver swap instead of a rewrite.
 
 ## Regenerating the icon
 

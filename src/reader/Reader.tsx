@@ -11,7 +11,7 @@ import { useLibraryStore } from '../state/library'
 import { player } from '../state/player'
 
 /**
- * Read mode, ported from `spikes/reading`.
+ * Read mode, ported from the reading spike (see docs/reading-spike.md).
  *
  * The spike's three hard-won corrections are preserved here: the gutter curl
  * decays to zero (or the sheet dives through the page block), the turn rotates

@@ -35,6 +35,8 @@ export const sceneRefs: {
   /** The records in the crates, and which track each instance is. */
   records: THREE.InstancedMesh | null
   recordIds: string[]
+  /** `recordCrates[instanceId]` — which crate that record is filed in. */
+  recordCrates: string[]
   /** Books lying about the room, on tables and on the floor. */
   looseBooks: THREE.InstancedMesh | null
   looseIds: string[]
@@ -65,6 +67,7 @@ export const sceneRefs: {
   fixtures: null,
   records: null,
   recordIds: [],
+  recordCrates: [],
   looseBooks: null,
   looseIds: [],
   openBooks: null,

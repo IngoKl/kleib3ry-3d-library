@@ -35,7 +35,7 @@ function RoomFill({ room, unlit, night }: { room: RoomSpec; unlit: boolean; nigh
       {unlit && !room.outdoor && (
         <pointLight
           position={[cx, room.elevation + room.height - 0.5, cz]}
-          intensity={5}
+          intensity={3.6}
           distance={Math.hypot(room.size[0], room.size[1]) + 2}
           color="#ffd9a8"
         />
@@ -118,9 +118,12 @@ export function Lighting() {
           why night does not go truly dark: the ambient floor stays generous
           and *warm*, so the dark is lamplight fading into shadow rather than
           black corners with hot pools between them. */}
-      <ambientLight intensity={night ? 0.34 : 0.45} color={night ? '#a8967e' : '#ffffff'} />
+      {/* The daytime fill is warm and a notch lower than it used to be: even
+          white light at office levels is what made the cabin read as a meeting
+          room. The sun below carries more of the day instead. */}
+      <ambientLight intensity={night ? 0.34 : 0.38} color={night ? '#a8967e' : '#fdf2e0'} />
       <hemisphereLight
-        args={night ? ['#41465c', '#33291e', 0.45] : ['#d6e6f4', '#7d6a4e', 0.55]}
+        args={night ? ['#41465c', '#33291e', 0.45] : ['#cfdff0', '#8a6f4c', 0.5]}
       />
 
       {/* Low and to the north-west, which is where the lake is: afternoon
@@ -129,8 +132,8 @@ export function Lighting() {
       <directionalLight
         position={[midX - spanX * 0.5, extent.height + radius * 0.55, extent.minZ - radius * 0.7]}
         target-position={[midX, 0, midZ]}
-        intensity={night ? 0.35 : 1.7}
-        color={night ? '#b4c4e2' : '#ffeccf'}
+        intensity={night ? 0.35 : 1.9}
+        color={night ? '#b4c4e2' : '#ffe6c2'}
         castShadow
         shadow-mapSize={[2048, 2048]}
         // Square and generous. The frustum is in the *light's* view space, so a

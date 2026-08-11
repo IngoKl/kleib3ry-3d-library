@@ -50,13 +50,21 @@ function worldWith(edit: (doc: WorldDocument) => void) {
 
 test.describe('world document', () => {
   test('the default the app writes for you actually parses', () => {
-    // The cabin: a great room, the loft inside its volume, a reading corner,
-    // a kitchen and a porch.
-    expect(WORLD.rooms.map((r) => r.id)).toEqual(['main', 'loft', 'reading', 'kitchen', 'porch'])
+    // The cabin: a great room, the loft inside its volume, a reading corner
+    // with the bedroom on top of it, a kitchen and a porch.
+    expect(WORLD.rooms.map((r) => r.id)).toEqual([
+      'main',
+      'loft',
+      'reading',
+      'bedroom',
+      'kitchen',
+      'porch',
+    ])
     expect(WORLD.shelves.length).toBeGreaterThan(10)
     expect(WORLD.furniture.some((f) => f.kind === 'box')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'armchair')).toBe(true)
     expect(WORLD.furniture.some((f) => f.kind === 'recordplayer')).toBe(true)
+    expect(WORLD.furniture.some((f) => f.kind === 'bed')).toBe(true)
   })
 
   test('the loft is a storey, with a stair and a hole for it to come up', () => {
@@ -71,32 +79,35 @@ test.describe('world document', () => {
     expect(stair.bottom).toBe(0)
     expect(stair.top).toBeCloseTo(loft.elevation, 5)
 
-    // The climb is continuous: no step bigger than one, all the way up. The
-    // trace is collected first so a failure names *where* the flight breaks —
-    // "a 0.6 m step two thirds of the way up" is a fixable report and
-    // "expected 0.42" is not. Walked along the flight's own up-vector rather
-    // than assuming it climbs +Z, so re-orienting the staircase in the default
-    // map does not falsify the test.
-    const climb: { z: number; floor: number | null }[] = []
-    const at = (t: number) => ({
-      x: stair.x + stair.dx * (t - 0.5) * stair.run,
-      z: stair.z + stair.dz * (t - 0.5) * stair.run,
-    })
-    let previous = floorAt(WORLD, at(0).x, at(0).z, 0)!
-    for (let t = 0; t <= 1.0001; t += 0.02) {
-      const { x, z } = at(t)
-      const here = floorAt(WORLD, x, z, previous)
-      climb.push({ z: +z.toFixed(3), floor: here })
-      if (here !== null) previous = here
+    // The climb is continuous: no step bigger than one, all the way up — for
+    // *every* flight in the cabin, the bedroom's included. The trace is
+    // collected first so a failure names *where* the flight breaks — "a 0.6 m
+    // step two thirds of the way up" is a fixable report and "expected 0.42"
+    // is not. Walked along the flight's own up-vector rather than assuming it
+    // climbs +Z, so re-orienting a staircase in the default map does not
+    // falsify the test.
+    for (const flight of WORLD.stairs) {
+      const climb: { z: number; floor: number | null }[] = []
+      const at = (t: number) => ({
+        x: flight.x + flight.dx * (t - 0.5) * flight.run,
+        z: flight.z + flight.dz * (t - 0.5) * flight.run,
+      })
+      let previous = floorAt(WORLD, at(0).x, at(0).z, flight.bottom)!
+      for (let t = 0; t <= 1.0001; t += 0.02) {
+        const { x, z } = at(t)
+        const here = floorAt(WORLD, x, z, previous)
+        climb.push({ z: +z.toFixed(3), floor: here })
+        if (here !== null) previous = here
+      }
+
+      const gaps = climb
+        .map((step, i) => ({ ...step, rise: i === 0 ? 0 : (step.floor ?? NaN) - (climb[i - 1]!.floor ?? NaN) }))
+        .filter((step) => step.floor === null || !(Math.abs(step.rise) <= STEP_UP))
+      expect(gaps, `a flight is not walkable: ${JSON.stringify(gaps)}`).toEqual([])
+
+      // …and you arrive on the upper floor, not under it.
+      expect(previous).toBeCloseTo(flight.top, 2)
     }
-
-    const gaps = climb
-      .map((step, i) => ({ ...step, rise: i === 0 ? 0 : (step.floor ?? NaN) - (climb[i - 1]!.floor ?? NaN) }))
-      .filter((step) => step.floor === null || !(Math.abs(step.rise) <= STEP_UP))
-    expect(gaps, `the flight is not walkable: ${JSON.stringify(gaps)}`).toEqual([])
-
-    // …and you arrive on the loft floor, not under it.
-    expect(previous).toBeCloseTo(loft.elevation, 2)
   })
 
   test('you cannot walk off the loft', () => {

@@ -9,6 +9,7 @@ import { useLightStore } from '../state/lights'
 import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
 import { APPLIANCES, LAMPS, SITTABLE, type DerivedFurniture } from '../world/derive'
+import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
 
 /**
  * Furniture, built from boxes and cylinders rather than shipped as models.
@@ -37,8 +38,10 @@ const BRASS = '#b08d57'
 const SHADE = '#f2e3c4'
 const CARD = '#b9915f'
 const CARD_DARK = '#a07a4b'
-const SLATE = '#4a4a4a'
-const STEEL = '#8f9296'
+// Soapstone and aged brushed metal rather than commercial grey: the kitchen
+// was the one corner still furnished from a catalogue.
+const SLATE = '#3f4440'
+const STEEL = '#7e8177'
 const LEAF = '#3f6b42'
 const TERRACOTTA = '#9c5a3c'
 
@@ -222,6 +225,41 @@ function Table({ width, depth, height }: { width: number; depth: number; height:
           </mesh>
         )),
       )}
+    </group>
+  )
+}
+
+/**
+ * A bed: frame, mattress, duvet and pillows. The headboard is the -Z end, so
+ * `facing: 0` points the foot into the room. It is a surface — a book left on
+ * the covers is exactly where books end up — and you can sit on the edge.
+ */
+function Bed({ width, depth }: { width: number; depth: number }) {
+  return (
+    <group>
+      <mesh position={[0, 0.12, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, 0.24, depth]} />
+        <meshStandardMaterial color={PINE} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 0.35, -depth / 2 + 0.025]} castShadow>
+        <boxGeometry args={[width, 0.6, 0.05]} />
+        <meshStandardMaterial color={OAK} roughness={0.75} />
+      </mesh>
+      <mesh position={[0, 0.32, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width - 0.08, 0.16, depth - 0.06]} />
+        <meshStandardMaterial color="#e7ded0" roughness={0.95} />
+      </mesh>
+      {/* The duvet, thrown over the foot two-thirds. */}
+      <mesh position={[0, 0.43, depth * 0.17]} castShadow receiveShadow>
+        <boxGeometry args={[width - 0.02, 0.09, depth * 0.62]} />
+        <meshStandardMaterial color={CLOTH} roughness={1} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[side * (width / 4 - 0.02), 0.45, -depth / 2 + 0.3]} castShadow>
+          <boxGeometry args={[width / 2 - 0.16, 0.1, 0.4]} />
+          <meshStandardMaterial color={SHADE} roughness={0.95} />
+        </mesh>
+      ))}
     </group>
   )
 }
@@ -494,10 +532,20 @@ function RecordShelf({ width, depth, height }: { width: number; depth: number; h
   )
 }
 
-/** The deck. A plinth, a platter, an arm, and a record on it when one is on. */
-function RecordPlayer({ spinning, loaded }: { spinning: boolean; loaded: boolean }) {
+/**
+ * The deck. A plinth, a platter, an arm — and, when a record is on, its disc
+ * on the platter and its sleeve leaning against the plinth, so the record you
+ * carried over is visibly the one playing.
+ */
+function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: string | null }) {
   const platter = useRef<THREE.Group>(null)
   const angle = useRef(0)
+
+  const track = useMediaStore((s) => (playing ? s.trackAt(playing) : undefined))
+  const art = track ? sleeveArtFor(track) : null
+  const sleeve = useMemo(() => (track ? makeSleeveTexture(sleeveArtFor(track), 256) : null), [track])
+  useEffect(() => () => sleeve?.dispose(), [sleeve])
+  const loaded = playing !== null
 
   // Turned by hand rather than with useFrame from the parent: the platter is
   // the only thing in the cabin that moves on its own, and it should stop when
@@ -537,9 +585,11 @@ function RecordPlayer({ spinning, loaded }: { spinning: boolean; loaded: boolean
               <cylinderGeometry args={[0.148, 0.148, 0.004, 28]} />
               <meshStandardMaterial color="#141414" roughness={0.42} />
             </mesh>
+            {/* The label wears the sleeve's colour, so glancing at the platter
+                tells you which record is on. */}
             <mesh position={[0, 0.012, 0]}>
               <cylinderGeometry args={[0.05, 0.05, 0.002, 20]} />
-              <meshStandardMaterial color="#c2453a" roughness={0.85} />
+              <meshStandardMaterial color={art?.colour ?? '#c2453a'} roughness={0.85} />
             </mesh>
           </>
         )}
@@ -559,6 +609,21 @@ function RecordPlayer({ spinning, loaded }: { spinning: boolean; loaded: boolean
           <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.75} />
         </mesh>
       </group>
+      {/* The sleeve of whatever is on, propped against the plinth the way a
+          sleeve is actually left while its record plays. Keyed so the artwork
+          mounts a fresh material — see HeldBook for why. */}
+      {sleeve && (
+        <group position={[0.255, 0.156, -0.02]} rotation-y={0.18} rotation-x={-0.14}>
+          <mesh castShadow>
+            <boxGeometry args={[0.315, 0.315, 0.004]} />
+            <meshStandardMaterial color="#221c17" roughness={0.8} />
+          </mesh>
+          <mesh position={[0, 0, 0.0028]}>
+            <planeGeometry args={[0.31, 0.31]} />
+            <meshStandardMaterial key={playing ?? 'sleeve'} map={sleeve} roughness={0.72} />
+          </mesh>
+        </group>
+      )}
     </group>
   )
 }
@@ -791,6 +856,8 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <SideTable height={item.height} />
       case 'table':
         return <Table width={item.width} depth={item.depth} height={item.height} />
+      case 'bed':
+        return <Bed width={item.width} depth={item.depth} />
       case 'rug':
         return <Rug width={item.width} depth={item.depth} />
       case 'floorlamp':
@@ -808,7 +875,7 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
       case 'recordshelf':
         return <RecordShelf width={item.width} depth={item.depth} height={item.height} />
       case 'recordplayer':
-        return <RecordPlayer spinning={playing !== null && !paused} loaded={playing !== null} />
+        return <RecordPlayer spinning={playing !== null && !paused} playing={playing} />
       case 'picture':
         return <Picture item={item} source={source} />
       case 'box':

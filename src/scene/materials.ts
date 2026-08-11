@@ -6,17 +6,19 @@ import * as THREE from 'three'
  * about what a library looks like rather than about your library.
  */
 export const MATERIALS = {
-  /** Limewashed boards rather than plaster: this is a cabin, not a gallery. */
-  wall: '#e3d8c4',
-  ceiling: '#efe6d5',
-  skirting: '#c9b494',
+  /**
+   * Limewashed boards rather than plaster: this is a cabin, not a gallery.
+   * Deliberately a shade deeper and warmer than a paint-chip cream — the pale
+   * flat beige it replaced read as office partition, not as timber with wash
+   * on it.
+   */
+  wall: '#d8c4a3',
+  /** Skirting in wood, not trim-paint: the wall meets the floor in timber. */
+  skirting: '#9a7248',
   /** Exposed rafters and the lintel over an opening. */
   timber: '#6d4b2e',
-  daylight: '#cfe2f2',
   carcass: '#8a6039',
-  /** Deck boards on the porch, weathered a shade greyer than indoors. */
-  deck: '#8b7358',
-  stone: '#9a948b',
+  stone: '#948b7c',
 } as const
 
 /** One texture tile covers this many metres of floor in each direction. */
@@ -43,7 +45,7 @@ function mulberry32(seed: number) {
  * point of having gone outside.
  */
 const FINISHES = {
-  boards: { r: 138, g: 100, b: 64, plank: PLANK_WIDTH_M, seam: 'rgba(40, 24, 12, 0.5)' },
+  boards: { r: 146, g: 101, b: 58, plank: PLANK_WIDTH_M, seam: 'rgba(40, 24, 12, 0.5)' },
   deck: { r: 128, g: 110, b: 86, plank: 0.22, seam: 'rgba(30, 24, 16, 0.75)' },
   stone: { r: 150, g: 145, b: 136, plank: 0.6, seam: 'rgba(60, 58, 54, 0.55)' },
   /** Pale spruce for overhead: a cabin ceiling is boards, not plaster. */

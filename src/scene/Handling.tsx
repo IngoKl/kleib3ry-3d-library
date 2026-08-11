@@ -44,6 +44,12 @@ export function Handling() {
 
       if (e.code === 'KeyQ') {
         e.preventDefault()
+        // A record has no loose life on the floor: letting go of one files it
+        // back into its crate, wherever you are standing.
+        if (app.heldRecord) {
+          app.setHeldRecord(null)
+          return
+        }
         // Drop it. Somewhere in front of you, and then wherever it rolls to —
         // the one thing in the room that is not where you put it.
         if (!app.held) return
@@ -91,11 +97,13 @@ export function Handling() {
       if (e.code === 'KeyL') {
         e.preventDefault()
         // Label the case you are aiming at. Holding a book that is the shelf
-        // position under the crosshair; empty-handed it is whichever case the
-        // book under the crosshair is standing in.
+        // position under the crosshair; otherwise the case the focused book is
+        // standing in; failing both, the carcass itself — which is what makes
+        // an *empty* bookcase labellable at all.
         const shelfId =
           app.shelfTarget?.shelfId ??
-          shelf.packed.find((item) => item.id === app.focusedBook)?.shelfId
+          shelf.packed.find((item) => item.id === app.focusedBook)?.shelfId ??
+          app.focusedShelf
         if (shelfId) app.setLabelling(shelfId)
         return
       }

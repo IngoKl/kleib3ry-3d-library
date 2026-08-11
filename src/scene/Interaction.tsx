@@ -57,6 +57,8 @@ export function Interaction() {
       store.setBoxTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
+      store.setCrateTarget(null)
+      store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
       return
     }
@@ -71,6 +73,8 @@ export function Interaction() {
       store.setBoxTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
+      store.setCrateTarget(null)
+      store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
       return
     }
@@ -80,6 +84,69 @@ export function Interaction() {
 
     raycaster.setFromCamera(centre, camera)
     raycaster.far = REACH
+
+    // Holding a record: the deck takes it, a crate takes it back. Nothing else
+    // is offered — the sleeve fills the hand a book would need.
+    if (store.heldRecord !== null) {
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedSeat(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedRecord(null)
+      store.setFocusedShelf(null)
+      store.setSurfaceTarget(null)
+
+      const kindOf = (id: string | null) =>
+        id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
+
+      let deck: { distance: number; id: string } | null = null
+      const operable = sceneRefs.fixtures
+      if (operable) {
+        const hit = raycaster.intersectObject(operable, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id && kindOf(id) === 'recordplayer') deck = { distance: hit.distance, id }
+      }
+
+      // The crate carcass, or the records already filed in it — pointing into
+      // a full crate should read as "put it back", not as a miss.
+      let crate: { distance: number; id: string } | null = null
+      const tops = sceneRefs.surfaces
+      if (tops) {
+        const hit = raycaster.intersectObject(tops, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id && kindOf(id) === 'recordshelf') crate = { distance: hit.distance, id }
+      }
+      const filed = sceneRefs.records
+      if (filed) {
+        const hit = raycaster.intersectObject(filed, false)[0]
+        const owner =
+          hit?.instanceId === undefined ? undefined : sceneRefs.recordCrates[hit.instanceId]
+        if (hit && owner && (!crate || hit.distance < crate.distance)) {
+          crate = { distance: hit.distance, id: owner }
+        }
+      }
+
+      store.setFocusedFixture(deck && (!crate || deck.distance < crate.distance) ? deck.id : null)
+      store.setCrateTarget(crate && (!deck || crate.distance <= deck.distance) ? crate.id : null)
+      return
+    }
+    store.setCrateTarget(null)
+
+    // The nearest bookcase carcass, held book or not: this is what `L` labels
+    // when there is no book to go by — an empty case is still worth writing on.
+    let carcass: { distance: number; id: string } | null = null
+    for (const group of sceneRefs.shelfGroups) {
+      if (!group.mesh) continue
+      const hit = raycaster.intersectObject(group.mesh, false)[0]
+      if (!hit || hit.instanceId === undefined) continue
+      const index = group.indices[hit.instanceId]
+      const id = index === undefined ? undefined : world.shelves[index]?.id
+      if (id && (!carcass || hit.distance < carcass.distance)) {
+        carcass = { distance: hit.distance, id }
+      }
+    }
+    store.setFocusedShelf(carcass?.id ?? null)
 
     if (store.held === null) {
       store.setShelfTarget(null)
@@ -197,10 +264,19 @@ export function Interaction() {
     // Holding a book: aim at somewhere to put it. Cases are instanced per row
     // count, so every group has to be tried and the nearest hit wins.
     store.setFocusedBook(null)
-    store.setFocusedSeat(null)
     store.setFocusedBox(null)
     store.setFocusedFixture(null)
     store.setFocusedRecord(null)
+
+    // A chair still takes you with your hands full: sitting down with the book
+    // you mean to read is what the chair is for.
+    let chair: { distance: number; id: string } | null = null
+    const sittable = sceneRefs.seats
+    if (sittable && store.seat === null) {
+      const hit = raycaster.intersectObject(sittable, true)[0]
+      const id = furnitureIdOf(hit)
+      if (hit && id) chair = { distance: hit.distance, id }
+    }
 
     const crates = sceneRefs.boxes
     const boxHit = crates ? raycaster.intersectObject(crates, true)[0] : undefined
@@ -222,6 +298,23 @@ export function Interaction() {
         nearest = { distance: hit.distance, shelf, point: hit.point }
       }
     }
+
+    // The chair, if it is plainly what you are aiming at. A bench is also a
+    // surface, and on a tie the surface wins — a book laid on a bench beats
+    // sitting on it with the book still in hand.
+    if (
+      chair &&
+      (!boxHit || chair.distance < boxHit.distance) &&
+      (!topHit || chair.distance < topHit.distance) &&
+      (!nearest || chair.distance < nearest.distance)
+    ) {
+      store.setFocusedSeat(chair.id)
+      store.setBoxTarget(null)
+      store.setSurfaceTarget(null)
+      store.setShelfTarget(null)
+      return
+    }
+    store.setFocusedSeat(null)
 
     // A box in front of a bookcase takes the book: you are looking down into
     // it, and the case behind is not what you are aiming at.
