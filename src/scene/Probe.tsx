@@ -1,11 +1,20 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
+import { sceneRefs } from './refs'
 import { metrics } from '../state/metrics'
 
 /** Writes render stats into the shared metrics object once per frame. */
 export function Probe() {
   const gl = useThree((s) => s.gl)
+  const scene = useThree((s) => s.scene)
   const acc = useRef({ frames: 0, elapsed: 0, window: [] as number[] })
+
+  useEffect(() => {
+    sceneRefs.scene = scene
+    return () => {
+      sceneRefs.scene = null
+    }
+  }, [scene])
 
   useFrame((_, delta) => {
     const a = acc.current

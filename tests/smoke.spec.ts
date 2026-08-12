@@ -1352,11 +1352,12 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
   // Every book in the library is still one draw call, which is the whole point
   // of an atlas rather than a text mesh per spine. The ceiling is deliberately
   // loose, because it is not the books that set it: the cabin is a few hundred
-  // boxes and cylinders of furniture, and that is what the number tracks. What
-  // it rules out is a shelved book costing anything at all — see the test below
-  // it, which is the one that actually guards that.
+  // boxes and cylinders of furniture — plus the outdoor dressing (mist, smoke,
+  // birds, dust) — and that is what the number tracks. What it rules out is a
+  // shelved book costing anything at all — see the test below it, which is the
+  // one that actually guards that.
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.drawCalls).toBeLessThan(600)
+  expect(stats.drawCalls).toBeLessThan(640)
 
   // Standing still costs nothing: no cell changes hands.
   const settled = near.reprinted
@@ -1772,7 +1773,12 @@ test('an EPUB opens, is set in type, and turns like any other book', async ({ pa
   expect(opened.showing).toEqual([0, 1])
 
   await page.keyboard.press('ArrowRight')
-  await page.waitForFunction(() => window.__app.reader().spread === 1, null, { timeout: 20_000 })
+  // The leaf falls in *rendered frames* — the per-frame step is clamped at
+  // 1/20 s, so the 0.85 s fall needs seventeen of them plus both faces
+  // rasterising first. On the software rasteriser a frame can be most of a
+  // second, which makes this a minute-scale budget like `walkUntil`'s: it is
+  // here to catch a leaf that never lands, not to time one.
+  await page.waitForFunction(() => window.__app.reader().spread === 1, null, { timeout: 60_000 })
   expect(await page.evaluate(() => window.__app.reader().showing)).toEqual([2, 3])
 
   // And it is the same book on the next open: pagination happens once, in

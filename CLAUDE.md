@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this is
+## What This Is
 
 kleib3ry — a 3D personal library: React Three Fiber front end inside a Tauri 2
 shell, with a Rust core doing indexing, SQLite persistence and format probing.
@@ -72,7 +72,7 @@ npm run serve -- --root <folder> --dist dist
 `scripts/make-test-library.mjs` generates a folder of throwaway PDFs/EPUBs to point
 the desktop probe at. `npm run icon` regenerates the app icon from `scripts/make-icon.mjs`.
 
-## The one architectural rule
+## The One Architectural Rule
 
 **Nothing above `src/services/` may import `@tauri-apps/*`.** All filesystem access
 goes through the `LibraryService` interface in [src/services/types.ts](src/services/types.ts).
@@ -88,7 +88,7 @@ at runtime, so `httpDriver` is selected at _build_ time by `VITE_DRIVER=http`
 a runtime probe would be worse. The HTTP driver and the whole container were added
 without a single change above `src/services/`, which is what this rule is for.
 
-## Three Rust crates
+## Three Rust Crates
 
 `core/` is indexing, SQLite, the format probes and the media folders, with no GUI
 at all. `src-tauri/` is the desktop shell — IPC commands, settings, the asset
@@ -104,10 +104,10 @@ The one piece of security in the server is `is_allowed` in `server/src/main.rs`:
 four directories are readable over HTTP, every path is canonicalised and checked
 against them, and books are served by index id rather than by name.
 
-## How the pieces fit
+## How the Pieces Fit
 
 **Layout is ids, positions are derived.** The persisted layout document is mostly
-`{ schemaVersion, rows: { "unit:row": [bookId, ...] }, boxes: { boxId: [bookId, ...] } }`.
+`{ schemaVersion, rows: { "shelfId:row": [bookId, ...] }, boxes: { boxId: [bookId, ...] } }`.
 Physical placement is recomputed by packing each row left to right in
 [src/scene/shelving.ts](src/scene/shelving.ts) and each box bottom-up in
 [src/world/boxes.ts](src/world/boxes.ts), so a book whose dimensions change pushes

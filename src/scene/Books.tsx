@@ -223,6 +223,7 @@ export function Books() {
    * and walking costs only the cells that actually changed hands.
    */
   const frame = useRef(0)
+  const lastPass = useRef(0)
   const reprint = () => {
     const mesh = meshRef.current
     if (!mesh) return
@@ -322,12 +323,19 @@ export function Books() {
     }
   }
 
-  useFrame((_, delta) => {
+  useFrame(({ clock }, delta) => {
     const mesh = meshRef.current
     if (!mesh) return
 
     frame.current += 1
-    if (frame.current % REPRINT_EVERY === 0) reprint()
+    // Counted in frames so a turn on the spot amortises over several passes —
+    // but bounded in wall-clock too, because on a software rasteriser a frame
+    // can be most of a second and six of them is a shelf that visibly refuses
+    // to resolve. The per-pass cap already limits what one pass can cost.
+    if (frame.current % REPRINT_EVERY === 0 || clock.elapsedTime - lastPass.current > 0.8) {
+      lastPass.current = clock.elapsedTime
+      reprint()
+    }
 
     const { focusedBook: focused, drawn } = useAppStore.getState()
     const rate = approach(10, delta)

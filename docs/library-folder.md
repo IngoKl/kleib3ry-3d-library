@@ -1,4 +1,4 @@
-# The library folder
+# The Library Folder
 
 A library is a **folder**. Point the app at one and you get that library: its
 rooms, its furniture, and which book is on which shelf. Point it at a different
@@ -48,10 +48,11 @@ is tens of thousands of files — while a music folder is hundreds and a video
 folder is dozens, so a second cache to keep in sync would buy nothing and a record
 you dropped in five seconds ago would not be on the shelf.
 
-**Before you have chosen a folder**, the same two files live in the app's own
-config directory instead, so a fresh install still has somewhere to put them.
-They move to the library folder the first time you choose one. The panel in the
-app always shows the path of the file that is currently live.
+**Before you have chosen a folder**, `library.json`, `books.json` and
+`ambience.json` live in the app's own config directory instead, so a fresh
+install still has somewhere to put them. They move to the library folder the
+first time you choose one. The panel in the app always shows the path of the file
+that is currently live.
 
 **Covers are cached in `.library/covers/`.** Rasterising a thousand PDF first
 pages takes minutes, so the artwork travels with the library: copy the folder to
@@ -61,7 +62,7 @@ is rebuilt on demand.
 **The index is in there too**, so that `npm run scan` and the app read the same
 one. It is still derived: delete `.library/index.sqlite` and rescan.
 
-## Scanning from the command line
+## Scanning from the Command Line
 
 ```bash
 npm run scan -- "D:\Books"
@@ -78,7 +79,7 @@ It cannot produce PDF cover art: those first pages are rasterised by pdf.js
 inside the app, so the build does not have to ship a native PDF renderer. They
 are filled in the first time you look at the book, and cached from then on.
 
-## `library.json` — the rooms
+## `library.json` — The Rooms
 
 This is the file you edit. It is JSON, except that **comments are allowed**,
 because a file meant to be read by a person should be able to explain itself:
@@ -89,16 +90,16 @@ because a file meant to be read by a person should be able to explain itself:
   "schemaVersion": 2,
   "name": "The Cabin",
   "spawn": { "room": "main", "at": [0, 1.0], "facing": 0 },
-  "rooms": [ ... ]
+  "rooms": [/* … */]
 }
 ```
 
-What follows is the reference. **[Building a map](custom-maps.md) is the guide**
+What follows is the reference. **[Building a Map](custom-maps.md) is the guide**
 — rooms over rooms, stairs, railings, lighting, and the arithmetic that makes a
 staircase arrive at a floor rather than under one.
 
 Save it and **the room reloads while you are standing in it**. The app watches
-the file and re-reads it about once a second.
+the file and re-reads it every 700 ms.
 
 If an edit does not parse, it is **rejected whole**. The room you are standing
 in keeps running exactly as it was, and the error appears in the panel naming
@@ -139,9 +140,9 @@ Metres throughout, and the vertical axis is Y.
   "floor": "boards",         // boards | deck | stone
   "outdoor": false,          // a porch: decking, no skirting, no room light
   "holes": [],               // rectangles missing from the floor, for a stairwell
-  "openings": [ ... ],
-  "shelves": [ ... ],
-  "furniture": [ ... ]
+  "openings": [/* … */],
+  "shelves": [/* … */],
+  "furniture": [/* … */]
 }
 ```
 
@@ -151,7 +152,7 @@ from the floor area, so a room's `size` is the space you can actually walk in.
 Two rooms on the **same** level should not overlap. Two rooms on different
 levels are how you build a loft: give the upper one an `elevation`, only the
 walls the lower one does not already have, no ceiling of its own, and a hole for
-the stairs to come up through. [Building a map](custom-maps.md#two-floors) walks
+the stairs to come up through. [Building a Map](custom-maps.md#two-floors) walks
 through it.
 
 **Joining two rooms:** place them `0.24` m apart — twice the wall thickness — so
@@ -192,7 +193,7 @@ cannot walk off. The loft balustrade and the porch rails are all built this way.
   "at": [-4.825, -3.2],
   "facing": 90,
   "rows": 5,
-  "label": "Fiction",
+  "label": "Fiction"
 }
 ```
 
@@ -200,7 +201,7 @@ cannot walk off. The loft balustrade and the porch rails are all built this way.
 carcass, so **fewer rows means taller shelves**. `at` is where the case stands,
 relative to the room centre. To stand one flush against a wall, offset it from
 the wall by half the case's depth plus a little: `0.175`. A case is 1.0 m wide
-and 0.32 m deep, so cases stand 1.05 m apart in a run.
+and 0.32 m deep, so `1.05` apart is the tightest a run can stand.
 
 `label` is a _starting_ label for the card on the case's top edge. You can
 relabel a case in the app with `L`, and that overrides what is written here —
@@ -243,14 +244,14 @@ far a staircase climbs), and `on` (whether a lamp starts lit).
 | `boxstack`                                       | flattened spare boxes — `E` takes one into your arms, `X` stands it up as a new box (the default map keeps the stack in the kitchen)                                   |
 
 The full table, with what is solid and what you can do to it, is in
-[Building a map](custom-maps.md#the-kinds).
+[Building a Map](custom-maps.md#the-kinds).
 
 Most of these are something you bump into, so keep furniture out of
 the line you walk in on. (The default reading corner has a comment about exactly
 this: a footstool in a doorway is the kind of thing you only find by walking
 into it.)
 
-## `books.json` — which book is where
+## `books.json` — Which Book Is Where
 
 Written by the app, not by you. It is a map from `shelfId:row` to an ordered
 list of book ids, and a map from box id to the books in that box:
@@ -286,8 +287,9 @@ list of book ids, and a map from box id to the books in that box:
 }
 ```
 
-A book id is a hash of its path, size and modification time, so renaming or
-moving a file reconciles to the same book instead of duplicating it.
+A book id is a hash of the file's length and its first 64 KiB — its contents, not
+its path — so renaming or moving a file reconciles to the same book instead of
+duplicating it.
 
 `boxes` is keyed by the `id` of a `box` piece of furniture, so a book you drop
 into the box by the door is in _that_ box and is still in it next time. A box
@@ -319,12 +321,12 @@ has is dropped on load, the same way a shelf entry is.
 Version 2 rekeyed `rows` from shelf index to shelf id; version 3 added
 `bookmarks`; version 4 added `boxes` and stopped shelving newly indexed books
 for you; version 5 added `loose`, `progress`, `labels` and `furniture`; version
-6 added `drawings` and `records`. Older documents still load — everything added
-since has been optional — but a version 2 file will not have its shelves where
-you left them if it predates the rekey, since the old keys named positions
-rather than bookcases.
+6 added `drawings` and `records`; version 7 added `spawnedBoxes` and
+`removedBoxes`. Older documents still load, because every field added since has
+been optional. The one break is the rekey itself: a pre-version-2 file keyed its
+rows by shelf _position_, and those keys name no bookcase any more.
 
-### Pages and notes
+### Pages and Notes
 
 `books.json` also carries `pins`: the sheets of paper stuck to the walls.
 
@@ -350,7 +352,7 @@ the id.
 On load, a page whose book the index has lost is dropped — it is a page of
 nothing. A note is nobody's but yours and always stays.
 
-### Records you have moved
+### Records You Have Moved
 
 `books.json` also carries `records`, and it is deliberately sparse: a record
 nobody has touched is dealt into a crate from the `music/` folder's own order,
@@ -367,7 +369,7 @@ so the usual state of this key is empty.
 down on a table. One entry each rather than an ordering, because unlike a shelf
 a crate has no order worth keeping. `Q` with a record in hand clears both.
 
-### What is drawn on the whiteboards
+### What Is Drawn on the Whiteboards
 
 `drawings` maps a `whiteboard`'s furniture id to the lines on it, oldest first.
 
@@ -382,7 +384,7 @@ and up from the bottom, both 0 to 1 — so resizing a board in `library.json`
 keeps its drawing instead of scattering it. `ink` is which pen, as an index into
 the three in the tray.
 
-## `ambience.json` — the lamps, the hour and the weather
+## `ambience.json` — The Lamps, the Hour and the Weather
 
 Also written by the app, and deliberately tiny:
 
@@ -409,7 +411,7 @@ low performance mode, whether you can see your own body, how loud things are —
 is deliberately not here; it is in browser storage, keyed by the app, so it does
 not follow a library folder onto somebody else's computer.
 
-## What happens to your books when you change the room
+## What Happens to Your Books When You Change the Room
 
 This is the part worth understanding, because it is the part that could lose
 work. The rule is: **the app never puts a book on a shelf. You do.** A book it
@@ -454,17 +456,17 @@ shown — they are still counted in the panel, and still there. Add a box to
 
 The default library has four boxes, and a freshly indexed collection is in them.
 
-|                                          |                                                                                                                                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| look at a box, press `G`                 | every book in it goes onto the shelves — empty ones first, in no particular order, so a boxful spreads around the room rather than filling the first bookcase by the door |
-| look at a book in a box, press `E`       | take that one out                                                                                                                                                         |
-| holding a book, look at a box, press `E` | put it in _that_ box                                                                                                                                                      |
+|                                          |                                                                                                                                                      |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| look at a box, press `G`                 | every book in it goes onto the shelves: empty rows first, nearest bookcase first, so carrying the box to the case you mean to fill fills _that_ case |
+| look at a book in a box, press `E`       | take that one out                                                                                                                                    |
+| holding a book, look at a box, press `E` | put it in _that_ box                                                                                                                                 |
 
 Whatever will not fit on the shelves stays in the box rather than being dropped.
 Which box a book is in is written down, so a box you have sorted by hand stays
 sorted.
 
-## Starting over
+## Starting Over
 
 Delete `.library/library.json` and the app writes a fresh default room the next
 time it starts. Delete `.library/books.json` as well and your whole library goes

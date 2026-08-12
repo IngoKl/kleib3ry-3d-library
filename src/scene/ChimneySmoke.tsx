@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ambienceBlend, colorCorners, mixColor } from './ambienceBlend'
 import { mulberry32 } from '../lib/rng'
 import { useAmbienceStore } from '../state/ambience'
@@ -120,22 +121,43 @@ export function ChimneySmoke() {
     node.instanceMatrix.needsUpdate = true
   })
 
+  // A hand-set bound over every column of smoke, so the mesh culls like
+  // anything else instead of being drawn while you face a bookcase — the
+  // instances are rewritten around fixed stacks, so the sphere never moves.
   useEffect(() => {
-    if (mesh.current) mesh.current.frustumCulled = false
-  }, [puffs.length])
+    const node = mesh.current
+    if (!node || stacks.length === 0) return
+    const box = new THREE.Box3()
+    for (const stack of stacks) {
+      box.expandByPoint(new THREE.Vector3(stack.x - 1, stack.top, stack.z - 1))
+      box.expandByPoint(new THREE.Vector3(stack.x + DRIFT + 1, stack.top + CLIMB + 1, stack.z + 1))
+    }
+    node.boundingSphere = box.getBoundingSphere(new THREE.Sphere())
+  }, [puffs.length, stacks])
 
-  if (stacks.length === 0) return null
+  /** Every stack in one geometry: masonry never moves, so one call carries it. */
+  const masonry = useMemo(() => {
+    if (stacks.length === 0) return null
+    const parts = stacks.map((stack) => {
+      const box = new THREE.BoxGeometry(0.44, 1.1, 0.44)
+      box.translate(stack.x, stack.top - 0.55, stack.z)
+      return box
+    })
+    const merged = mergeGeometries(parts, false)
+    parts.forEach((part) => part.dispose())
+    return merged
+  }, [stacks])
+  useEffect(() => () => masonry?.dispose(), [masonry])
+
+  if (stacks.length === 0 || !masonry) return null
   return (
     <group>
       {/* The stacks: masonry from just under the wall plate up past the ridge
           line near an eave. Present whether or not the fire is on — a chimney
           is architecture, not an effect. */}
-      {stacks.map((stack) => (
-        <mesh key={stack.id} position={[stack.x, stack.top - 0.55, stack.z]} castShadow>
-          <boxGeometry args={[0.44, 1.1, 0.44]} />
-          <meshStandardMaterial color="#7d5f4d" roughness={1} />
-        </mesh>
-      ))}
+      <mesh geometry={masonry} castShadow>
+        <meshStandardMaterial color="#7d5f4d" roughness={1} />
+      </mesh>
       <instancedMesh key={puffs.length} ref={mesh} args={[undefined, undefined, puffs.length]}>
         <sphereGeometry args={[1, 7, 5]} />
         <meshBasicMaterial ref={material} transparent opacity={0.22} depthWrite={false} />

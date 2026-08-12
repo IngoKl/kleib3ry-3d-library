@@ -1,4 +1,4 @@
-# Building a map
+# Building a Map
 
 A library is a folder, and the _room_ is one file in it:
 `<your library folder>/.library/library.json`. Edit it and the building reloads
@@ -12,7 +12,7 @@ is commented throughout, and reading it top to bottom is the fastest way in.
 
 ---
 
-## The shape of the file
+## The Shape of the File
 
 ```jsonc
 {
@@ -20,7 +20,7 @@ is commented throughout, and reading it top to bottom is the fastest way in.
   "schemaVersion": 2,
   "name": "The Cabin",
   "spawn": { "room": "main", "at": [0, 1.0], "facing": 0 },
-  "rooms": [/* … */],
+  "rooms": [/* … */]
 }
 ```
 
@@ -59,7 +59,7 @@ formatting are yours.
   "holes": [], // rectangles missing from the floor
   "openings": [/* … */],
   "shelves": [/* … */],
-  "furniture": [/* … */],
+  "furniture": [/* … */]
 }
 ```
 
@@ -121,7 +121,7 @@ loft's open side and all three sides of the porch are built this way.
 
 ---
 
-## Two floors
+## Two Floors
 
 A loft is a room with an `elevation`, standing **inside** another room's volume
 rather than on top of it. Four things make that work, and all four are in the
@@ -132,23 +132,22 @@ default document:
   "id": "loft",
   "origin": [0, -1.3],
   "size": [10, 5.4],
-  "elevation": 2.5, // 1. its floor is 2.5 m up. A bookcase is 2.24 m
-  //    tall and the floor slab 0.22 m thick, so any
-  //    lower and the cases downstairs stand up into
-  //    the boards.
-  "height": 2.3, // …and its head height is the cabin's ceiling
-  "walls": ["south"], // 2. only the balustrade. The other three walls
-  //    are the cabin's, which run the full 4.8 m.
+  "elevation": 2.5, // 1. its floor is 2.5 m up
+  "height": 2.3, // its head height is the cabin's ceiling
+  "walls": ["south"], // 2. only the balustrade
   "ceiling": false, // 3. its ceiling is the cabin's
-  "holes": [{ "at": [4.4, 0.675], "size": [1.45, 2.95] }], // 4. the stairwell
+  "holes": [{ "at": [4.4, 0.675], "size": [1.45, 2.95] }] // 4. the stairwell
 }
 ```
 
 1. **`elevation`** raises the floor, and everything in the room with it: shelves
-   stand on it, boxes sit on it, books dropped on it land on it.
+   stand on it, boxes sit on it, books dropped on it land on it. A bookcase is
+   2.24 m tall and the floor slab 0.22 m thick, so any lower than this and the
+   cases downstairs stand up into the boards.
 2. **`walls`** stops you building a second wall in the same place as the room
-   below's. Rooms on different levels are allowed to overlap in plan; rooms on
-   the _same_ level should not.
+   below's — the other three here are the cabin's, which run the full 4.8 m.
+   Rooms on different levels are allowed to overlap in plan; rooms on the _same_
+   level should not.
 3. **`ceiling: false`** where the room below already has one at the same height.
 4. **`holes`** cuts rectangles out of the floor, in room-local metres. Without
    one, the staircase arrives underneath a floor.
@@ -162,7 +161,7 @@ default document:
   "at": [4.4, -0.4],
   "facing": 180,
   "size": [1.05, 3.4],
-  "rise": 2.5,
+  "rise": 2.5
 }
 ```
 
@@ -242,18 +241,21 @@ moving boxes. See [the library folder](library-folder.md#what-happens-to-your-bo
   "y": 2.1, "size": [1.0, 0.75], "source": "lake.jpg" }
 ```
 
-Common fields: `id`, `kind`, `at`, `facing`. Then:
+Common fields: `id`, `kind`, `at`, `facing`. Then, all optional:
 
-| field    | meaning                                                                                                                                                                                                                                                                                                                 |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `size`   | footprint `[width, depth]` — or for anything hung on a wall, `[width, height]`                                                                                                                                                                                                                                          |
-| `height` | height override, for the kinds where it is worth varying                                                                                                                                                                                                                                                                |
-| `y`      | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a `whiteboard`, a `clock`, a `lightswitch` — it is the centre of the thing; for a **pendant** it is where the fitting is, and for `fairylights` it is the line they hang from. |
-| `source` | which file in `artwork/` a picture shows                                                                                                                                                                                                                                                                                |
-| `rise`   | how far a flight of stairs climbs                                                                                                                                                                                                                                                                                       |
-| `on`     | whether a lamp starts lit                                                                                                                                                                                                                                                                                               |
+- **`size`** — footprint `[width, depth]`, or for anything hung on a wall,
+  `[width, height]`.
+- **`height`** — height override, for the kinds where it is worth varying.
+- **`y`** — how far off this room's floor the piece sits. A coffee maker on a
+  counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a
+  `whiteboard`, a `clock`, a `lightswitch` — it is the centre of the thing; for a
+  **pendant** it is where the fitting is; for `fairylights` it is the line they
+  hang from.
+- **`source`** — which file in `artwork/` a picture shows.
+- **`rise`** — how far a flight of stairs climbs.
+- **`on`** — whether a lamp starts lit.
 
-### The kinds
+### The Kinds
 
 | kind             | solid | you can                                                 | notes                                                                                                                                                   |
 | ---------------- | ----- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -357,13 +359,14 @@ Two things to watch:
 
 - **A pendant hangs from its `y`.** Under a loft, that has to be below the loft
   floor, or the fitting is inside the floor above and lights the room upstairs.
-- **A `distance` of nothing.** Lamp intensity is in candela and falls off with
-  the square of distance, so the numbers in the scene are larger than they look:
-  at the 2 m from a pendant to the table under it, 7 cd arrives as under 2.
+- **Brightness is not a field.** A lamp's intensity is fixed per kind in the
+  scene, and it is in candela, falling off with the square of distance — 7 cd at
+  the 2 m from a pendant to the table under it arrives as under 2. If a room
+  reads dim, the answer is another lamp, not a number to turn up.
 
 ---
 
-## The other three folders
+## The Other Three Folders
 
 A library folder holds more than books:
 
@@ -398,14 +401,14 @@ whole of the work.
 `video/` fills the tape crates, dealt the same way the records are — folder order,
 nothing to arrange, and the folder a file sits in becomes what is written under
 the title on its label. Whether a tape actually plays is up to the WebView, which
-decodes what Chromium decodes: roughly H.264 in MP4 and VP8/VP9 in WebM. A
+decodes what Chromium decodes: roughly H.264 in MP4, VP8 or VP9 in WebM. A
 container it cannot read is still a tape in the crate — it goes in the machine,
 fails to start, and the panel says why, which is a better answer than pretending
 the file is not there.
 
 ---
 
-## Pinning things up
+## Pinning Things Up
 
 Any wall in the building takes a sheet of paper, and so does a `whiteboard`.
 
@@ -423,7 +426,7 @@ whiteboard in the default map's office is a good place to aim at, and the office
 is the room the feature was built for, but a page pins just as happily over the
 hearth.
 
-## Drawing on a whiteboard
+## Drawing on a Whiteboard
 
 Put a `marker` anywhere in the room — the default map leaves one on the office
 desk. `E` picks it up, holding the left mouse button draws, `F` changes pen and
@@ -435,7 +438,7 @@ board in `library.json` keeps the drawing on it rather than scattering it.
 
 ---
 
-## Starting over
+## Starting Over
 
 Delete `.library/library.json` and the app writes a fresh default the next time
 it starts. Delete `.library/books.json` as well and your whole library goes back

@@ -1,10 +1,10 @@
-# Getting started
+# Getting Started
 
 There are two ways to run kleib3ry — the desktop app and the container — and
 this page is the desktop one. [modes.md](modes.md) is the difference between
 them; [docker.md](docker.md) is how to run the other.
 
-## Run it
+## Run It
 
 ```bash
 npm install
@@ -20,7 +20,7 @@ with a generated 1,700-book stand-in library and no filesystem access at all.
 That is a test fixture rather than a third way to run it — see
 [modes.md](modes.md#the-third-driver-is-not-a-third-mode).
 
-## Try it without your own books
+## Try It Without Your Own Books
 
 There is a small real library in the repository, at
 [demo-data/demo-library/](../demo-data/demo-library/): ten
@@ -28,22 +28,23 @@ There is a small real library in the repository, at
 and a tape, all freely licensed — the credits are in the folder's own
 [README](../demo-data/demo-library/README.md).
 
-Point the app at it like any other library folder: **choose folder…**, then
-**scan**. It fills four boxes rather than a room, which is enough to unpack a
+Point the app at it like any other library folder: **Choose Folder…**, then
+**Scan**. It fills four boxes rather than a room, which is enough to unpack a
 shelf, put a record on and read something. The container can use it too:
 
 ```bash
 docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
 ```
 
-Whichever you use writes its `.library/` into that folder, so the demo library
-remembers where you put things exactly as your own would. The two generated
-files it writes there are gitignored; delete the folder's `.library/` to put it
-back the way it shipped.
+Whichever you use writes into that folder's `.library/`, so the demo library
+remembers where you put things exactly as your own would. It ships with an index,
+a cover cache and a layout already committed, while the `library.json` and
+`ambience.json` written beside them are gitignored. To put it back the way it
+shipped: delete those two and `git restore demo-data/demo-library`.
 
-## Point it at your books
+## Point It at Your Books
 
-Press **choose folder…** in the panel and pick a folder. Then press **scan**.
+Press **Choose Folder…** in the panel and pick a folder. Then press **Scan**.
 
 The folder wants to look like this. Only `books/` is needed; the rest is what
 turns a shelf of books into a room you want to be in.
@@ -65,7 +66,7 @@ A first scan of a large collection takes a while, and rasterising cover art take
 longer: covers are warmed in the background, so the shelves fill in over the first
 few minutes and are read off disk instantly every launch after that.
 
-## Your library arrives in boxes
+## Your Library Arrives in Boxes
 
 The shelves start **empty**, and everything the scan found is stacked in the four
 moving boxes on the floor of the great room. Nothing shelves itself — a library
@@ -82,11 +83,11 @@ Unpacking is something you do:
 Press **`,`** and **`.`** (or the mouse wheel) to riffle down through a box: it
 holds far more than the pile on top can show.
 
-## Finding your way round
+## Finding Your Way Round
 
-The app opens on a menu: which library folder, and then **go in**. The room is
+The app opens on a menu: which library folder, and then **Go In**. The room is
 already loading behind it, so pressing the button is instant. **`F2`** is
-settings, from the menu or from the room — that is where **low performance mode**
+settings, from the menu or from the room — that is where **Low Performance Mode**
 lives if the room is stuttering.
 
 You start in the great room, looking north at the lake. Click to capture the
@@ -110,7 +111,7 @@ Things worth trying early:
 | **`E`** on a record, then on a deck           | puts music on; **`F`** takes it back off                                |
 | **`E`** on a tape, then on the television     | plays it; **`F`** takes it back out                                     |
 | **`E`** on the marker in the office           | picks it up — then hold the left mouse button to draw on the whiteboard |
-| **`E`** on the switch by the porch door       | works every light in the house at once                                  |
+| **`E`** on the switch by the porch door       | works every light in the library at once                                |
 | **`L`** at a bookcase                         | writes on its label                                                     |
 | **`P`** while reading                         | tears out a copy of the page — the book keeps its own                   |
 | **`T`**                                       | writes a note; **`E`** at a wall pins either one up                     |
@@ -120,7 +121,7 @@ Things worth trying early:
 | **`V`**                                       | calls the cat; **`E`** makes a fuss of it, **`F`** asks it for a book   |
 | **`H`**                                       | hides the interface                                                     |
 
-## The room is a file
+## The Room Is a File
 
 `<your library folder>/.library/library.json` is the building: rooms, openings,
 bookcases, furniture, lamps, roofs. Edit it in any editor and **the room reloads
@@ -135,7 +136,7 @@ and your formatting are never at the mercy of the app.
 The full guide is [custom-maps.md](custom-maps.md). To start over, delete
 `library.json` and a fresh default is written the next time you open the library.
 
-## If something looks wrong
+## If Something Looks Wrong
 
 The panel is the first place to look. It shows which driver is live, which folder
 is open, which files this library is saved into, how many books are shelved and
@@ -152,4 +153,4 @@ how many are still boxed, and any error from the last scan or the last edit.
   keep its own layout: it is re-set, so its page numbers are the app's rather
   than the publisher's.
 - **A tape that will not play.** The container it is in has to be one the WebView
-  can decode — roughly H.264 in MP4, or VP9 in WebM. The panel says why.
+  can decode — roughly H.264 in MP4, VP8 or VP9 in WebM. The panel says why.

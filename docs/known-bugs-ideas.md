@@ -1,6 +1,6 @@
 # Known Bugs and Future Ideas
 
-## ToDo for Release
+## To Do for Release
 
 - Create video
 - Optimize README

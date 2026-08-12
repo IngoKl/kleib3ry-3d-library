@@ -79,6 +79,12 @@ export const sceneRefs: {
   spineDirty: Set<string>
   /** How far the focused book has slid out, 0 to 1, so its cover can follow it. */
   focusPull: number
+  /**
+   * The scene itself, published by `Probe` for `__app.sceneForTest` — so a
+   * test or a probe can ask what is actually mounted, the same argument
+   * `boards()` makes for measuring meshes rather than trusting the document.
+   */
+  scene: THREE.Scene | null
 } = {
   books: null,
   bookIds: [],
@@ -107,4 +113,5 @@ export const sceneRefs: {
   spinesReprinted: 0,
   spineDirty: new Set<string>(),
   focusPull: 0,
+  scene: null,
 }

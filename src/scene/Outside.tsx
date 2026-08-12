@@ -787,6 +787,16 @@ function Birds() {
     [],
   )
 
+  // The flock never leaves the air over the lake, so it culls on a hand-set
+  // sphere there rather than being drawn while you face a bookcase.
+  useEffect(() => {
+    if (!mesh.current) return
+    mesh.current.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(LAKE.x, WATER_Y + 8.5, LAKE.z),
+      Math.max(LAKE.radiusX, LAKE.radiusZ) * 0.6 + 6,
+    )
+  }, [])
+
   useFrame(({ clock }) => {
     const node = mesh.current
     const paint = material.current
@@ -819,7 +829,7 @@ function Birds() {
   })
 
   return (
-    <instancedMesh ref={mesh} args={[geometry, undefined, FLOCK.length]} frustumCulled={false}>
+    <instancedMesh ref={mesh} args={[geometry, undefined, FLOCK.length]}>
       <meshBasicMaterial
         ref={material}
         color="#2b2f33"

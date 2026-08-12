@@ -48,7 +48,7 @@ two shape everything else.
 
 ---
 
-## The repository
+## The Repository
 
 ```text
 src/                front end
@@ -62,8 +62,9 @@ src/                front end
                     spine atlas that prints titles, and the little bit of
                     gravity that dropped books fall under
   reader/           read mode: page cache, page mesh, the turn
-  state/            zustand stores: world, library, media, video, lights, app;
-                    plus player, cat and metrics, deliberately outside React
+  state/            zustand stores: world, library, ambience, media, video, and
+                    the session store; plus player, cat and metrics,
+                    deliberately outside React
   data/             placeholder catalogue + book proportions
   ui/               DOM overlay: crosshair, focus cards, panels, typed fields
 core/               Rust: indexing, SQLite, format + tag probes, media folders.
@@ -79,7 +80,7 @@ docs/               this folder
 
 ---
 
-## The one rule
+## The One Rule
 
 **Nothing above `src/services/` may import `@tauri-apps/*`.**
 
@@ -123,7 +124,7 @@ probe would mean a slow server coming up as an empty stand-in library.
 
 ---
 
-## The three Rust crates
+## The Three Rust Crates
 
 ```text
 core/        indexing, SQLite, format probes, the media folders.  No GUI.
@@ -140,7 +141,7 @@ Each crate owns its errors. `core::Error` has no `Tauri` variant because nothing
 in it can fail that way; the shell wraps it transparently, and the server turns
 it into a status code and a line of text destined for the HUD.
 
-Two decisions in `core/` worth knowing:
+Three decisions in `core/` worth knowing:
 
 - **Book identity is content-based.** `book_id` hashes file length plus the first
   64 KiB, so moving or renaming a file keeps its shelf position and its reading
@@ -169,13 +170,13 @@ it about.
 
 ---
 
-## What is derived and what is stored
+## What Is Derived and What Is Stored
 
 This is the spine of the front end.
 
-**The layout document stores ids and orderings, not positions.**
-`books.json` is `{ rows: { "shelfId:row": [bookId, ...] }, boxes: { boxId: [...] } }`
-and nothing more. Physical placement is recomputed every time: rows are packed
+**The layout document stores ids and orderings, not positions.** At its centre
+`books.json` is `{ rows: { "shelfId:row": [bookId, ...] }, boxes: { boxId: [...] } }`.
+Physical placement is recomputed every time: rows are packed
 left to right in [src/scene/shelving.ts](../src/scene/shelving.ts), boxes are
 packed bottom-up in [src/world/boxes.ts](../src/world/boxes.ts). A book whose
 dimensions change pushes its neighbours along instead of overlapping them. Rust
@@ -184,17 +185,18 @@ stores the document verbatim — the schema belongs entirely to the front end.
 **The exceptions are the things whose whole point is "there".** A book put down
 on a table or dropped on the floor stores an actual position, because "there,
 where I put it" cannot be derived from an ordering. So does a page or a note
-pinned to a wall. Both are worth keeping as the only exceptions.
+pinned to a wall, and so does a record set down on a table. Three exceptions,
+and the list is worth keeping that short.
 
 **Book appearance is a pure function of index data.**
 [src/data/dimensions.ts](../src/data/dimensions.ts) derives thickness from page
-count — an EPUB has none, so the probe measures the uncompressed length of the
-documents in the archive and divides by what the reader fits on a page, which is
-the only signal that tracks the _text_ rather than the cover art — and height, depth and
-a stand-in colour from a hash of the book id — arbitrary but stable, so a book
-always looks the same on the shelf. Once its cover has been read, the binding
-colour is sampled from the artwork instead, so a shelf of your books looks like
-_your_ books from across the room.
+count, and height, depth and a stand-in colour from a hash of the book id —
+arbitrary but stable, so a book always looks the same on the shelf. An EPUB has
+no page count, so the probe measures the uncompressed length of the documents in
+the archive and that is divided by what the reader fits on a page: the only
+signal that tracks the _text_ rather than the cover art. Once its cover has been
+read, the binding colour is sampled from the artwork instead, so a shelf of your
+books looks like _your_ books from across the room.
 
 **The world document is never written by the app.** `library.json` is hand-edited
 prose with comments in it. Everything the app decides about the room goes to
@@ -212,7 +214,7 @@ any editor and the room rebuilds while you are standing in it.
 
 ---
 
-## The building
+## The Building
 
 A room is an axis-aligned box with a list of which walls it builds, openings cut
 into them, and an elevation.
@@ -274,6 +276,12 @@ either building. So `TRAIL` is a polyline here, drawn by `Outside` and kept
 clear of trees by `forest.ts`, for the same reason the lake is a function here
 rather than four radii in `library.json`.
 
+[src/world/forest.ts](../src/world/forest.ts) is the same argument again. Trees
+are grown once in `deriveWorld` and both drawn and collided with from that one
+list; a collider generated from a different seed than the trunk you can see would
+be worse than no collider at all. Only the trunk is solid — pushing through
+branches is what walking in a forest is.
+
 ## Weather
 
 Rain is a switch, saved beside the lamps, because "is it raining" is a fact
@@ -321,15 +329,9 @@ so the deck is what tells the scene where in the house the music is coming from 
 and what stops every other deck in the building drawing the same disc on its
 platter.
 
-The forest moved to [src/world/forest.ts](../src/world/forest.ts) for the same
-reason. Trees are grown once in `deriveWorld` and both drawn and collided with
-from that one list; a collider generated from a different seed than the trunk you
-can see would be worse than no collider at all. Only the trunk is solid — pushing
-through branches is what walking in a forest is.
-
 ---
 
-## State, split by lifetime
+## State, Split by Lifetime
 
 | module              | holds                                                                                          | notes                                     |
 | ------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------- |
@@ -341,6 +343,7 @@ through branches is what walking in a forest is.
 | `state/media.ts`    | `music/` and `artwork/`, and which record is on which deck                                     | zustand                                   |
 | `state/video.ts`    | `video/`, and the tape in the machine                                                          | zustand                                   |
 | `state/covers.ts`   | cover images, two queues, one rate limit                                                       | plain module                              |
+| `state/pages.ts`    | page images for books left open in the _room_, not in the reader                               | plain module                              |
 | `state/player.ts`   | position, yaw, pitch, crouch, zoom                                                             | **plain mutable object**                  |
 | `state/cat.ts`      | where the cat is and what it is doing                                                          | **plain mutable object**                  |
 | `state/metrics.ts`  | draw calls, triangles, frames                                                                  | **plain mutable object**                  |
@@ -348,12 +351,12 @@ through branches is what walking in a forest is.
 The last three are deliberately outside zustand: they change every frame and
 must not trigger a React render.
 
-**The split between `lights.ts` and `settings.ts` is the one worth stating.**
-Night and rain are facts about the _room_ and live in the library folder, so
-they travel with it and `rm ambience.json` undoes them. Low performance mode, the
-body, the volume and the mouse sensitivity are facts about the _machine_, so
-they live in browser storage keyed by the app — a folder you sync to another
-computer must not carry an assertion about that computer's GPU.
+**The split between `ambience.ts` and `settings.ts` is the one worth stating.**
+Night, rain and the lamps are facts about the _room_ and live in the library
+folder, so they travel with it and `rm ambience.json` undoes them. Low
+Performance Mode, the body, the volume and the mouse sensitivity are facts about
+the _machine_, so they live in browser storage keyed by the app — a folder you
+sync to another computer must not carry an assertion about that computer's GPU.
 
 `setPlacements` re-derives the world and therefore re-reconciles the whole
 library, so it belongs on an _edit_ and never in a frame loop. Carrying a moving
@@ -361,7 +364,7 @@ box renders a preview and commits once, when you set it down.
 
 ---
 
-## The scene
+## The Scene
 
 **Interaction goes through instanced meshes.** Books, shelves, records, tapes and
 loose books are all `InstancedMesh`. [src/scene/refs.ts](../src/scene/refs.ts) is
@@ -401,7 +404,7 @@ It runs per frame in `LooseBooks` and tells the store _once_, when the book stop
 
 ---
 
-## Nothing shelves itself
+## Nothing Shelves Itself
 
 A newly indexed book goes into a moving box, not onto a shelf
 ([src/world/reconcile.ts](../src/world/reconcile.ts)), so a fresh library is full
@@ -438,7 +441,7 @@ part with the most tests. The rules:
 
 ---
 
-## Read mode
+## Read Mode
 
 Opening a book docks the camera onto a page mesh; there is no mode to choose and
 no way to be in read mode without a book. Docking rather than floating a panel
@@ -480,7 +483,7 @@ next time it is drawn. "Tear out" is the gesture, not the effect.
 
 ---
 
-## Drawing on a whiteboard
+## Drawing on a Whiteboard
 
 [src/scene/board.ts](../src/scene/board.ts) owns the strokes and the canvas each
 board's face carries. Two decisions:
@@ -499,7 +502,7 @@ in the app, which is why it is its own file rather than another branch in
 
 ---
 
-## Records are things, not a list
+## Records Are Things, Not a List
 
 Records are _dealt_ — every `recordshelf` takes a slice of the music folder in
 folder order — so a few hundred sleeves have somewhere to be with nothing
@@ -517,7 +520,7 @@ while it plays.
 
 ---
 
-## Where to look for what
+## Where to Look for What
 
 | you want to change          | start here                                                                                               |
 | --------------------------- | -------------------------------------------------------------------------------------------------------- |

@@ -1,6 +1,6 @@
 # Working on kleib3ry
 
-## Getting set up
+## Getting Set Up
 
 ```bash
 npm install
@@ -25,13 +25,14 @@ working on:
 | `npm run dev`       | `browser` | the room, the scene, the reader, the HUD         |
 | `npm run dev:http`  | `http`    | the container's driver, against a running server |
 
-The browser build has a generated 1,700-book placeholder catalogue plus one real
-PDF, so read mode works and the shelves are full without pointing at anything.
-It is a fixture, not a way to ship the app: only the first and third rows above
-correspond to a mode anyone runs. [modes.md](modes.md) is that distinction, and
-why the `http` one is chosen at build time rather than probed for.
+The browser build has a generated 1,700-book placeholder catalogue plus two real
+books, one of each format, so read mode works and the shelves are full without
+pointing at anything. It is a fixture, not a way to ship the app: only the first
+and third rows above correspond to a mode anyone runs. [modes.md](modes.md) is
+that distinction, and why the `http` one is chosen at build time rather than
+probed for.
 
-## The gate
+## The Gate
 
 ```bash
 npm run verify         # lint + typecheck + build + Playwright + clippy + cargo test
@@ -39,15 +40,18 @@ npm run verify         # lint + typecheck + build + Playwright + clippy + cargo 
 
 That is what "done" means. Individually:
 
-| command                    | proves                                                                                                                                        |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run lint`             | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can                                 |
-| `npm run typecheck`        | the front end type-checks                                                                                                                     |
-| `npm run build`            | the production bundle builds from the CLI                                                                                                     |
-| `npm test`                 | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
-| `npm run lint:rust`        | `cargo clippy -D warnings` over all three crates                                                                                              |
-| `npm run test:rust`        | all three crates: core, the desktop shell, the server                                                                                         |
-| `npm run scan -- <folder>` | indexes a library folder's `books/` from the command line, no app needed                                                                      |
+| command             | proves                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint`      | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can                                 |
+| `npm run typecheck` | the front end type-checks                                                                                                                     |
+| `npm run build`     | the production bundle builds from the CLI                                                                                                     |
+| `npm test`          | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
+| `npm run lint:rust` | `cargo clippy -D warnings` over all three crates                                                                                              |
+| `npm run test:rust` | all three crates: core, the desktop shell, the server                                                                                         |
+
+Not part of the gate but useful beside it: `npm run scan -- <folder>` indexes a
+library folder's `books/` from the command line, with no app running — see
+[library-folder.md](library-folder.md#scanning-from-the-command-line).
 
 Beyond the gate (needs a build first; Windows-only):
 
@@ -75,7 +79,7 @@ docker run --rm -p 8080:8080 -v /path/to/library:/library kleib3ry
 
 See [docker.md](docker.md).
 
-## Running one test
+## Running One Test
 
 ```bash
 npx playwright test tests/collision.spec.ts
@@ -94,7 +98,7 @@ what to mount into the container when you are changing the hosted mode.
 as an opaque binary: `scripts/make-icon.mjs` writes `assets/icon-source.png` and
 `tauri icon` renders it into `src-tauri/icons/`.
 
-## How the tests are arranged
+## How the Tests Are Arranged
 
 Three files, three jobs:
 
@@ -121,7 +125,6 @@ Three things about the smoke tests worth knowing before you debug one:
   `ready()` is true while it is still up, but nothing reaches the room until the
   button is pressed — so `boot()` presses it, and a test that skipped that would
   find every key dead. `reboot()` does the same after a `page.reload()`.
-
 - **They run on SwiftShader**, a software rasteriser, at a few frames a second.
   Anything the crosshair reports is written by a raycast that runs every other
   frame, so "has it noticed yet" is answered in frames rather than milliseconds.
@@ -136,7 +139,7 @@ Assertions are on measurable facts — draw calls, triangles, frames, zero conso
 errors, where a book ended up. `tests/screenshots/` is written for a human to
 glance at, never compared.
 
-## The frame budget is real
+## The Frame Budget Is Real
 
 The atlas is the thing to watch. Its whole texture is re-uploaded whenever any
 cell changes, so its _size_ is a per-pass cost — and on the software rasteriser
@@ -151,8 +154,11 @@ the player's body a hand's width behind the eyes rather than around them: a
 surface 10 cm from the near plane fills half the screen with fragments nobody
 sees. Assemblies of more than a handful of boxes are merged into one geometry
 per material (the plants, the staircases, the cat, the body) for the same
-reason a draw call is worth counting at all here. `window.__app.stats()` reports draw calls, triangles and frames; `window.__app.spines()` reports how many cells are printed and how many
-have changed hands.
+reason a draw call is worth counting at all here.
+
+To measure any of it: `window.__app.stats()` reports draw calls, triangles and
+frames, and `window.__app.spines()` reports how many atlas cells are printed and
+how many have changed hands.
 
 ## Conventions
 
@@ -173,7 +179,7 @@ have changed hands.
 - Fixed ports: Vite dev **5180**, Playwright preview **5190**, desktop CDP probe
   **9223**, the server **8080**.
 
-## Adding things
+## Adding Things
 
 **A furniture kind.** Three places, in order: `FurnitureKind` and
 `FURNITURE_KINDS` in [../src/world/schema.ts](../src/world/schema.ts), a footprint
@@ -196,9 +202,9 @@ somebody is typing a word. Add it to `ControlsCard.tsx` and to
 **A setting.** If it is about the _machine_ — the renderer, the mouse, the
 volume — it goes in [../src/state/settings.ts](../src/state/settings.ts) and is
 read where it applies. If it is about the _room_ — the lamps, night, weather — it
-goes in `lights.ts` and is saved into the library folder. Getting that the wrong
-way round means a library folder that carries an assertion about somebody else's
-GPU, or a graphics setting that vanishes when you delete `ambience.json`.
+goes in `ambience.ts` and is saved into the library folder. Getting that the
+wrong way round means a library folder that carries an assertion about somebody
+else's GPU, or a graphics setting that vanishes when you delete `ambience.json`.
 
 **A field in the world document.** Parse it in `schema.ts` with a default, so no
 existing document has to mention it, and make the failure message name the path

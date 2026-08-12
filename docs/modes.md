@@ -1,8 +1,8 @@
-# The two ways to run it
+# The Two Ways to Run It
 
 kleib3ry ships in two forms, and they are the same program:
 
-|                      | **desktop app**                             | **hosted**                                 |
+|                      | **Desktop App**                             | **Hosted**                                 |
 | -------------------- | ------------------------------------------- | ------------------------------------------ |
 | what it is           | a Tauri 2 window on your own machine        | the Docker container, serving to a browser |
 | you run              | `npm run tauri:dev`, or the built installer | `docker run … -v /your/library:/library`   |
@@ -26,7 +26,7 @@ underneath it, which is why the settings card shows both.
 To actually run either one: [getting-started.md](getting-started.md) for the
 desktop app, [docker.md](docker.md) for the container.
 
-## What is the same
+## What Is the Same
 
 **The library folder is the library.** Both modes read the same folder shape —
 `books/`, `music/`, `artwork/`, `video/`, and a `.library/` the app writes into —
@@ -42,13 +42,13 @@ That is not a coincidence, it is the design: see
 `stat` on the desktop and by `GET /api/world/stamp` in the container, which is
 also a `stat`.
 
-**What is about your machine stays on your machine.** Low performance mode, the
+**What is about your machine stays on your machine.** Low Performance Mode, the
 volume, the mouse sensitivity and the recent-libraries list are in browser
 storage, not in the library folder — so the container's settings are the
 settings of the browser you are looking at it in, and the desktop app's are that
 computer's.
 
-## What differs
+## What Differs
 
 **Only the desktop app can choose a folder.** `canPickFolder` is false in the
 container: a picker there would mean letting a browser walk the server's disk.
@@ -73,7 +73,7 @@ So a container that nobody has opened yet has no covers, and the first visit
 warms them for every visit after it — including the desktop app, if it is the
 same folder.
 
-## What hosted mode is not
+## What Hosted Mode Is Not
 
 It serves **one library to one household on a network you trust**. Three limits
 follow from that, and none of them is an oversight:
@@ -92,7 +92,7 @@ follow from that, and none of them is an oversight:
 - **A thread per connection**, deliberately ([server/src/main.rs](../server/src/main.rs)).
   Household scale. It is not written to survive the open internet.
 
-## The third driver is not a third mode
+## The Third Driver Is Not a Third Mode
 
 There is a `browserDriver`: a plain tab, no filesystem, a generated 1,700-book
 placeholder catalogue in `localStorage` plus two real generated books so read
@@ -105,7 +105,7 @@ looking like a working library full of books that do not exist. If a container
 shows 1,700 books you have never heard of, that is the bundle, not the mount:
 check the panel, which says which of the three is live.
 
-## Why the choice is made at build time
+## Why the Choice Is Made at Build Time
 
 `isTauri()` picks the desktop driver at runtime, by looking for the injected IPC
 bridge. The other two cannot be told apart that way — the container's bundle is
@@ -120,7 +120,7 @@ an empty stand-in library — the failure in the section above, arrived at by
 accident instead of by misconfiguration. A flag cannot be wrong about which
 thing it is. See [src/services/index.ts](../src/services/index.ts).
 
-## The seam itself
+## The Seam Itself
 
 One interface, `LibraryService` in
 [src/services/types.ts](../src/services/types.ts), and the rule that nothing

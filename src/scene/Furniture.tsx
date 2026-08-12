@@ -1768,11 +1768,7 @@ export function FurnitureLights() {
           />
         )
       })}
-      {world.furniture
-        .filter((item) => item.kind === 'crt')
-        .map((item) => (
-          <CrtGlow key={item.id} item={item} />
-        ))}
+      <CrtGlows world={world} />
     </>
   )
 }
@@ -1782,11 +1778,27 @@ export function FurnitureLights() {
  *
  * A point light hung just in front of the glass, unsteady the way a picture is
  * — the flicker is two incommensurate sines, which never repeat obviously and
- * cost nothing. Mounted whether or not a tape is running, at zero intensity
- * when idle, for the reason the lamps stay mounted: the light count is baked
- * into every compiled shader, and a light that comes and goes recompiles the
- * whole cabin mid-frame.
+ * cost nothing. Mounted only while a tape is *in* the machine, unlike the
+ * lamps: every point light in the scene is a term every lit fragment pays for
+ * even at zero intensity, which the software rasteriser the tests run on
+ * cannot afford as a standing charge. Inserting a tape recompiles the shaders
+ * once, behind the far larger cost of the video element spinning up; pause
+ * only zeroes the intensity, so leaning on space never recompiles anything.
  */
+function CrtGlows({ world }: { world: { furniture: DerivedFurniture[] } }) {
+  const loaded = useVideoStore((s) => s.playing !== null)
+  if (!loaded) return null
+  return (
+    <>
+      {world.furniture
+        .filter((item) => item.kind === 'crt')
+        .map((item) => (
+          <CrtGlow key={item.id} item={item} />
+        ))}
+    </>
+  )
+}
+
 function CrtGlow({ item }: { item: DerivedFurniture }) {
   const light = useRef<THREE.PointLight>(null)
 

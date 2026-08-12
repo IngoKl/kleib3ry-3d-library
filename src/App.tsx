@@ -372,6 +372,11 @@ export default function App() {
         slots: ASSIGNABLE_SLOTS,
         reprinted: sceneRefs.spinesReprinted,
       }),
+      /**
+       * The mounted scene graph itself, for probes that need to ask what is
+       * actually being drawn. Not serialisable — call it from page-side code.
+       */
+      sceneForTest: () => sceneRefs.scene,
       teleport,
       look: (yaw: number, pitch = 0) => {
         player.yaw = yaw

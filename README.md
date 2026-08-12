@@ -1,11 +1,13 @@
-# kleib3ry – 3D Virtual Personal Library
+# kleib3ry — 3D Virtual Personal Library
 
 Your own PDFs and EPUBs, on shelves you place, in a building you design, read as
 physical books — with a record player wired to your music folder and a television
 wired to your videos.
 
-- **Read them.** Take a book off the shelf, turn pages on a curved mesh — PDF or EPUB.
-- **Furnish it.** Records, tapes, framed artwork, lamps, tables to leave a book on.
+- **Read them.** Take a book off the shelf, turn pages on a curved mesh — PDF or
+  EPUB.
+- **Furnish it.** Records, tapes, framed artwork, lamps, tables to leave a book
+  on.
 - **Leave things.** Tear out a page, pin it to a wall, write on the whiteboard.
 - **Live in it.** Weather, a searchable terminal on the office desk, and a cat.
 - **Design it.** The building is a file — `.library/library.json` — and editing it
@@ -15,7 +17,7 @@ The default map is a cabin in the woods with twenty bookcases, a loft, a lake, a
 forest you can walk into, and a second building on the far shore. A freshly
 indexed library arrives in moving boxes; unpacking it is yours to do.
 
-## Two ways to run it
+## Two Ways to Run It
 
 Both are the same program over the same library folder — see
 [docs/modes.md](docs/modes.md).
@@ -28,7 +30,7 @@ npm run assets         # pdf.js fonts + cmaps — needed after a fresh clone
 npm run tauri:dev
 ```
 
-Then **choose folder…**, then **scan**. `npm run tauri:build` makes a Windows
+Then **Choose Folder…**, then **Scan**. `npm run tauri:build` makes a Windows
 installer and a standalone `.exe`.
 
 **Hosted, in a container** — the same library served to a browser:
@@ -38,10 +40,10 @@ docker build -t kleib3ry .
 docker run --rm -p 8080:8080 -v /path/to/your/library:/library kleib3ry
 ```
 
-Open <http://localhost:8080> and press **scan** once. One library, one household,
+Open <http://localhost:8080> and press **Scan** once. One library, one household,
 a network you trust — no accounts, no TLS ([docs/docker.md](docs/docker.md)).
 
-## Demo library
+## Demo Library
 
 [`demo-data/demo-library/`](demo-data/demo-library/) is a complete, freely-licensed
 library folder: ten [Standard Ebooks](https://standardebooks.org/) titles, two
@@ -53,7 +55,7 @@ docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
 
 Credits in [its own README](demo-data/demo-library/README.md).
 
-## Your library folder
+## Your Library Folder
 
 ```text
 My Library/
@@ -69,9 +71,9 @@ Only `books/` is needed. The app never writes among your books and never rewrite
 
 ## Controls
 
-`F1` in the room shows every key; [docs/controls.md](docs/controls.md) is the same
-table. The short version: click to look, `WASD` to walk, `E` to take a book off
-the shelf, `R` to read it, drag a page to turn it.
+`F1` in the room shows every key; [docs/controls.md](docs/controls.md) is the
+same list on a page. The short version: click to look, `WASD` to walk, `E` to
+take a book off the shelf, `R` to read it, drag a page to turn it.
 
 ## Documentation
 
@@ -85,7 +87,7 @@ Everything is in **[docs/](docs/README.md)**. The ones people want first:
 | [architecture.md](docs/architecture.md)       | how it is put together, and why                              |
 | [development.md](docs/development.md)         | commands, tests, the frame budget                            |
 
-## Built with
+## Built With
 
 React Three Fiber and three.js in a Tauri 2 shell, with a Rust core doing
 indexing, SQLite persistence and format probing — and the same core behind a small

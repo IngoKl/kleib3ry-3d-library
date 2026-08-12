@@ -144,8 +144,32 @@ test.describe('shelving', () => {
         current.localX -
         DIMS.get(current.id)!.thickness / 2 -
         (previous.localX + DIMS.get(previous.id)!.thickness / 2)
-      expect(gap).toBeCloseTo(0, 6)
+      // Flush, except the last book of a part-filled row, which is allowed the
+      // small slide that goes with its lean into the gap.
+      if (i === packed.length - 1) {
+        expect(gap).toBeGreaterThanOrEqual(0)
+        expect(gap).toBeLessThanOrEqual(0.06)
+      } else {
+        expect(gap).toBeCloseTo(0, 6)
+      }
     }
+  })
+
+  test('the last book of a part-filled row leans into the gap, and stays inside it', () => {
+    // Plenty of free space: the closer leans, and only the closer.
+    const few = BOOKS.slice(0, 6).map((b) => b.id)
+    const packed = packRow(SHELF_0, 0, 0, few, lookup)
+    expect(packed.at(-1)!.lean).toBeLessThan(0)
+    for (const item of packed.slice(0, -1)) {
+      expect(item.lean).toBe(DIMS.get(item.id)!.lean)
+    }
+    // Even leaning, the book stays inside the compartment: the shifted base
+    // plus the tipped top corner both land short of the side panel.
+    const last = packed.at(-1)!
+    const size = DIMS.get(last.id)!
+    expect(
+      last.localX + size.thickness / 2 + Math.sin(-last.lean) * (size.height / 2),
+    ).toBeLessThanOrEqual(INTERIOR_WIDTH / 2)
   })
 
   test('a row that cannot fit is refused rather than overflowing', () => {
