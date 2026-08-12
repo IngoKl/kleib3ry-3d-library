@@ -14,7 +14,7 @@ import { create } from 'zustand'
  *
  * The room's own state — which lamps are on, whether it is night, whether it is
  * raining — is deliberately *not* here. That is a fact about the library and
- * lives in `lights.json` beside it.
+ * lives in `ambience.json` beside it.
  */
 
 const KEY = 'kleib3ry.settings'
@@ -47,6 +47,13 @@ export type Settings = {
   positionalAudio: boolean
   /** Mouse sensitivity, as a multiplier on the base rate. */
   sensitivity: number
+  /**
+   * Whether newly scanned books are boxed one folder per box, so a first scan
+   * arrives pre-sorted by the folders under `books/`. A preference about how
+   * *you* sort rather than a fact about the room, which is why it sits here
+   * beside the mouse and not in the library folder.
+   */
+  boxPerFolder: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -56,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rainVolume: 0.35,
   positionalAudio: true,
   sensitivity: 1,
+  boxPerFolder: false,
 }
 
 function read(): Settings {
@@ -74,6 +82,7 @@ function read(): Settings {
       rainVolume: clamp(parsed.rainVolume ?? DEFAULT_SETTINGS.rainVolume, 0, 1),
       positionalAudio: parsed.positionalAudio ?? DEFAULT_SETTINGS.positionalAudio,
       sensitivity: clamp(parsed.sensitivity ?? DEFAULT_SETTINGS.sensitivity, 0.2, 3),
+      boxPerFolder: parsed.boxPerFolder ?? DEFAULT_SETTINGS.boxPerFolder,
     }
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -145,6 +154,7 @@ function persist(state: Settings) {
         rainVolume: state.rainVolume,
         positionalAudio: state.positionalAudio,
         sensitivity: state.sensitivity,
+        boxPerFolder: state.boxPerFolder,
       } satisfies Settings),
     )
   } catch {

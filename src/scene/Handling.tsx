@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { supportAt } from '../world/derive'
+import { FURNITURE_SIZE, supportAt } from '../world/derive'
 import { launchBody, throwFrom } from './drop'
 import { roomHasKeyboard, useAppStore } from '../state/store'
-import { useLibraryStore } from '../state/library'
+import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
 import { player } from '../state/player'
 
@@ -20,6 +20,7 @@ import { player } from '../state/player'
  *   L  write a label on the bookcase you are looking at
  *   T  write a note, to stick on a wall
  *   X  pick a moving box up and carry it, or set it down again
+ *   Backspace  break down the empty box you are looking at
  *
  * `E` is still the walk controller's, because it is the same reach that takes a
  * book off a shelf and it belongs next to that — and pinning a sheet to a wall
@@ -35,7 +36,12 @@ export function Handling() {
   const world = useWorldStore((s) => s.world)
   const ghost = useRef<THREE.Group>(null)
 
-  const box = world?.furniture.find((item) => item.id === carried)
+  // A box off the stack has no furniture entry yet; it previews at the kind's
+  // own size, which is the size it will be when it lands.
+  const box =
+    carried === NEW_BOX
+      ? { width: FURNITURE_SIZE.box.width, height: FURNITURE_SIZE.box.height, depth: FURNITURE_SIZE.box.depth }
+      : world?.furniture.find((item) => item.id === carried)
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -158,6 +164,18 @@ export function Handling() {
         // Only with your hands free: a box needs both, and a book in one of
         // them is exactly the thing you would put down first.
         if (app.held === null && app.focusedBox) app.setCarriedBox(app.focusedBox)
+        return
+      }
+
+      if (e.code === 'Backspace') {
+        // Break down the empty box under the crosshair. Its own key, and one
+        // with "delete" written into it: G on the same box shelves a boxful,
+        // and the two must not sit on neighbouring meanings of one key.
+        // `deleteBox` refuses a box with books in it.
+        if (app.held === null && app.carriedBox === null && app.focusedBox) {
+          e.preventDefault()
+          shelf.deleteBox(app.focusedBox)
+        }
       }
     }
 
@@ -172,10 +190,7 @@ export function Handling() {
     const setDown = (id: string) => {
       const app = useAppStore.getState()
       const live = useWorldStore.getState().world
-      const piece = live?.furniture.find((item) => item.id === id)
-      const room = live?.rooms.find((candidate) => candidate.id === piece?.roomId)
       app.setCarriedBox(null)
-      if (!piece || !room) return
 
       const x = player.x - Math.sin(player.yaw) * CARRY_AHEAD
       const z = player.z - Math.cos(player.yaw) * CARRY_AHEAD
@@ -183,6 +198,18 @@ export function Handling() {
       // rotations (see `aabbFromCentre`), and a box set down at 45° would
       // render rotated while colliding axis-aligned.
       const facing = Math.round((player.yaw * 180) / Math.PI / 90) * 90
+
+      // A box fresh off the stack becomes real furniture here, where it first
+      // touches the floor.
+      if (id === NEW_BOX) {
+        useLibraryStore.getState().spawnBox(x, z, facing, player.floor)
+        return
+      }
+
+      const piece = live?.furniture.find((item) => item.id === id)
+      const room = live?.rooms.find((candidate) => candidate.id === piece?.roomId)
+      if (!piece || !room) return
+
       // Stored room-local, because that is the frame the document is written
       // in: a box recorded in world metres would jump the first time somebody
       // moved the room it belongs to. The elevation rides along because the

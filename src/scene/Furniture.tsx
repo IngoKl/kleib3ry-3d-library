@@ -9,7 +9,7 @@ import { drawing, makeBoardCanvas } from './board'
 import { MARKER_INKS, inkAt } from '../data/inks'
 import { useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
-import { useLightStore } from '../state/lights'
+import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
 import { APPLIANCES, LAMPS, SITTABLE, WALL_MOUNTED, type DerivedFurniture } from '../world/derive'
@@ -828,6 +828,18 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
         <boxGeometry args={[0.44, 0.08, 0.36]} />
         <meshStandardMaterial color="#3b332c" roughness={0.55} />
       </mesh>
+      {/* The power lamp on the plinth's edge: amber with a record on, bright
+          while it turns — so a paused deck across the room still says it is
+          holding your place. */}
+      <mesh position={[0.185, 0.055, 0.181]}>
+        <boxGeometry args={[0.016, 0.007, 0.005]} />
+        <meshStandardMaterial
+          color="#2a1712"
+          emissive="#ff7a3d"
+          emissiveIntensity={loaded ? (spinning ? 1.7 : 0.55) : 0}
+          roughness={0.4}
+        />
+      </mesh>
       <group ref={platter} position={[-0.05, 0.09, 0]}>
         <mesh castShadow>
           <cylinderGeometry args={[0.145, 0.145, 0.014, 28]} />
@@ -1007,6 +1019,44 @@ function MovingBox({ width, depth }: { width: number; depth: number }) {
           <meshStandardMaterial color={CARD_DARK} roughness={1} />
         </mesh>
       ))}
+    </group>
+  )
+}
+
+/**
+ * Flattened moving boxes leaning against the wall, waiting to be made up.
+ *
+ * The spares live in the kitchen: E takes one into your arms and X stands it
+ * up wherever you are — see `spawnBox`. A lean of a few degrees each, slightly
+ * disagreeing, is what says "stack of cardboard" rather than "panel".
+ */
+function BoxStack({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const sheet = 0.016
+  const panels = 4
+  return (
+    <group>
+      {Array.from({ length: panels }, (_, i) => (
+        <mesh
+          key={i}
+          position={[
+            ((i % 2) - 0.5) * 0.02,
+            height / 2 - i * 0.008,
+            -depth / 2 + sheet / 2 + i * (sheet + 0.006),
+          ]}
+          rotation-x={0.16 + i * 0.045}
+          rotation-y={((i * 41) % 7) / 7 * 0.08 - 0.04}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[width * (1 - i * 0.04), height, sheet]} />
+          <meshStandardMaterial color={i % 2 ? CARD : CARD_DARK} roughness={1} />
+        </mesh>
+      ))}
+      {/* one lying flat at the base, which is where the next one comes off */}
+      <mesh position={[0.01, sheet / 2, depth * 0.18]} rotation-y={0.09} castShadow receiveShadow>
+        <boxGeometry args={[width * 0.92, sheet, depth * 0.85]} />
+        <meshStandardMaterial color={CARD} roughness={1} />
+      </mesh>
     </group>
   )
 }
@@ -1452,13 +1502,13 @@ function Step({ width, depth, height }: { width: number; depth: number; height: 
  */
 function useAnyLightOn(wanted: boolean): boolean {
   const lamps = useWorldStore((s) => s.world?.lights)
-  const on = useLightStore((s) => s.on)
+  const on = useAmbienceStore((s) => s.on)
   if (!wanted || !lamps) return false
   return lamps.some((lamp) => on[lamp.id] ?? lamp.defaultOn)
 }
 
 function Piece({ item, source }: { item: DerivedFurniture; source: string | null }) {
-  const lit = useLightStore((s) => (LAMPS.has(item.kind) ? s.isOn(item.id, item.on ?? true) : false))
+  const lit = useAmbienceStore((s) => (LAMPS.has(item.kind) ? s.isOn(item.id, item.on ?? true) : false))
   // A record is on one deck at a time, so only that deck shows it. Reading
   // `playing` alone put the same disc on the platter of every deck in the house.
   const playing = useMediaStore((s) => (s.deck === item.id ? s.playing : null))
@@ -1543,6 +1593,8 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <Whiteboard id={item.id} width={item.width} height={item.height} />
       case 'box':
         return <MovingBox width={item.width} depth={item.depth} />
+      case 'boxstack':
+        return <BoxStack width={item.width} depth={item.depth} height={item.height} />
       case 'stairs':
         return <Stairs width={item.width} run={item.depth} rise={item.height} />
       case 'step':
@@ -1691,7 +1743,7 @@ export function Furniture() {
  */
 export function FurnitureLights() {
   const world = useWorldStore((s) => s.world)
-  const on = useLightStore((s) => s.on)
+  const on = useAmbienceStore((s) => s.on)
   if (!world) return null
 
   return (
@@ -1716,6 +1768,54 @@ export function FurnitureLights() {
           />
         )
       })}
+      {world.furniture
+        .filter((item) => item.kind === 'crt')
+        .map((item) => (
+          <CrtGlow key={item.id} item={item} />
+        ))}
     </>
+  )
+}
+
+/**
+ * The cold light a running television throws into the room.
+ *
+ * A point light hung just in front of the glass, unsteady the way a picture is
+ * — the flicker is two incommensurate sines, which never repeat obviously and
+ * cost nothing. Mounted whether or not a tape is running, at zero intensity
+ * when idle, for the reason the lamps stay mounted: the light count is baked
+ * into every compiled shader, and a light that comes and goes recompiles the
+ * whole cabin mid-frame.
+ */
+function CrtGlow({ item }: { item: DerivedFurniture }) {
+  const light = useRef<THREE.PointLight>(null)
+
+  useFrame(({ clock }) => {
+    const node = light.current
+    if (!node) return
+    const video = useVideoStore.getState()
+    const running = video.playing !== null && !video.paused
+    if (!running) {
+      node.intensity = 0
+      return
+    }
+    const t = clock.elapsedTime
+    node.intensity = 0.9 + (Math.sin(t * 13.7) * Math.sin(t * 7.3) * 0.5 + 0.5) * 0.5
+  })
+
+  // Just proud of the screen, on whichever way the set is turned.
+  const reach = item.depth / 2 + 0.35
+  return (
+    <pointLight
+      ref={light}
+      position={[
+        item.x + Math.sin(item.rotationY) * reach,
+        item.y + item.height * 0.6,
+        item.z + Math.cos(item.rotationY) * reach,
+      ]}
+      intensity={0}
+      distance={4}
+      color="#8fb1e8"
+    />
   )
 }

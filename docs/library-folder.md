@@ -25,7 +25,7 @@ My Library/                   ← the folder you choose in the app
     library.json               ← the rooms. You edit this. The app never does.
     books.json                 ← which book is where, and what you wrote on the
                                  shelves. The app writes this.
-    lights.json                ← which lamps are on. Delete it and they all are.
+    ambience.json              ← lamps, night, weather. Delete it for a bright dry day.
     index.sqlite               ← what was found in the folder. Rebuildable.
     covers/                    ← extracted and rendered cover art, cached
 ```
@@ -116,13 +116,13 @@ mistyping in here.
 Metres throughout, and the vertical axis is Y.
 
 - A room's `origin` is its **centre**, in world metres.
-- Everything *inside* a room — shelves, furniture, spawn — is positioned
+- Everything _inside_ a room — shelves, furniture, spawn — is positioned
   relative to **that room's centre**, so moving a whole room moves its contents
   with it.
 - `facing` is **degrees clockwise about Y**. `0` faces +Z; `90` faces +X; `180`
   faces −Z; `270` faces −X. For a bookcase, the facing direction is its open
   front, so a case against the west wall faces `90` — into the room. For
-  `spawn.facing` it is the direction you are *looking*, so there `0` is north.
+  `spawn.facing` it is the direction you are _looking_, so there `0` is north.
 
 ### Rooms
 
@@ -168,14 +168,14 @@ written out in a comment there.
   "kind": "window", "glazed": false }
 ```
 
-| field | meaning |
-| --- | --- |
-| `wall` | `north` (−Z), `south` (+Z), `east` (+X), `west` (−X) |
-| `at` | centre of the opening, measured from the **middle** of that wall |
-| `width`, `height` | the hole |
-| `sill` | height of its bottom edge above the floor |
-| `kind` | `door` or `window` |
-| `glazed` | whether a pane is fitted. Defaults to true for a window. |
+| field             | meaning                                                          |
+| ----------------- | ---------------------------------------------------------------- |
+| `wall`            | `north` (−Z), `south` (+Z), `east` (+X), `west` (−X)             |
+| `at`              | centre of the opening, measured from the **middle** of that wall |
+| `width`, `height` | the hole                                                         |
+| `sill`            | height of its bottom edge above the floor                        |
+| `kind`            | `door` or `window`                                               |
+| `glazed`          | whether a pane is fitted. Defaults to true for a window.         |
 
 A `door` at floor level is walkable. A `window` is not — its apron is a
 waist-high wall you bump into, which is what you want when the sill is at 0.9 m.
@@ -187,7 +187,13 @@ cannot walk off. The loft balustrade and the porch rails are all built this way.
 ### Shelves
 
 ```jsonc
-{ "id": "west-0", "at": [-4.825, -3.2], "facing": 90, "rows": 5, "label": "Fiction" }
+{
+  "id": "west-0",
+  "at": [-4.825, -3.2],
+  "facing": 90,
+  "rows": 5,
+  "label": "Fiction",
+}
 ```
 
 `rows` is how many compartments the case has; the compartments divide the same
@@ -196,7 +202,7 @@ relative to the room centre. To stand one flush against a wall, offset it from
 the wall by half the case's depth plus a little: `0.175`. A case is 1.0 m wide
 and 0.32 m deep, so cases stand 1.05 m apart in a run.
 
-`label` is a *starting* label for the card on the case's top edge. You can
+`label` is a _starting_ label for the card on the case's top edge. You can
 relabel a case in the app with `L`, and that overrides what is written here —
 the app's labels live in `books.json`, so a hand edit and an in-app edit never
 fight over the same file.
@@ -215,25 +221,26 @@ Optional fields: `size` (footprint, or width by height for a picture), `height`,
 `"y": 0.92`), `source` (which file in `artwork/` a picture shows), `rise` (how
 far a staircase climbs), and `on` (whether a lamp starts lit).
 
-| `kind` | notes |
-| --- | --- |
-| `armchair` `sofa` `diningchair` `bench` | solid, and you can sit — look at it and press `E` |
-| `table` `sidetable` `footstool` `kitchencounter` | solid, and you can put a book down on it |
-| `bathtub` `basin` `toilet` | solid; the first two take a book on their rim |
-| `floorlamp` `pendant` `fireplace` `fairylights` | light. `E` switches it; the state goes to `lights.json` |
-| `lightswitch` | hung like a picture; `E` works every light in the library at once |
-| `recordplayer` `coffeemaker` | `E` works it. Give it a `y` so it stands on something |
-| `crt` `tapecrate` | a television and a crate that fills itself from your `video/` folder |
-| `computer` | the catalogue terminal: `E` searches the whole library and says where a thing is |
-| `postits` | a pad of notes; `E` peels one off to write on |
-| `marker` | a whiteboard marker; `E` takes it, then the left mouse button draws |
-| `whiteboard` | hung like a picture; `E` pins a page or a note to it, and the marker writes on it |
-| `recordshelf` | a crate that fills itself from your `music/` folder |
-| `picture` `clock` | hung on a wall; `y` is the centre of it |
-| `plant` | solid; `height` varies it |
-| `rug` | not solid; `size` sets its footprint |
-| `stairs` | a ramp underfoot, treads to look at; `size` is [width, run] and `rise` is how far up |
-| `box` | a moving box — solid; books with no shelf are piled in it, `G` empties it onto the shelves and `X` picks it up to carry |
+| `kind`                                           | notes                                                                                                                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `armchair` `sofa` `diningchair` `bench`          | solid, and you can sit — look at it and press `E`                                                                                                                      |
+| `table` `sidetable` `footstool` `kitchencounter` | solid, and you can put a book down on it                                                                                                                               |
+| `bathtub` `basin` `toilet`                       | solid; the first two take a book on their rim                                                                                                                          |
+| `floorlamp` `pendant` `fireplace` `fairylights`  | light. `E` switches it; the state goes to `ambience.json`, with the night and the weather                                                                              |
+| `lightswitch`                                    | hung like a picture; `E` works every light in the library at once                                                                                                      |
+| `recordplayer` `coffeemaker`                     | `E` works it. Give it a `y` so it stands on something                                                                                                                  |
+| `crt` `tapecrate`                                | a television and a crate that fills itself from your `video/` folder                                                                                                   |
+| `computer`                                       | the catalogue terminal: `E` searches the whole library and says where a thing is                                                                                       |
+| `postits`                                        | a pad of notes; `E` peels one off to write on                                                                                                                          |
+| `marker`                                         | a whiteboard marker; `E` takes it, then the left mouse button draws                                                                                                    |
+| `whiteboard`                                     | hung like a picture; `E` pins a page or a note to it, and the marker writes on it                                                                                      |
+| `recordshelf`                                    | a crate that fills itself from your `music/` folder                                                                                                                    |
+| `picture` `clock`                                | hung on a wall; `y` is the centre of it                                                                                                                                |
+| `plant`                                          | solid; `height` varies it                                                                                                                                              |
+| `rug`                                            | not solid; `size` sets its footprint                                                                                                                                   |
+| `stairs`                                         | a ramp underfoot, treads to look at; `size` is [width, run] and `rise` is how far up                                                                                   |
+| `box`                                            | a moving box — solid; books with no shelf are piled in it, `G` empties it onto the nearest shelves, `X` picks it up to carry, and `Backspace` breaks an empty one down |
+| `boxstack`                                       | flattened spare boxes — `E` takes one into your arms, `X` stands it up as a new box (the default map keeps the stack in the kitchen)                                   |
 
 The full table, with what is solid and what you can do to it, is in
 [Building a map](custom-maps.md#the-kinds).
@@ -250,7 +257,7 @@ list of book ids, and a map from box id to the books in that box:
 
 ```json
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "rows": {
     "west-0:0": ["a3f1…", "9c02…"],
     "west-0:1": ["71bd…"]
@@ -259,12 +266,23 @@ list of book ids, and a map from box id to the books in that box:
     "box-1": ["5e77…", "c410…"]
   },
   "loose": {
-    "d81a…": { "x": 2.61, "y": 0.77, "z": 1.4, "yaw": 1.9, "open": true, "spread": 74 }
+    "d81a…": {
+      "x": 2.61,
+      "y": 0.77,
+      "z": 1.4,
+      "yaw": 1.9,
+      "open": true,
+      "spread": 74
+    }
   },
   "bookmarks": { "a3f1…": [0, 12, 41] },
-  "progress":  { "a3f1…": 41 },
-  "labels":    { "west-0": "Fiction" },
-  "furniture": { "box-1": { "at": [-0.9, 2.4], "facing": 8 } }
+  "progress": { "a3f1…": 41 },
+  "labels": { "west-0": "Fiction" },
+  "furniture": { "box-1": { "at": [-0.9, 2.4], "facing": 8 } },
+  "spawnedBoxes": {
+    "box-5": { "room": "main", "at": [1.2, -0.4], "facing": 90 }
+  },
+  "removedBoxes": ["box-3"]
 }
 ```
 
@@ -272,7 +290,7 @@ A book id is a hash of its path, size and modification time, so renaming or
 moving a file reconciles to the same book instead of duplicating it.
 
 `boxes` is keyed by the `id` of a `box` piece of furniture, so a book you drop
-into the box by the door is in *that* box and is still in it next time. A box
+into the box by the door is in _that_ box and is still in it next time. A box
 holds as many books as you put in it; it shows as many as physically fit.
 
 `loose` is the third place a book can be: on a table, or on the floor where you
@@ -285,6 +303,11 @@ you were reading.
 to the one it was last open at. `labels` is what you have written on each
 bookcase — it overrides the `label` in `library.json`. `furniture` is where you
 have shoved things; only the moving boxes can be shoved.
+
+`spawnedBoxes` are the boxes you have made up off a `boxstack` — each records
+which room's frame its position is written in — and `removedBoxes` are the
+document's boxes you have broken down. Both are the app's own edits to the box
+population, which is why they live here and never touch `library.json`.
 
 Everything here is in `books.json` rather than in `library.json` for the same
 reason: **`library.json` is a file you wrote**, comments and all, and pushing a
@@ -320,7 +343,7 @@ from the same file the next time it is drawn. That is also why taking one down a
 putting it up somewhere else loses nothing.
 
 Positions are in world metres with a `yaw`, like a book left on a table, and for
-the same reason: you stuck it *there*. A wall that goes away leaves the sheet
+the same reason: you stuck it _there_. A wall that goes away leaves the sheet
 hanging over where it was rather than teleporting to whichever wall inherited
 the id.
 
@@ -359,7 +382,7 @@ and up from the bottom, both 0 to 1 — so resizing a board in `library.json`
 keeps its drawing instead of scattering it. `ink` is which pen, as an index into
 the three in the tray.
 
-## `lights.json` — which lamps are on, and what the weather is doing
+## `ambience.json` — the lamps, the hour and the weather
 
 Also written by the app, and deliberately tiny:
 
@@ -379,9 +402,9 @@ can perform without knowing what a schema is, and the reason it is its own file
 rather than four more lines in `books.json`.
 
 `night` and `rain` are here for the same reason the lamps are: they are facts
-about the room *right now* rather than settings about the app, so they belong to
+about the room _right now_ rather than settings about the app, so they belong to
 the library and travel with it. Deleting the file brings back the daylight and
-the dry weather along with every lamp. Everything that is about your *machine* —
+the dry weather along with every lamp. Everything that is about your _machine_ —
 low performance mode, whether you can see your own body, how loud things are —
 is deliberately not here; it is in browser storage, keyed by the app, so it does
 not follow a library folder onto somebody else's computer.
@@ -393,25 +416,25 @@ work. The rule is: **the app never puts a book on a shelf. You do.** A book it
 has not been told where to put is in a box — which is where a whole newly
 indexed library starts.
 
-| you edit `library.json` to… | what happens to the books |
-| --- | --- |
-| move or rotate a bookcase | they ride along — same id, new position |
-| reorder or rename things around it | nothing; ids do not care about order |
-| **delete** a bookcase | its books go into the **moving boxes** |
-| **rename** a bookcase | same as deleting it — the id is the identity |
-| give it fewer rows, or narrow it | whatever no longer fits goes into the boxes |
-| add a bookcase | it arrives **empty**, ready for books |
-| break the JSON | rejected; the live room and your layout are untouched |
+| you edit `library.json` to…        | what happens to the books                             |
+| ---------------------------------- | ----------------------------------------------------- |
+| move or rotate a bookcase          | they ride along — same id, new position               |
+| reorder or rename things around it | nothing; ids do not care about order                  |
+| **delete** a bookcase              | its books go into the **moving boxes**                |
+| **rename** a bookcase              | same as deleting it — the id is the identity          |
+| give it fewer rows, or narrow it   | whatever no longer fits goes into the boxes           |
+| add a bookcase                     | it arrives **empty**, ready for books                 |
+| break the JSON                     | rejected; the live room and your layout are untouched |
 
 And separately:
 
-| | |
-| --- | --- |
-| a book is new since the last scan | into the boxes, for you to unpack |
-| a book's file was deleted | simply gone; not reported as displaced |
+|                                      |                                            |
+| ------------------------------------ | ------------------------------------------ |
+| a book is new since the last scan    | into the boxes, for you to unpack          |
+| a book's file was deleted            | simply gone; not reported as displaced     |
 | you delete a `box` from the document | its books tip into the boxes that are left |
 
-**Deleting a bookcase is reversible.** `books.json` is deliberately *not* pruned
+**Deleting a bookcase is reversible.** `books.json` is deliberately _not_ pruned
 when a shelf disappears: the books are shown in the boxes, but the file still
 records which shelf they belonged to. Put the bookcase back — same id — and they
 go straight back onto it, in the same order. That only stops being true once you
@@ -431,11 +454,11 @@ shown — they are still counted in the panel, and still there. Add a box to
 
 The default library has four boxes, and a freshly indexed collection is in them.
 
-| | |
-| --- | --- |
-| look at a box, press `G` | every book in it goes onto the shelves — empty ones first, in no particular order, so a boxful spreads around the room rather than filling the first bookcase by the door |
-| look at a book in a box, press `E` | take that one out |
-| holding a book, look at a box, press `E` | put it in *that* box |
+|                                          |                                                                                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| look at a box, press `G`                 | every book in it goes onto the shelves — empty ones first, in no particular order, so a boxful spreads around the room rather than filling the first bookcase by the door |
+| look at a book in a box, press `E`       | take that one out                                                                                                                                                         |
+| holding a book, look at a box, press `E` | put it in _that_ box                                                                                                                                                      |
 
 Whatever will not fit on the shelves stays in the box rather than being dropped.
 Which box a book is in is written down, so a box you have sorted by hand stays

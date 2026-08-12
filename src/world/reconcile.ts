@@ -52,10 +52,11 @@ export type BookLayout = {
  * box a book is in, and stopped shelving newly indexed books automatically; 5
  * added books put down in the room, reading progress, shelf labels, and where
  * the boxes have been shoved to; 6 added whiteboard drawings and the records
- * you have filed or set down. Older documents still load — every field added
- * since has been optional.
+ * you have filed or set down; 7 added the boxes you have made up off the stack
+ * or broken down. Older documents still load — every field added since has
+ * been optional.
  */
-export const LAYOUT_SCHEMA_VERSION = 6
+export const LAYOUT_SCHEMA_VERSION = 7
 
 export type Reconciliation = {
   rows: Record<RowKey, string[]>
@@ -93,17 +94,74 @@ function distribute(
 }
 
 /**
+ * The folder a book file lives in, for packing a scan one folder per box.
+ *
+ * The top-level folder under `books/` when there is one — that is the level at
+ * which people sort ("fiction", "papers"), and subfolders of it are shelving
+ * within the same box-worth. With no `books/` segment in the path (a library
+ * scanned as a bare folder), the file's own directory is the best available
+ * grouping. Root-level files come back as '' and pack together.
+ */
+export function bookFolder(path: string): string {
+  const parts = path.replaceAll('\\', '/').split('/')
+  const marker = parts.lastIndexOf('books')
+  if (marker >= 0 && marker < parts.length - 1) {
+    return parts.length - marker === 2 ? '' : parts[marker + 1]!
+  }
+  return parts.length > 1 ? parts[parts.length - 2]! : ''
+}
+
+/**
+ * Like `distribute`, but whole folders at a time: every book from one folder
+ * lands in one box, so unpacking a box is unpacking a subject.
+ *
+ * Biggest folder first into the emptiest box — the same levelling rule as
+ * `distribute`, at folder rather than book granularity. With more folders than
+ * boxes, folders share; a folder is never split.
+ */
+function distributeByFolder(
+  boxes: Record<string, string[]>,
+  boxIds: readonly string[],
+  ids: readonly string[],
+  folderOf: (id: string) => string,
+) {
+  if (boxIds.length === 0) return
+  const folders = new Map<string, string[]>()
+  for (const id of ids) {
+    const key = folderOf(id)
+    const list = folders.get(key)
+    if (list) list.push(id)
+    else folders.set(key, [id])
+  }
+
+  const bySize = [...folders.values()].sort((a, b) => b.length - a.length)
+  for (const group of bySize) {
+    let target = boxIds[0]!
+    for (const boxId of boxIds) {
+      if ((boxes[boxId]?.length ?? 0) < (boxes[target]?.length ?? 0)) target = boxId
+    }
+    ;(boxes[target] ??= []).push(...group)
+  }
+}
+
+/**
  * Reconcile a saved layout against the world and the index as they are now.
  *
  * `books` is the set of book ids the index currently holds — a book whose file
  * has been deleted is simply gone and is not reported as displaced, because
  * nothing about the room displaced it.
+ *
+ * `folderOf` turns "One Box per Folder" on: new arrivals are boxed a folder at
+ * a time instead of levelled book by book, so a first scan (or a big drop of
+ * files) comes out of the van pre-sorted. It only shapes *arrivals* — books
+ * displaced from shelves are strays, not a folder, and still level out.
  */
 export function reconcile(
   world: DerivedWorld,
   saved: BookLayout | null,
   books: readonly string[],
   dims: (id: string) => BookDimensions | undefined,
+  folderOf?: (id: string) => string,
 ): Reconciliation {
   const known = new Set(books)
   const validRows = new Set<RowKey>()
@@ -179,7 +237,9 @@ export function reconcile(
   // Books the index knows that the layout never mentioned are new — from the
   // first scan, or from the latest one — and new books arrive in the boxes.
   const fresh = books.filter((id) => !wasPlaced.has(id))
-  distribute(boxes, boxIds, [...displaced, ...orphaned, ...fresh])
+  distribute(boxes, boxIds, [...displaced, ...orphaned])
+  if (folderOf) distributeByFolder(boxes, boxIds, fresh, folderOf)
+  else distribute(boxes, boxIds, fresh)
 
   // With no box furniture at all there is nowhere to show them, but they are
   // still unshelved and still have to be counted.

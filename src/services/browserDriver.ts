@@ -7,14 +7,14 @@ import {
   type IndexedTrack,
   type LayoutDocument,
   type LibraryService,
-  type LightState,
+  type AmbienceState,
 } from './types'
 
 const ROOT_KEY = 'kleib3ry.root'
 const LAYOUT_KEY = 'kleib3ry.layout'
 const WORLD_KEY = 'kleib3ry.world'
 const WORLD_STAMP_KEY = 'kleib3ry.world.stamp'
-const LIGHTS_KEY = 'kleib3ry.lights'
+const AMBIENCE_KEY = 'kleib3ry.ambience'
 
 /**
  * Plain-browser driver: no filesystem, a generated stand-in library.
@@ -277,19 +277,19 @@ export const browserDriver: LibraryService = {
     return PLACEHOLDER_TAPES
   },
 
-  async loadLights() {
-    const stored = localStorage.getItem(LIGHTS_KEY)
+  async loadAmbience() {
+    const stored = localStorage.getItem(AMBIENCE_KEY)
     if (!stored) return null
     try {
-      return JSON.parse(stored) as LightState
+      return JSON.parse(stored) as AmbienceState
     } catch {
-      localStorage.removeItem(LIGHTS_KEY)
+      localStorage.removeItem(AMBIENCE_KEY)
       return null
     }
   },
 
-  async saveLights(state) {
-    localStorage.setItem(LIGHTS_KEY, JSON.stringify(state))
+  async saveAmbience(state) {
+    localStorage.setItem(AMBIENCE_KEY, JSON.stringify(state))
   },
 
   assetUrl(path) {

@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { ambienceBlend } from './ambienceBlend'
 import { sceneRefs } from './refs'
 import { MATERIALS, makeFloorTexture } from './materials'
+import { useAmbienceStore } from '../state/ambience'
 import {
   FLOOR_SLAB,
   SKIRTING,
@@ -251,7 +253,73 @@ function Room({ room }: { room: RoomSpec }) {
         </mesh>
       ))}
 
+      <WindowGlow room={room} panes={panes} />
     </group>
+  )
+}
+
+/**
+ * Lamplight in the glass after dark.
+ *
+ * At night a lit room's windows should be the warmest thing on the hillside —
+ * the view of the cabin from across the lake is the whole reward for walking
+ * there. One additive wash over the room's panes, merged to a single draw
+ * call; its strength follows the ambience blend and whether any lamp in the
+ * room is actually on, read per frame rather than subscribed, so switching a
+ * lamp off fades the windows with it.
+ */
+function WindowGlow({ room, panes }: { room: RoomSpec; panes: readonly Panel[] }) {
+  const material = useRef<THREE.MeshBasicMaterial>(null)
+  const mesh = useRef<THREE.Mesh>(null)
+
+  // The panes, inflated a little past the glass so the glow sits over both
+  // faces and spills a touch onto the reveal.
+  const geometry = useMemo(
+    () =>
+      merge(
+        panes.map((pane) => ({
+          position: pane.position,
+          size: [pane.size[0] + 0.02, pane.size[1] + 0.01, pane.size[2] + 0.02] as [
+            number,
+            number,
+            number,
+          ],
+        })),
+      ),
+    [panes],
+  )
+  useEffect(() => () => geometry?.dispose(), [geometry])
+
+  const world = useWorldStore((s) => s.world)
+  const lampIds = useMemo(
+    () => world?.lights.filter((lamp) => lamp.roomId === room.id) ?? [],
+    [world, room.id],
+  )
+
+  useFrame(() => {
+    const paint = material.current
+    const node = mesh.current
+    if (!paint || !node) return
+    const ambience = useAmbienceStore.getState()
+    const lit = lampIds.some((lamp) => ambience.isOn(lamp.id, lamp.defaultOn))
+    // A dark room's glass still catches a trace of moonlit sky; a lit one glows.
+    const strength = ambienceBlend.night * (1 - ambienceBlend.rain * 0.3) * (lit ? 0.3 : 0.05)
+    paint.opacity = strength
+    node.visible = strength > 0.01
+  })
+
+  if (!geometry) return null
+  return (
+    <mesh ref={mesh} geometry={geometry} visible={false}>
+      <meshBasicMaterial
+        ref={material}
+        color="#ffd9a0"
+        transparent
+        opacity={0}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </mesh>
   )
 }
 

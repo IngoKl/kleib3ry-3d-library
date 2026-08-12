@@ -258,7 +258,7 @@ async function settledWith(
  * Derived from the world rather than written down as coordinates: the map is a
  * document somebody edits, and a test that knows where the bookcases *were* is
  * a test that fails the day the room is rearranged. Which rows are stocked is
- * not fixed either — unpacking a box fills empty rows in a shuffled order — so
+ * not fixed either — unpacking a box fills empty rows nearest that box first — so
  * this sweeps the height of a case until the crosshair finds a book, or, when
  * carrying one, a shelf to put it on.
  */
@@ -785,7 +785,7 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
   /**
    * Make sure the case under test actually has books on it.
    *
-   * Unpacking fills *empty* rows in a shuffled order and stops when the boxes
+   * Unpacking fills *empty* rows nearest the box first and stops when the boxes
    * run out, so with more shelves in the building than there are books to fill
    * them, whether any particular row is stocked is not something to assume — and
    * a test that assumed it fails the day somebody adds a bookcase.

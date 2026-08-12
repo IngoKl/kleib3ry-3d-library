@@ -7,8 +7,8 @@ import { floorAt } from '../world/derive'
 import { shelfColliders } from '../world/shelf'
 import { EYE_HEIGHT, KNEEL_HEIGHT, PLAYER_RADIUS, SEATED_EYE, player } from '../state/player'
 import { roomHasKeyboard, useAppStore } from '../state/store'
-import { useLibraryStore } from '../state/library'
-import { useLightStore } from '../state/lights'
+import { NEW_BOX, useLibraryStore } from '../state/library'
+import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
@@ -300,13 +300,13 @@ export function Player() {
       if (!item) return
 
       if (LAMPS.has(item.kind)) {
-        useLightStore.getState().toggle(id, item.on ?? true)
+        useAmbienceStore.getState().toggle(id, item.on ?? true)
         return
       }
       // The switch by the door: every light in the library, on or off together.
       // Off when anything is lit, so one press always darkens the house.
       if (item.kind === 'lightswitch' && world) {
-        const lights = useLightStore.getState()
+        const lights = useAmbienceStore.getState()
         const anyOn = world.lights.some((lamp) => lights.isOn(lamp.id, lamp.defaultOn))
         lights.setAll(
           world.lights.map((lamp) => lamp.id),
@@ -327,6 +327,13 @@ export function Player() {
       // down: it is the same marker, hidden while you carry it.
       if (item.kind === 'marker') {
         useAppStore.getState().setHeldMarker(id)
+        return
+      }
+      // A flat box comes off the stack, made up and into your arms — it turns
+      // into real furniture when you set it down (X), like any carried box.
+      // The stack never runs out: cardboard is not the scarce thing here.
+      if (item.kind === 'boxstack') {
+        useAppStore.getState().setCarriedBox(NEW_BOX)
         return
       }
       if (item.kind === 'crt') {
@@ -473,12 +480,12 @@ export function Player() {
         e.preventDefault()
         // Day to night and back. On the keyboard rather than only in the panel
         // because it is something you do *in* the room, like switching a lamp.
-        useLightStore.getState().toggleNight()
+        useAmbienceStore.getState().toggleNight()
       } else if (e.code === 'KeyK') {
         e.preventDefault()
         // Rain on and off, next to night for the same reason: it is weather,
         // not a setting, and it is saved beside the lamps.
-        useLightStore.getState().toggleRain()
+        useAmbienceStore.getState().toggleRain()
       } else if (e.code === 'KeyR') {
         e.preventDefault()
         const { held, setReading, setMode } = useAppStore.getState()

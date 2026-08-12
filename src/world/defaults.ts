@@ -23,7 +23,7 @@ export const DEFAULT_WORLD_TEXT = `{
   // panel, so you cannot break your library by mistyping in here. Nothing the
   // app does is ever written back over this file — where you shove the boxes,
   // which lamps you switch off, what you write on a shelf label, all of that
-  // lives in books.json and lights.json beside it.
+  // lives in books.json and ambience.json beside it.
   //
   // Nothing here carries a "label". A bookcase is bare until you write on it
   // with L, which is the point: the labels are yours, and a room that arrives
@@ -144,7 +144,7 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "clock", "kind": "clock", "at": [-4.55, -3.96], "facing": 0, "y": 1.95, "size": [0.34, 0.34] },
 
         // Ceiling lights. "on": false starts one dark; switching a light in the
-        // app is remembered in .library/lights.json, not written back here.
+        // app is remembered in .library/ambience.json, not written back here.
         //
         // The two tall ones hang in the open half of the room, south of where
         // the loft floor ends at z = 1.4 — a pendant on a long flex under a
@@ -388,7 +388,10 @@ export const DEFAULT_WORLD_TEXT = `{
         // room's at z = 0.15 to 1.25, the office's on the south wall, and the
         // bathroom's lane at x = -1.5 to -0.6.
         { "id": "kitchen-plant", "kind": "plant", "at": [-1.75, -1.4], "facing": 0, "height": 0.55 },
-        { "id": "kitchen-pendant", "kind": "pendant", "at": [0.0, -0.6], "facing": 0 }
+        { "id": "kitchen-pendant", "kind": "pendant", "at": [0.0, -0.6], "facing": 0 },
+        // Flattened spares leaning on the east wall, south of the counter run.
+        // E takes one; an empty box in the room breaks down with Backspace.
+        { "id": "box-stack", "kind": "boxstack", "at": [1.72, 0.85], "facing": 270 }
       ]
     },
 

@@ -143,10 +143,10 @@ pub use kleib3ry_core::CONFIG_DIR;
 struct SaveFiles {
     world: PathBuf,
     layout: PathBuf,
-    /// Which lamps are switched on. Its own file because it is about the room
-    /// rather than about the books, and because deleting it is a sensible way
-    /// to turn every light in the library back on.
-    lights: PathBuf,
+    /// Which lamps are on and what the weather is doing. Its own file because
+    /// it is about the room rather than about the books, and because deleting
+    /// it is a sensible way to get every light and the daylight back.
+    ambience: PathBuf,
 }
 
 /// Where rendered and extracted covers are cached.
@@ -195,7 +195,7 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
             Ok(SaveFiles {
                 world: files.world,
                 layout: files.layout,
-                lights: files.lights,
+                ambience: files.ambience,
             })
         }
         Err(e) if is_no_root(&e) => {
@@ -203,7 +203,7 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
             Ok(SaveFiles {
                 world: base.join("library.json"),
                 layout: base.join("books.json"),
-                lights: base.join("lights.json"),
+                ambience: base.join("ambience.json"),
             })
         }
         Err(e) => Err(e),
@@ -461,11 +461,11 @@ fn list_videos(app: AppHandle) -> Result<Vec<media::Tape>> {
     Ok(media::list_videos(dir.parent().unwrap_or(&dir)))
 }
 
-/// Which lamps are on. A missing file means "as `library.json` says", which is
-/// also what you get by deleting it.
+/// Which lamps are on and what the weather is doing. A missing file means "as
+/// `library.json` says", which is also what you get by deleting it.
 #[tauri::command]
-fn get_lights(app: AppHandle) -> Result<Option<serde_json::Value>> {
-    match fs::read_to_string(&save_files(&app)?.lights) {
+fn get_ambience(app: AppHandle) -> Result<Option<serde_json::Value>> {
+    match fs::read_to_string(&save_files(&app)?.ambience) {
         Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.into()),
@@ -473,8 +473,8 @@ fn get_lights(app: AppHandle) -> Result<Option<serde_json::Value>> {
 }
 
 #[tauri::command]
-fn save_lights(app: AppHandle, state: serde_json::Value) -> Result<()> {
-    let file = save_files(&app)?.lights;
+fn save_ambience(app: AppHandle, state: serde_json::Value) -> Result<()> {
+    let file = save_files(&app)?.ambience;
     if let Some(parent) = file.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -502,8 +502,8 @@ pub fn run() {
             list_music,
             list_artwork,
             list_videos,
-            get_lights,
-            save_lights,
+            get_ambience,
+            save_ambience,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

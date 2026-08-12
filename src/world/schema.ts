@@ -78,6 +78,7 @@ export type FurnitureKind =
   | 'bed'
   // storage
   | 'box'
+  | 'boxstack'
   | 'recordshelf'
   | 'tapecrate'
   | 'kitchencounter'
@@ -132,7 +133,7 @@ export type FurnitureSpec = {
   rise?: number
   /**
    * Whether a lamp starts lit. You can switch lights in the app, and that is
-   * remembered in `.library/lights.json` — this is only the initial state.
+   * remembered in `.library/ambience.json` — this is only the initial state.
    */
   on?: boolean
 }
@@ -351,6 +352,7 @@ export const FURNITURE_KINDS = [
   'desk',
   'bed',
   'box',
+  'boxstack',
   'recordshelf',
   'tapecrate',
   'kitchencounter',

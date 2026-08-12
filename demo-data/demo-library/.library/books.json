@@ -1,33 +1,30 @@
 {
   "bookmarks": {},
   "boxes": {
-    "box-1": [
-      "9b21e71419b48081",
-      "d7e18f9f15bce077"
-    ],
-    "box-2": [
-      "94dfa57d97920d2d",
-      "c6e4856105a0f858",
-      "239516aa5c3083e3"
-    ],
     "box-3": [
+      "9b21e71419b48081",
       "ebb657745cd8dd17",
-      "97787651002ab249"
+      "d7e18f9f15bce077",
+      "97787651002ab249",
+      "96e0d61ccfea2a7c"
     ],
     "box-4": [
+      "94dfa57d97920d2d",
       "4e0561b47503cc3d",
-      "c99da44ef49cb6eb"
+      "c6e4856105a0f858",
+      "c99da44ef49cb6eb",
+      "239516aa5c3083e3"
     ]
   },
   "drawings": {},
   "furniture": {
     "box-4": {
       "at": [
-        -1.2481708717656952,
-        1.6344580973231984
+        -0.48139073102845453,
+        2.344473597154259
       ],
       "elevation": 0,
-      "facing": 270
+      "facing": -180
     }
   },
   "labels": {
@@ -68,10 +65,12 @@
     "filed": {},
     "loose": {}
   },
-  "rows": {
-    "south-1:2": [
-      "96e0d61ccfea2a7c"
-    ]
-  },
-  "schemaVersion": 6
+  "removedBoxes": [
+    "box-1",
+    "box-2",
+    "box-5"
+  ],
+  "rows": {},
+  "schemaVersion": 7,
+  "spawnedBoxes": {}
 }

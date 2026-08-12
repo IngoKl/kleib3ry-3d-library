@@ -21,6 +21,7 @@ tests/screenshots/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 
 public/standard_fonts/
@@ -31,5 +32,5 @@ public/sample-book.pdf
 .docker-build/
 
 # Demo data
-demo-data/demo-library/.library/lights.json
+demo-data/demo-library/.library/ambience.json
 demo-data/demo-library/.library/library.json

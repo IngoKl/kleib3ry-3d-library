@@ -3,7 +3,7 @@ import { DRIVER_LABELS, library } from '../services'
 import { metrics, type RenderMetrics } from '../state/metrics'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
-import { useLightStore } from '../state/lights'
+import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
@@ -112,10 +112,10 @@ export function SettingsCard() {
   const driver = useAppStore((s) => s.driver)
 
   const settings = useSettings()
-  const night = useLightStore((s) => s.night)
-  const toggleNight = useLightStore((s) => s.toggleNight)
-  const rain = useLightStore((s) => s.rain)
-  const toggleRain = useLightStore((s) => s.toggleRain)
+  const night = useAmbienceStore((s) => s.night)
+  const toggleNight = useAmbienceStore((s) => s.toggleNight)
+  const rain = useAmbienceStore((s) => s.rain)
+  const toggleRain = useAmbienceStore((s) => s.toggleRain)
 
   const scanning = useLibraryStore((s) => s.scanning)
   const scan = useLibraryStore((s) => s.scan)
@@ -259,6 +259,18 @@ export function SettingsCard() {
           {lastScan.failed > 0 && ` · ${lastScan.failed} unreadable`}
         </p>
       )}
+      <Toggle
+        label="One Box per Folder"
+        hint="New books arrive boxed by their folder under books/, instead of spread evenly."
+        on={settings.boxPerFolder}
+        testId="box-per-folder"
+        onChange={(next) => {
+          settings.set('boxPerFolder', next)
+          // Any books still unplaced re-deal into the boxes under the new rule
+          // straight away, rather than on the next scan.
+          useLibraryStore.getState().rebuild()
+        }}
+      />
 
       {/* Buttons rather than keys: each moves the whole library at once. */}
       <div className="row-controls">

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { holdRainGlass, releaseRainGlass } from './rainGlass'
 import { player } from '../state/player'
-import { useLightStore } from '../state/lights'
+import { useAmbienceStore } from '../state/ambience'
 import { useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 import { roomBounds, windowPanes, type Panel } from '../world/derive'
@@ -172,7 +172,7 @@ function WetPane({ pane, texture }: { pane: Panel; texture: THREE.Texture }) {
 }
 
 export function Weather() {
-  const raining = useLightStore((s) => s.rain)
+  const raining = useAmbienceStore((s) => s.rain)
   const world = useWorldStore((s) => s.world)
 
   const panes = useMemo(

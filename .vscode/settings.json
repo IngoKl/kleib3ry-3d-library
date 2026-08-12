@@ -1,0 +1,13 @@
+{
+  // Scoped to Markdown on purpose: TypeScript and Rust here are formatted by hand
+  // and linted by oxlint and clippy, so Prettier is never the default formatter.
+  // Prettier runs first and owns layout; markdownlint then fixes what it owns.
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.markdownlint": "explicit"
+    }
+  },
+  "markdownlint.run": "onType"
+}

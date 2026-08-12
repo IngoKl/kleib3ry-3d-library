@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-ssr/
+test-results/
+playwright-report/
+blob-report/
+core/target/
+server/target/
+src-tauri/target/
+src-tauri/gen/
+public/standard_fonts/
+public/cmaps/

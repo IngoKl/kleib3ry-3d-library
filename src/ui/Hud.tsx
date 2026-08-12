@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { readerStatus } from '../reader/status'
 import { cat } from '../state/cat'
-import { useLibraryStore } from '../state/library'
-import { useLightStore } from '../state/lights'
+import { NEW_BOX, useLibraryStore } from '../state/library'
+import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useAppStore } from '../state/store'
@@ -31,6 +31,7 @@ const FIXTURE_NAMES: Partial<Record<string, string>> = {
   pendant: 'Ceiling Light',
   fairylights: 'Fairy Lights',
   lightswitch: 'Light Switch',
+  boxstack: 'Spare Boxes',
 }
 
 /**
@@ -100,7 +101,7 @@ export function Hud() {
   const tapes = useVideoStore((s) => s.tapes)
   const watching = useVideoStore((s) => s.playing)
   const watchPaused = useVideoStore((s) => s.paused)
-  const lightsOn = useLightStore((s) => s.on)
+  const lightsOn = useAmbienceStore((s) => s.on)
   const brewing = useAppStore((s) => s.brewing)
 
   // Why the reader is showing nothing, on the same poll as the render stats:
@@ -164,6 +165,8 @@ export function Hud() {
         return 'take one and write on it'
       case 'marker':
         return 'pick it up'
+      case 'boxstack':
+        return 'make a box up'
       default:
         return brewing === fixture.id ? 'brewing…' : 'put the coffee on'
     }
@@ -463,9 +466,9 @@ export function Hud() {
           {walking && carriedBox && (
             <div className="held-card" data-testid="carry-card">
               <p className="held-label">Carrying</p>
-              <p className="focus-title">{carriedBox}</p>
+              <p className="focus-title">{carriedBox === NEW_BOX ? 'A New Box' : 'Moving Box'}</p>
               <p className="focus-key">
-                <kbd>X</kbd> Set it down
+                <kbd>X</kbd> {carriedBox === NEW_BOX ? 'Stand it up here' : 'Set it down'}
               </p>
             </div>
           )}
@@ -491,9 +494,14 @@ export function Hud() {
                         <kbd>.</kbd> or scroll to browse
                       </>
                     )}
+                    {' · '}
+                    <kbd>X</kbd> Carry it
                   </>
                 ) : (
-                  <span className="dim">Empty</span>
+                  <>
+                    <span className="dim">Empty</span> · <kbd>X</kbd> Carry it ·{' '}
+                    <kbd>⌫</kbd> Break it down
+                  </>
                 )}
               </p>
             </div>

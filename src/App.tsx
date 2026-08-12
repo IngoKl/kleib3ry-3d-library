@@ -24,6 +24,8 @@ import { HeldSheet } from './scene/HeldSheet'
 import { Pinned } from './scene/Pinned'
 import { Tapes } from './scene/Tapes'
 import { Weather } from './scene/Weather'
+import { ChimneySmoke } from './scene/ChimneySmoke'
+import { DustMotes } from './scene/DustMotes'
 import { Cat } from './scene/Cat'
 import { Body } from './scene/Body'
 import { Sound } from './scene/Sound'
@@ -35,7 +37,7 @@ import { metrics } from './state/metrics'
 import { EYE_HEIGHT, player, teleport } from './state/player'
 import { useAppStore } from './state/store'
 import { useLibraryStore } from './state/library'
-import { useLightStore } from './state/lights'
+import { useAmbienceStore } from './state/ambience'
 import { useMediaStore } from './state/media'
 import { useVideoStore } from './state/video'
 import { useWorldStore } from './state/world'
@@ -60,7 +62,7 @@ export default function App() {
   const watchWorld = useWorldStore((s) => s.watch)
   const worldLoaded = useWorldStore((s) => s.loaded)
 
-  const loadLights = useLightStore((s) => s.load)
+  const loadAmbience = useAmbienceStore((s) => s.load)
   const loadMedia = useMediaStore((s) => s.load)
   const loadVideo = useVideoStore((s) => s.load)
 
@@ -73,7 +75,7 @@ export default function App() {
       await loadWorld()
       await loadRoot()
       await loadLibrary()
-      await Promise.all([loadLights(), loadMedia(), loadVideo()])
+      await Promise.all([loadAmbience(), loadMedia(), loadVideo()])
       // Start the cover sweep only once everything else is up: it is a long,
       // low-priority walk through the whole catalogue, and it must never be
       // what the first frame is waiting on.
@@ -86,7 +88,7 @@ export default function App() {
         error: e instanceof Error ? e.message : String(e),
       })
     })
-  }, [loadWorld, loadRoot, loadLibrary, loadLights, loadMedia, loadVideo])
+  }, [loadWorld, loadRoot, loadLibrary, loadAmbience, loadMedia, loadVideo])
 
   useEffect(() => watchWorld(), [watchWorld])
 
@@ -234,7 +236,7 @@ export default function App() {
        * Put a book on a particular shelf, as aiming and pressing E does.
        *
        * Exists because "which rows happen to be stocked" is not something a test
-       * may assume: unpacking fills empty rows in a shuffled order and stops when
+       * may assume: unpacking fills empty rows nearest the box first and stops when
        * the boxes run out, so with more shelves than books there are always rows
        * with nothing on them. A test about what happens to the books *on* a
        * bookcase has to be able to put some there.
@@ -259,7 +261,7 @@ export default function App() {
       /** Which lamps are lit, by furniture id. */
       lights: () => {
         const world = useWorldStore.getState().world
-        const lights = useLightStore.getState()
+        const lights = useAmbienceStore.getState()
         return Object.fromEntries(
           (world?.lights ?? []).map((lamp) => [lamp.id, lights.isOn(lamp.id, lamp.defaultOn)]),
         )
@@ -267,14 +269,14 @@ export default function App() {
       toggleLightForTest: (id: string) => {
         const world = useWorldStore.getState().world
         const lamp = world?.lights.find((candidate) => candidate.id === id)
-        return lamp ? useLightStore.getState().toggle(id, lamp.defaultOn) : null
+        return lamp ? useAmbienceStore.getState().toggle(id, lamp.defaultOn) : null
       },
       /** Whether it is night outside, and the switch the N key presses. */
-      night: () => useLightStore.getState().night,
-      toggleNightForTest: () => useLightStore.getState().toggleNight(),
+      night: () => useAmbienceStore.getState().night,
+      toggleNightForTest: () => useAmbienceStore.getState().toggleNight(),
       /** Whether it is raining, and the switch the K key presses. */
-      raining: () => useLightStore.getState().rain,
-      toggleRainForTest: () => useLightStore.getState().toggleRain(),
+      raining: () => useAmbienceStore.getState().rain,
+      toggleRainForTest: () => useAmbienceStore.getState().toggleRain(),
       /**
        * The cat: where it is and what it is up to.
        *
@@ -455,6 +457,8 @@ export default function App() {
         <Pinned />
         <Cat />
         <Weather />
+        <ChimneySmoke />
+        <DustMotes />
         <PlacementGhost />
         <Interaction />
         <Handling />

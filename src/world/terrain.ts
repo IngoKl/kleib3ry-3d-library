@@ -55,17 +55,56 @@ export const LAKE = {
 } as const
 
 /**
+ * The wobble that turns the ellipse into a pond: a few low harmonics on the
+ * shoreline, as [lobes, amplitude, phase].
+ *
+ * Three frequencies rather than noise because the outline has to be the same
+ * function everywhere it is asked — walked to, drawn, and grown around — and a
+ * closed sum of sines is trivially that. Amplitudes sum to ~0.12, small enough
+ * that every ring derived in shoreline units (the beach, the path, the tree
+ * line) deforms with it without ever folding over itself.
+ */
+const WOBBLE: readonly (readonly [number, number, number])[] = [
+  [2, 0.05, 1.7],
+  [3, 0.045, 0.4],
+  [5, 0.025, 3.9],
+]
+
+/** How far the shoreline is from the lake's middle at `angle`, in ellipse units. */
+export function shoreShape(angle: number): number {
+  let r = 1
+  for (const [lobes, amplitude, phase] of WOBBLE) r += amplitude * Math.sin(lobes * angle + phase)
+  return r
+}
+
+/**
  * How far a point is from the middle of the lake, in units of shoreline: below
  * 1 is water, 1 is the water's edge, above 1 is dry land.
  *
- * An ellipse rather than a distance because the lake is an ellipse, and the
- * whole reason this function exists is that the shore you walk to has to be the
- * shore you can see.
+ * An ellipse with a slow wobble on it rather than a distance, because a perfect
+ * ellipse reads as a compass drawing — and the whole reason this function
+ * exists is that the shore you walk to has to be the shore you can see.
  */
 export function lakeRadius(x: number, z: number): number {
   const lx = (x - LAKE.x) / LAKE.radiusX
   const lz = (z - LAKE.z) / LAKE.radiusZ
-  return Math.hypot(lx, lz)
+  const raw = Math.hypot(lx, lz)
+  if (raw < 1e-9) return 0
+  return raw / shoreShape(Math.atan2(lz, lx))
+}
+
+/**
+ * The point `r` shoreline units out from the lake's middle at `angle`, in world
+ * metres. The renderer builds the water and the beach from this — the same
+ * function the walk controller refuses steps with, which is the agreement that
+ * keeps the shore you see and the shore you stand at the same shore.
+ */
+export function lakePoint(angle: number, r: number): [number, number] {
+  const reach = r * shoreShape(angle)
+  return [
+    LAKE.x + Math.cos(angle) * reach * LAKE.radiusX,
+    LAKE.z + Math.sin(angle) * reach * LAKE.radiusZ,
+  ]
 }
 
 /**

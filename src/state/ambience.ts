@@ -1,39 +1,35 @@
 import { create } from 'zustand'
 import { library } from '../services'
-import type { LightState } from '../services/types'
+import type { AmbienceState } from '../services/types'
 
 /**
- * Which lamps are on.
+ * How the room is right now: which lamps are on, whether it is night, whether
+ * it is raining.
  *
- * Saved beside the layout, in `.library/lights.json`, and keyed by furniture id
- * — so a lamp you switch off stays off across launches, and a lamp taken out of
- * `library.json` stops being remembered as soon as nothing refers to it. The
- * document's `"on"` is the *initial* state and nothing writes back over it:
- * `library.json` is yours, and flipping a switch should not reformat it.
+ * Saved beside the layout, in `.library/ambience.json`, with the lamps keyed by
+ * furniture id — so a lamp you switch off stays off across launches, and a lamp
+ * taken out of `library.json` stops being remembered as soon as nothing refers
+ * to it. The document's `"on"` is the *initial* state and nothing writes back
+ * over it: `library.json` is yours, and flipping a switch should not reformat
+ * it.
  *
- * The file is deliberately trivial to reason about. Delete it and every light
- * goes back to whatever the document says, which is a repair anyone can
- * perform without knowing what a schema is.
+ * The three live in one file because they are one kind of fact — the weather is
+ * not a setting any more than the evening is — and because the whole file is
+ * deliberately trivial to reason about. Delete it and you get every light back
+ * on and a dry afternoon, which is a repair anyone can perform without knowing
+ * what a schema is.
  */
 
-export const LIGHT_SCHEMA_VERSION = 1
+export const AMBIENCE_SCHEMA_VERSION = 1
 
 const SAVE_DEBOUNCE_MS = 400
 
-type LightsState = {
+type AmbienceStore = {
   /** Only the lamps whose state differs from what the document asked for. */
   on: Record<string, boolean>
-  /**
-   * Whether it is night outside. Saved with the lamps because it is the same
-   * kind of fact — how the room is lit right now — and deleting `lights.json`
-   * should bring the daylight back along with every lamp.
-   */
+  /** Whether it is night outside. */
   night: boolean
-  /**
-   * Whether it is raining. The same kind of fact as `night` — how the world is
-   * right now rather than how the app is configured — so it is saved in the
-   * same small file and comes back with it.
-   */
+  /** Whether it is raining. */
   rain: boolean
   loaded: boolean
   load: () => Promise<void>
@@ -51,17 +47,17 @@ type LightsState = {
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => void) | null = null
 
-export const useLightStore = create<LightsState>((set, get) => {
+export const useAmbienceStore = create<AmbienceStore>((set, get) => {
   const saveNow = () => {
-    const document: LightState = {
-      schemaVersion: LIGHT_SCHEMA_VERSION,
+    const document: AmbienceState = {
+      schemaVersion: AMBIENCE_SCHEMA_VERSION,
       on: get().on,
       night: get().night,
       rain: get().rain,
     }
-    // A light that will not save is not worth interrupting anybody over; the
-    // room is still lit the way they asked for this session.
-    void library.saveLights(document).catch(() => {})
+    // An evening that will not save is not worth interrupting anybody over; the
+    // room is still the way they asked for it this session.
+    void library.saveAmbience(document).catch(() => {})
   }
   runSave = saveNow
 
@@ -81,7 +77,7 @@ export const useLightStore = create<LightsState>((set, get) => {
 
     load: async () => {
       try {
-        const saved = await library.loadLights()
+        const saved = await library.loadAmbience()
         set({
           on: saved?.on ?? {},
           night: saved?.night ?? false,

@@ -36,11 +36,11 @@ LIBRARY=/srv/books docker compose up --build
 
 Three build stages and one small runtime:
 
-| stage | builds | with |
-| --- | --- | --- |
-| `web` | the front end, `VITE_DRIVER=http` | node |
-| `server` | `kleib3ry-server` | rust |
-| runtime | neither | `debian:bookworm-slim` |
+| stage    | builds                            | with                   |
+| -------- | --------------------------------- | ---------------------- |
+| `web`    | the front end, `VITE_DRIVER=http` | node                   |
+| `server` | `kleib3ry-server`                 | rust                   |
+| runtime  | neither                           | `debian:bookworm-slim` |
 
 Nothing to do with Tauri is built here. That is why `core/` is a separate crate:
 a container that linked GTK and WebKit in order to read a directory would be an
@@ -122,22 +122,22 @@ One per `LibraryService` method, in the same order they are declared in
 [../src/services/types.ts](../src/services/types.ts), so the two files can be
 read side by side.
 
-| route | does |
-| --- | --- |
-| `GET /api/root` | where the library is |
-| `GET /api/books` | the index |
-| `POST /api/scan` | walk the folder and reconcile |
-| `GET /api/scan/progress` | how a scan is getting on |
-| `GET /api/book/<id>` | a book's bytes, for pdf.js |
-| `POST /api/cover/<id>` | cache a cover the browser rasterised |
-| `GET`/`POST` `/api/world` | the room document, as text |
-| `GET /api/world/stamp` | cheap changed-ness, for live reload |
-| `GET /api/paths` | which files this library is saved into |
-| `GET`/`PUT` `/api/layout` | which book is where |
-| `GET`/`PUT` `/api/lights` | which lamps are on |
-| `GET /api/music`, `/api/artwork`, `/api/video` | the other three folders |
-| `GET /media/<path>` | a media file, with byte ranges |
-| anything else | the built front end, falling back to `index.html` |
+| route                                          | does                                                   |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| `GET /api/root`                                | where the library is                                   |
+| `GET /api/books`                               | the index                                              |
+| `POST /api/scan`                               | walk the folder and reconcile                          |
+| `GET /api/scan/progress`                       | how a scan is getting on                               |
+| `GET /api/book/<id>`                           | a book's bytes, for pdf.js                             |
+| `POST /api/cover/<id>`                         | cache a cover the browser rasterised                   |
+| `GET`/`POST` `/api/world`                      | the room document, as text                             |
+| `GET /api/world/stamp`                         | cheap changed-ness, for live reload                    |
+| `GET /api/paths`                               | which files this library is saved into                 |
+| `GET`/`PUT` `/api/layout`                      | which book is where                                    |
+| `GET`/`PUT` `/api/ambience`                    | which lamps are on, and whether it is night or raining |
+| `GET /api/music`, `/api/artwork`, `/api/video` | the other three folders                                |
+| `GET /media/<path>`                            | a media file, with byte ranges                         |
+| anything else                                  | the built front end, falling back to `index.html`      |
 
 Scan progress is **polled**, not pushed. The desktop app gets Tauri events; there
 is no event channel here and a websocket for one number would be a second

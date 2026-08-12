@@ -48,7 +48,18 @@ export type LayoutDocument = {
   /** Books put down somewhere that is not a shelf or a box. */
   loose?: Record<string, LoosePlacement>
   /** Where you have shoved the moving boxes, by furniture id. */
-  furniture?: Record<string, { at: [number, number]; facing: number }>
+  furniture?: Record<string, { at: [number, number]; facing: number; elevation?: number }>
+  /**
+   * Boxes made up off the stack in the kitchen: id -> which room's frame the
+   * position is written in, and where. The app's boxes, so they live here and
+   * never in `library.json`.
+   */
+  spawnedBoxes?: Record<
+    string,
+    { room: string; at: [number, number]; facing: number; elevation?: number }
+  >
+  /** Document boxes that have been broken down, by furniture id. */
+  removedBoxes?: string[]
   /** Shelf id -> what you have written on its label. */
   labels?: Record<string, string>
   /** Pages torn out of books and notes written by hand, pinned up round the house. */
@@ -185,11 +196,13 @@ export type IndexedTape = {
 }
 
 /**
- * Which lamps are on. Kept in its own small file rather than in the book
- * layout: it is about the room rather than about the books, and a file you can
- * delete to get all the lights back on is a good thing to have.
+ * How the room is right now: the lamps, the hour and the weather.
+ *
+ * Kept in its own small file rather than in the book layout, because it is
+ * about the room rather than about the books — and a file you can delete to get
+ * every light back on and a dry afternoon is a good thing to have.
  */
-export type LightState = {
+export type AmbienceState = {
   schemaVersion: number
   /** Furniture id -> whether it is lit. Absent means "as the document says". */
   on: Record<string, boolean>
@@ -197,8 +210,8 @@ export type LightState = {
   night?: boolean
   /**
    * Whether it is raining. Here rather than in the app's own settings for the
-   * same reason `night` is: it is a fact about the room right now, and deleting
-   * `lights.json` should bring back the daylight *and* the dry weather.
+   * same reason `night` is: it is a fact about the room right now, and one
+   * deletion should bring back the daylight *and* the dry weather.
    */
   rain?: boolean
 }
@@ -266,9 +279,12 @@ export interface LibraryService {
   listArtwork(): Promise<IndexedArtwork[]>
   listTapes(): Promise<IndexedTape[]>
 
-  /** Which lamps are on, from `.library/lights.json`. Null if never written. */
-  loadLights(): Promise<LightState | null>
-  saveLights(state: LightState): Promise<void>
+  /**
+   * The lamps and the weather, from `.library/ambience.json`. Null if never
+   * written, which means "as `library.json` says".
+   */
+  loadAmbience(): Promise<AmbienceState | null>
+  saveAmbience(state: AmbienceState): Promise<void>
 
   /** Turn an absolute file path into a URL the WebView can actually load. */
   assetUrl(path: string): string

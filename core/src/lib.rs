@@ -62,8 +62,9 @@ pub struct SaveFiles {
     pub world: std::path::PathBuf,
     /// Which book sits on which shelf. Machine-written, far too long to read.
     pub layout: std::path::PathBuf,
-    /// Which lamps are on. Its own file so deleting it turns them all back on.
-    pub lights: std::path::PathBuf,
+    /// Which lamps are on, whether it is night, whether it is raining. Its own
+    /// file so deleting it brings back every light and the dry daylight.
+    pub ambience: std::path::PathBuf,
     /// The book index. Derived: delete it and rescan.
     pub database: std::path::PathBuf,
     /// Rendered and extracted cover art, so copying a library copies its artwork.
@@ -75,7 +76,7 @@ pub fn save_files(root: &std::path::Path) -> SaveFiles {
     SaveFiles {
         world: base.join("library.json"),
         layout: base.join("books.json"),
-        lights: base.join("lights.json"),
+        ambience: base.join("ambience.json"),
         database: base.join("index.sqlite"),
         covers: base.join("covers"),
     }

@@ -292,14 +292,15 @@ fn route(request: &Request, state: &State) -> Handler {
             Ok(Response::empty(204))
         }
 
-        ("GET", "/api/lights") => match fs::read_to_string(&files.lights) {
+        // The room's ambience: the lamps and the weather, in one file.
+        ("GET", "/api/ambience") => match fs::read_to_string(&files.ambience) {
             Ok(text) => Ok(Response::new(200, "application/json; charset=utf-8", text.into_bytes())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Response::empty(404)),
             Err(e) => Err(oops(e)),
         },
 
-        ("PUT", "/api/lights") => {
-            write_json_file(&files.lights, &request.body)?;
+        ("PUT", "/api/ambience") => {
+            write_json_file(&files.ambience, &request.body)?;
             Ok(Response::empty(204))
         }
 
@@ -684,12 +685,19 @@ mod tests {
     }
 
     #[test]
-    fn the_lamps_round_trip_too() {
-        let h = Harness::new("lights");
-        assert_eq!(h.call("GET", "/api/lights", b"").status, 404);
-        assert_eq!(h.call("PUT", "/api/lights", br#"{"schemaVersion":1,"on":{"lamp":false}}"#).status, 204);
-        let back: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/lights", b"").body).unwrap();
+    fn the_lamps_and_the_weather_round_trip_too() {
+        let h = Harness::new("ambience");
+        assert_eq!(h.call("GET", "/api/ambience", b"").status, 404);
+        assert_eq!(
+            h.call("PUT", "/api/ambience", br#"{"schemaVersion":1,"on":{"lamp":false},"rain":true}"#)
+                .status,
+            204
+        );
+        let back: serde_json::Value =
+            serde_json::from_slice(&h.call("GET", "/api/ambience", b"").body).unwrap();
         assert_eq!(back["on"]["lamp"], serde_json::Value::Bool(false));
+        assert_eq!(back["rain"], serde_json::Value::Bool(true));
+        assert!(save_files(&h.root).ambience.exists());
     }
 
     /// The three folders that are not books, each answering with a list rather

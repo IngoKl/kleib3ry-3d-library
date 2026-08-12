@@ -100,25 +100,25 @@ west to the lake house on the far shore.
 
 Things worth trying early:
 
-| | |
-| --- | --- |
-| **`F`** at a book | draws it out of the shelf to show you its cover |
-| **`R`** with a book in hand | opens it — drag a page across to turn it |
-| **`ctrl`** | kneel, to read the bottom shelf |
-| **`Z`** (or right mouse) | zoom, to read a spine across the room |
-| **`E`** on a lamp, the deck, the coffee maker | works it |
-| **`E`** on a record, then on a deck | puts music on; **`F`** takes it back off |
-| **`E`** on a tape, then on the television | plays it; **`F`** takes it back out |
-| **`E`** on the marker in the office | picks it up — then hold the left mouse button to draw on the whiteboard |
-| **`E`** on the switch by the porch door | works every light in the house at once |
-| **`L`** at a bookcase | writes on its label |
-| **`P`** while reading | tears out a copy of the page — the book keeps its own |
-| **`T`** | writes a note; **`E`** at a wall pins either one up |
-| **`N`** | night, and back |
-| **`K`** | rain, and back — you can hear it, louder outside |
-| **`E`** at the office terminal | searches the whole library and says where a thing is |
-| **`V`** | calls the cat; **`E`** makes a fuss of it, **`F`** asks it for a book |
-| **`H`** | hides the interface |
+|                                               |                                                                         |
+| --------------------------------------------- | ----------------------------------------------------------------------- |
+| **`F`** at a book                             | draws it out of the shelf to show you its cover                         |
+| **`R`** with a book in hand                   | opens it — drag a page across to turn it                                |
+| **`ctrl`**                                    | kneel, to read the bottom shelf                                         |
+| **`Z`** (or right mouse)                      | zoom, to read a spine across the room                                   |
+| **`E`** on a lamp, the deck, the coffee maker | works it                                                                |
+| **`E`** on a record, then on a deck           | puts music on; **`F`** takes it back off                                |
+| **`E`** on a tape, then on the television     | plays it; **`F`** takes it back out                                     |
+| **`E`** on the marker in the office           | picks it up — then hold the left mouse button to draw on the whiteboard |
+| **`E`** on the switch by the porch door       | works every light in the house at once                                  |
+| **`L`** at a bookcase                         | writes on its label                                                     |
+| **`P`** while reading                         | tears out a copy of the page — the book keeps its own                   |
+| **`T`**                                       | writes a note; **`E`** at a wall pins either one up                     |
+| **`N`**                                       | night, and back                                                         |
+| **`K`**                                       | rain, and back — you can hear it, louder outside                        |
+| **`E`** at the office terminal                | searches the whole library and says where a thing is                    |
+| **`V`**                                       | calls the cat; **`E`** makes a fuss of it, **`F`** asks it for a book   |
+| **`H`**                                       | hides the interface                                                     |
 
 ## The room is a file
 

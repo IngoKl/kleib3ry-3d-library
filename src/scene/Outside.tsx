@@ -1,19 +1,26 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { advanceAmbience, ambienceBlend, colorCorners, mixColor, mixNumber } from './ambienceBlend'
 import { between, mulberry32 } from '../lib/rng'
-import { PROPORTIONS, type Tree } from '../world/forest'
+import { CLEARING, PROPORTIONS, occupied, type Tree } from '../world/forest'
+import { roomBounds, type Bounds } from '../world/derive'
 import {
   GROUND_RADIUS,
   GROUND_Y,
   LAKE,
+  PATH,
   SHORE_EDGE,
   SHORE_Y,
   TRAIL,
   TRAIL_WIDTH,
   WATER_Y,
+  lakePoint,
+  lakeRadius,
+  onTrail,
 } from '../world/terrain'
-import { useLightStore } from '../state/lights'
+import { useAmbienceStore } from '../state/ambience'
 import { useWorldStore } from '../state/world'
 
 /**
@@ -23,9 +30,9 @@ import { useWorldStore } from '../state/world'
  * which is fine until you build a cabin and the whole point is the view. So:
  * ground, a lake to the north, a few hundred conifers, and hills behind them.
  *
- * It is all generated from one seed and drawn in a handful of instanced
- * meshes — eight draw calls for the entire outdoors — because none of it should
- * ever compete with the books for frame budget.
+ * It is all generated from seeds and drawn in a handful of instanced meshes —
+ * about a dozen draw calls for the entire outdoors, dressing included — because
+ * none of it should ever compete with the books for frame budget.
  *
  * What has changed is that it is no longer only scenery. You can walk out of
  * the porch and round the water now, so where the lake is and where the trees
@@ -170,45 +177,176 @@ function Forest({ trees }: { trees: Tree[] }) {
 }
 
 /**
- * A sky dome rather than a flat clear colour, so there is a horizon to see the
- * hills against. Drawn on the inside of a sphere with a two-stop gradient baked
- * into a 2x64 canvas — cheaper than a shader and easier to argue with.
+ * One sheet of the lake, as a triangle fan round the shoreline the walk
+ * controller refuses steps at.
+ *
+ * Built from `lakePoint` rather than from a scaled circle because the outline
+ * has a wobble on it now: a circle geometry scaled to the ellipse would draw
+ * the compass-drawing lake while `lakeRadius` walked you to the organic one,
+ * and the two disagreeing at the water's edge is exactly the bug the terrain
+ * module exists to prevent. `r` is in shoreline units — 1 is the water,
+ * `SHORE_EDGE` is the sand under it.
  */
-function Sky({ night, rain }: { night: boolean; rain: boolean }) {
-  const texture = useMemo(() => {
+function lakeSheet(r: number, segments = 96): THREE.BufferGeometry {
+  const positions = new Float32Array((segments + 1) * 3)
+  const normals = new Float32Array((segments + 1) * 3)
+  const uvs = new Float32Array((segments + 1) * 2)
+  positions[0] = LAKE.x
+  positions[2] = LAKE.z
+  for (let i = 0; i < segments; i++) {
+    const [x, z] = lakePoint((i / segments) * Math.PI * 2, r)
+    positions[(i + 1) * 3] = x
+    positions[(i + 1) * 3 + 2] = z
+  }
+  for (let i = 0; i <= segments; i++) normals[i * 3 + 1] = 1
+  // Planar UVs in world metres, so the ripple texture neither stretches with
+  // the wobbled outline nor cares how many segments the fan has.
+  for (let i = 0; i <= segments; i++) {
+    uvs[i * 2] = positions[i * 3]! / 8
+    uvs[i * 2 + 1] = positions[i * 3 + 2]! / 8
+  }
+
+  const indices: number[] = []
+  for (let i = 0; i < segments; i++) {
+    // Centre, next, current — this winding is what points the face up.
+    indices.push(0, 1 + ((i + 1) % segments), 1 + i)
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3))
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+  geometry.setIndex(indices)
+  return geometry
+}
+
+/**
+ * A tileable normal map for the water, synthesised rather than shipped.
+ *
+ * A handful of integer-frequency waves summed over the tile — integer so the
+ * edges meet — then differentiated into normals. Scrolling this across the lake
+ * is what turns a static sheet into water; the amplitude of the effect lives in
+ * `normalScale`, which the frame loop raises when it rains.
+ */
+function makeWaterNormals(size = 128): THREE.CanvasTexture {
+  const waves: readonly (readonly [number, number, number, number])[] = [
+    [1, 2, 1.0, 0.0],
+    [3, 1, 0.6, 1.7],
+    [2, 5, 0.4, 3.1],
+    [5, 3, 0.3, 4.2],
+    [7, 6, 0.22, 0.9],
+  ]
+  const heightAt = (x: number, y: number) => {
+    let h = 0
+    for (const [fx, fy, amplitude, phase] of waves)
+      h += amplitude * Math.sin(((fx * x + fy * y) / size) * Math.PI * 2 + phase)
+    return h
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const image = ctx.createImageData(size, size)
+  const strength = 1.4
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (heightAt(x + 1, y) - heightAt(x - 1, y)) * strength
+      const dy = (heightAt(x, y + 1) - heightAt(x, y - 1)) * strength
+      const inv = 1 / Math.hypot(dx, dy, 1)
+      const i = (y * size + x) * 4
+      image.data[i] = (-dx * inv * 0.5 + 0.5) * 255
+      image.data[i + 1] = (-dy * inv * 0.5 + 0.5) * 255
+      image.data[i + 2] = (inv * 0.5 + 0.5) * 255
+      image.data[i + 3] = 255
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  return texture
+}
+
+/**
+ * The gradient's stops at each corner of the weather, top of the dome first.
+ * Every corner has the same four offsets so a stop can be lerped against its
+ * opposite number as day fades to night or the rain comes over.
+ */
+const SKY_OFFSETS = [0, 0.45, 0.72, 1] as const
+const SKY_STOPS = [
+  colorCorners({ day: '#4d7fb5', dayRain: '#5d6771', night: '#0a1024', nightRain: '#141721' }),
+  colorCorners({ day: '#9dc0dc', dayRain: '#7e8892', night: '#141d33', nightRain: '#181c26' }),
+  colorCorners({ day: '#d6e4ec', dayRain: '#9aa3aa', night: '#1d2536', nightRain: '#1b1f29' }),
+  colorCorners({ day: '#e8e2d4', dayRain: '#adb2b0', night: '#12141c', nightRain: '#191c22' }),
+]
+
+/**
+ * Where the moon hangs: the same corner of the sky the directional light comes
+ * from at night — low over the lake to the north-west — so the shadows and the
+ * disc agree about where the light is.
+ */
+const MOON_DIRECTION = new THREE.Vector3(-0.38, 0.42, -0.78).normalize()
+
+/**
+ * A sky dome rather than a flat clear colour, so there is a horizon to see the
+ * hills against. Drawn on the inside of a sphere with a gradient baked into a
+ * small canvas — cheaper than a shader and easier to argue with. The canvas is
+ * repainted per frame *only while the ambience is fading*, so day into night is
+ * a dusk rather than a cut; a settled sky costs nothing.
+ */
+function Sky() {
+  const night = useAmbienceStore((s) => s.night)
+  const rain = useAmbienceStore((s) => s.rain)
+  const moonRef = useRef<THREE.MeshBasicMaterial>(null)
+  const haloRef = useRef<THREE.MeshBasicMaterial>(null)
+
+  const sky = useMemo(() => {
     const canvas = document.createElement('canvas')
     // Wide enough to scatter stars into at night; the day gradient does not care.
     canvas.width = 256
     canvas.height = 128
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    return { canvas, ctx: canvas.getContext('2d')!, texture }
+  }, [])
+  useEffect(() => () => sky.texture.dispose(), [sky])
+
+  // A soft radial glow behind the moon's disc, drawn once.
+  const halo = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 64
     const ctx = canvas.getContext('2d')!
-    const gradient = ctx.createLinearGradient(0, 0, 0, 128)
-    if (night && rain) {
-      // No stars under cloud, which is the whole difference: a rainy night is
-      // darker *and* flatter than a clear one, not merely darker.
-      gradient.addColorStop(0, '#141721')
-      gradient.addColorStop(0.6, '#1b1f29')
-      gradient.addColorStop(1, '#191c22')
-    } else if (night) {
-      gradient.addColorStop(0, '#0a1024')
-      gradient.addColorStop(0.5, '#141d33')
-      gradient.addColorStop(0.78, '#1d2536')
-      gradient.addColorStop(1, '#12141c')
-    } else if (rain) {
-      gradient.addColorStop(0, '#5d6771')
-      gradient.addColorStop(0.45, '#7e8892')
-      gradient.addColorStop(0.72, '#9aa3aa')
-      gradient.addColorStop(1, '#adb2b0')
-    } else {
-      gradient.addColorStop(0, '#4d7fb5')
-      gradient.addColorStop(0.45, '#9dc0dc')
-      gradient.addColorStop(0.72, '#d6e4ec')
-      gradient.addColorStop(1, '#e8e2d4')
-    }
+    const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 32)
+    gradient.addColorStop(0, 'rgba(214, 226, 248, 0.8)')
+    gradient.addColorStop(0.4, 'rgba(190, 205, 235, 0.28)')
+    gradient.addColorStop(1, 'rgba(190, 205, 235, 0)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 64, 64)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    return texture
+  }, [])
+  useEffect(() => () => halo.dispose(), [halo])
+
+  const paint = (colour: THREE.Color) => {
+    const { canvas, ctx, texture } = sky
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    SKY_OFFSETS.forEach((offset, i) => {
+      gradient.addColorStop(offset, `#${mixColor(colour, SKY_STOPS[i]!).getHexString()}`)
+    })
+    ctx.globalAlpha = 1
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    if (night && !rain) {
-      // A seeded scatter of stars in the upper half, brighter towards the top.
+    // A seeded scatter of stars in the upper half, brighter towards the top —
+    // fading in with the dark and back out under cloud, because what a rainy
+    // night takes off a clear one is the stars, not more brightness.
+    const alpha = ambienceBlend.night * (1 - ambienceBlend.rain)
+    if (alpha > 0.02) {
+      ctx.globalAlpha = alpha
       const random = mulberry32(0x57a2)
       for (let i = 0; i < 220; i++) {
         const x = random() * canvas.width
@@ -217,19 +355,75 @@ function Sky({ night, rain }: { night: boolean; rain: boolean }) {
         ctx.fillStyle = `rgba(232, 238, 255, ${bright.toFixed(2)})`
         ctx.fillRect(x, y, random() > 0.85 ? 1.5 : 1, 1)
       }
+      ctx.globalAlpha = 1
     }
+    texture.needsUpdate = true
+  }
 
-    const made = new THREE.CanvasTexture(canvas)
-    made.colorSpace = THREE.SRGBColorSpace
-    return made
-  }, [night, rain])
-  useEffect(() => () => texture.dispose(), [texture])
+  // Repaint only when the blend has actually moved since the last paint.
+  const painted = useRef({ night: -1, rain: -1 })
+  const scratch = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const at = painted.current
+    if (at.night !== ambienceBlend.night || at.rain !== ambienceBlend.rain) {
+      at.night = ambienceBlend.night
+      at.rain = ambienceBlend.rain
+      paint(scratch)
+    }
+    const moonlight = ambienceBlend.night * (1 - ambienceBlend.rain * 0.85)
+    if (moonRef.current) {
+      moonRef.current.opacity = moonlight
+      moonRef.current.visible = moonlight > 0.02
+    }
+    if (haloRef.current) {
+      haloRef.current.opacity = moonlight * 0.55
+      haloRef.current.visible = moonlight > 0.02
+    }
+  })
+
+  // Painted before the first frame so the dome never renders black.
+  useLayoutEffect(() => {
+    painted.current = { night: ambienceBlend.night, rain: ambienceBlend.rain }
+    paint(scratch)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [night, rain, sky])
+
+  const moonAt = useMemo(() => MOON_DIRECTION.clone().multiplyScalar(GROUND_RADIUS + 25), [])
+  const haloAt = useMemo(() => MOON_DIRECTION.clone().multiplyScalar(GROUND_RADIUS + 28), [])
+  const faceIn = (mesh: THREE.Mesh | null) => mesh?.lookAt(0, 0, 0)
 
   return (
-    <mesh>
-      <sphereGeometry args={[GROUND_RADIUS + 40, 24, 16]} />
-      <meshBasicMaterial map={texture} toneMapped={false} side={THREE.BackSide} fog={false} />
-    </mesh>
+    <group>
+      <mesh>
+        <sphereGeometry args={[GROUND_RADIUS + 40, 24, 16]} />
+        <meshBasicMaterial map={sky.texture} toneMapped={false} side={THREE.BackSide} fog={false} />
+      </mesh>
+      {/* The halo first and further out, so the disc draws over it. */}
+      <mesh position={haloAt} ref={faceIn}>
+        <circleGeometry args={[19, 20]} />
+        <meshBasicMaterial
+          ref={haloRef}
+          map={halo}
+          transparent
+          opacity={0}
+          toneMapped={false}
+          depthWrite={false}
+          fog={false}
+        />
+      </mesh>
+      <mesh position={moonAt} ref={faceIn}>
+        <circleGeometry args={[6.5, 24]} />
+        <meshBasicMaterial
+          ref={moonRef}
+          color="#e9edf6"
+          transparent
+          opacity={0}
+          toneMapped={false}
+          depthWrite={false}
+          fog={false}
+        />
+      </mesh>
+    </group>
   )
 }
 
@@ -323,26 +517,474 @@ function Hills() {
   )
 }
 
+/** One piece of outdoor set dressing, ready to become an instance. */
+type Placed = {
+  x: number
+  y: number
+  z: number
+  scale: [number, number, number]
+  yaw: number
+  tilt?: number
+  colour: string
+}
+
+/** Fill an instanced mesh's matrices and colours in one pass. */
+function place(mesh: THREE.InstancedMesh | null, items: readonly Placed[]) {
+  if (!mesh) return
+  const matrix = new THREE.Matrix4()
+  const position = new THREE.Vector3()
+  const rotation = new THREE.Euler()
+  const quaternion = new THREE.Quaternion()
+  const scale = new THREE.Vector3()
+  const colour = new THREE.Color()
+  items.forEach((item, i) => {
+    position.set(item.x, item.y, item.z)
+    rotation.set(item.tilt ?? 0, item.yaw, 0)
+    scale.set(...item.scale)
+    matrix.compose(position, quaternion.setFromEuler(rotation), scale)
+    mesh.setMatrixAt(i, matrix)
+    mesh.setColorAt(i, colour.set(item.colour))
+  })
+  mesh.instanceMatrix.needsUpdate = true
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  mesh.computeBoundingSphere()
+}
+
+const ROCK_GREYS = ['#7b7d76', '#6b6e69', '#868881', '#5f625e']
+const REED_GREENS = ['#5d7038', '#6c7d3e', '#8a8a4e', '#7a6f3d']
+const PAD_GREENS = ['#3e6034', '#48703c', '#365a30']
+
+/**
+ * The water's edge dressed: rocks half in the shallows, clumps of reeds, and
+ * lily pads drifting near the shore.
+ *
+ * Everything sits in shoreline units off `lakePoint`, so it follows the
+ * wobbled outline the same way the beach does. It all stands at or inside the
+ * waterline — where the walk controller already refuses to go — which is why
+ * none of it needs a collider. Three instanced meshes, three draw calls.
+ */
+function Shoreline() {
+  const rocks = useRef<THREE.InstancedMesh>(null)
+  const reeds = useRef<THREE.InstancedMesh>(null)
+  const pads = useRef<THREE.InstancedMesh>(null)
+
+  // A pad lies flat on the water, so its disc is turned flat once, here —
+  // instance matrices only spin it about Y.
+  const padGeometry = useMemo(() => {
+    const disc = new THREE.CircleGeometry(0.22, 8)
+    disc.rotateX(-Math.PI / 2)
+    return disc
+  }, [])
+  useEffect(() => () => padGeometry.dispose(), [padGeometry])
+
+  const dressing = useMemo(() => {
+    const random = mulberry32(0x1a4e)
+    const pick = <T,>(list: readonly T[]) => list[Math.floor(random() * list.length)]!
+
+    // Rocks at the waterline, half sunk, in loose runs rather than evenly
+    // spaced — a few stretches of shore get a group and the rest stay bare.
+    const rock: Placed[] = []
+    for (let i = 0; i < 9; i++) {
+      const around = random() * Math.PI * 2
+      const run = 1 + Math.floor(random() * 3)
+      for (let j = 0; j < run; j++) {
+        const angle = around + (random() - 0.5) * 0.22
+        const [x, z] = lakePoint(angle, between(random, 0.975, 1.045))
+        if (onTrail(x, z)) continue
+        const size = between(random, 0.16, 0.42)
+        rock.push({
+          x,
+          y: GROUND_Y + size * 0.18,
+          z,
+          scale: [size, size * between(random, 0.5, 0.75), size * between(random, 0.7, 1.1)],
+          yaw: random() * Math.PI * 2,
+          colour: pick(ROCK_GREYS),
+        })
+      }
+    }
+
+    // Reeds in clumps standing in the shallows, leaning every which way.
+    const reed: Placed[] = []
+    for (let i = 0; i < 14; i++) {
+      const around = random() * Math.PI * 2
+      const [cx, cz] = lakePoint(around, between(random, 0.955, 1.0))
+      const count = 6 + Math.floor(random() * 6)
+      for (let j = 0; j < count; j++) {
+        const height = between(random, 0.55, 1.15)
+        reed.push({
+          x: cx + (random() - 0.5) * 1.6,
+          y: WATER_Y + height / 2 - 0.06,
+          z: cz + (random() - 0.5) * 1.6,
+          scale: [1, height, 1],
+          yaw: random() * Math.PI * 2,
+          tilt: (random() - 0.5) * 0.22,
+          colour: pick(REED_GREENS),
+        })
+      }
+    }
+
+    // Lily pads well inside the waterline, where nobody can reach them.
+    const pad: Placed[] = []
+    for (let i = 0; i < 26; i++) {
+      const [x, z] = lakePoint(random() * Math.PI * 2, between(random, 0.62, 0.93))
+      const size = between(random, 0.45, 1.1)
+      pad.push({
+        x,
+        y: WATER_Y + 0.006,
+        z,
+        scale: [size, 1, size],
+        yaw: random() * Math.PI * 2,
+        colour: pick(PAD_GREENS),
+      })
+    }
+
+    return { rock, reed, pad }
+  }, [])
+
+  useLayoutEffect(() => {
+    place(rocks.current, dressing.rock)
+    place(reeds.current, dressing.reed)
+    place(pads.current, dressing.pad)
+  }, [dressing])
+
+  return (
+    <group>
+      <instancedMesh ref={rocks} args={[undefined, undefined, dressing.rock.length]} receiveShadow>
+        <dodecahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+      <instancedMesh ref={reeds} args={[undefined, undefined, dressing.reed.length]}>
+        <cylinderGeometry args={[0.008, 0.022, 1, 4]} />
+        <meshStandardMaterial roughness={1} />
+      </instancedMesh>
+      <instancedMesh ref={pads} args={[padGeometry, undefined, dressing.pad.length]}>
+        <meshStandardMaterial roughness={0.85} />
+      </instancedMesh>
+    </group>
+  )
+}
+
+/**
+ * Boulders and stumps scattered through the forest — the ground floor of the
+ * tree line, so the woods read as a place rather than as cones on a lawn.
+ *
+ * Grown with the same `occupied` test as the trees, so nothing lands on the
+ * shore path, the trail, the view corridor or a building. Small enough to step
+ * over, which is why they are scenery rather than solids — the trunks are the
+ * things you walk into out here.
+ */
+function Erratics({ keepOut }: { keepOut: readonly Bounds[] }) {
+  const boulders = useRef<THREE.InstancedMesh>(null)
+  const stumps = useRef<THREE.InstancedMesh>(null)
+
+  const strewn = useMemo(() => {
+    const random = mulberry32(0x0c7a)
+    const pick = <T,>(list: readonly T[]) => list[Math.floor(random() * list.length)]!
+
+    const boulder: Placed[] = []
+    for (let i = 0; i < 200 && boulder.length < 22; i++) {
+      const angle = random() * Math.PI * 2
+      const distance = 12 + Math.sqrt(random()) * 70
+      const x = Math.cos(angle) * distance
+      const z = Math.sin(angle) * distance
+      if (occupied(x, z, keepOut) || lakeRadius(x, z) < PATH.to + 0.06) continue
+      const size = between(random, 0.28, 0.85)
+      boulder.push({
+        x,
+        y: GROUND_Y + size * 0.25,
+        z,
+        scale: [size, size * between(random, 0.55, 0.8), size * between(random, 0.75, 1.15)],
+        yaw: random() * Math.PI * 2,
+        colour: pick(ROCK_GREYS),
+      })
+    }
+
+    const stump: Placed[] = []
+    for (let i = 0; i < 120 && stump.length < 10; i++) {
+      const angle = random() * Math.PI * 2
+      const distance = 14 + Math.sqrt(random()) * 60
+      const x = Math.cos(angle) * distance
+      const z = Math.sin(angle) * distance
+      if (occupied(x, z, keepOut) || lakeRadius(x, z) < PATH.to + 0.06) continue
+      const height = between(random, 0.22, 0.42)
+      stump.push({
+        x,
+        y: GROUND_Y + height / 2,
+        z,
+        scale: [between(random, 0.16, 0.3), height, between(random, 0.16, 0.3)],
+        yaw: random() * Math.PI * 2,
+        colour: '#5c4a33',
+      })
+    }
+
+    return { boulder, stump }
+  }, [keepOut])
+
+  useLayoutEffect(() => {
+    place(boulders.current, strewn.boulder)
+    place(stumps.current, strewn.stump)
+  }, [strewn])
+
+  return (
+    <group>
+      <instancedMesh
+        ref={boulders}
+        args={[undefined, undefined, strewn.boulder.length]}
+        castShadow
+        receiveShadow
+      >
+        <dodecahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+      <instancedMesh ref={stumps} args={[undefined, undefined, strewn.stump.length]} castShadow>
+        <cylinderGeometry args={[1, 1.18, 1, 7]} />
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+    </group>
+  )
+}
+
+/**
+ * A few birds circling over the lake by day.
+ *
+ * Each is two dark triangles making a gull's "V", flapped by scaling the V
+ * flat and open again — which at a hundred metres is exactly what a wingbeat
+ * looks like, and costs one instanced draw call for the flock. They fade out
+ * with dusk and with rain rather than blinking off.
+ */
+const FLOCK: readonly { radius: number; height: number; speed: number; phase: number }[] = [
+  { radius: 0.42, height: 7.5, speed: 0.14, phase: 0.0 },
+  { radius: 0.55, height: 9.2, speed: 0.11, phase: 2.4 },
+  { radius: 0.48, height: 8.3, speed: 0.17, phase: 4.4 },
+]
+
+function Birds() {
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const material = useRef<THREE.MeshBasicMaterial>(null)
+
+  const geometry = useMemo(() => {
+    const wing = new Float32Array([
+      // Left wing: body leading edge to raised tip.
+      0, 0, 0.16, 0, 0, -0.1, -0.62, 0.2, 0.02,
+      // Right wing, mirrored, wound to face up as well.
+      0, 0, -0.1, 0, 0, 0.16, 0.62, 0.2, 0.02,
+    ])
+    const made = new THREE.BufferGeometry()
+    made.setAttribute('position', new THREE.BufferAttribute(wing, 3))
+    made.computeVertexNormals()
+    return made
+  }, [])
+  useEffect(() => () => geometry.dispose(), [geometry])
+
+  const scratch = useMemo(
+    () => ({
+      matrix: new THREE.Matrix4(),
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      up: new THREE.Vector3(0, 1, 0),
+      scale: new THREE.Vector3(),
+    }),
+    [],
+  )
+
+  useFrame(({ clock }) => {
+    const node = mesh.current
+    const paint = material.current
+    if (!node || !paint) return
+
+    const fade = (1 - ambienceBlend.night) * (1 - ambienceBlend.rain)
+    paint.opacity = fade * 0.9
+    node.visible = fade > 0.03
+    if (!node.visible) return
+
+    const t = clock.elapsedTime
+    FLOCK.forEach((bird, i) => {
+      const angle = bird.phase + t * bird.speed
+      const rx = LAKE.radiusX * bird.radius
+      const rz = LAKE.radiusZ * bird.radius
+      scratch.position.set(
+        LAKE.x + Math.cos(angle) * rx,
+        WATER_Y + bird.height + Math.sin(t * 0.31 + bird.phase) * 0.9,
+        LAKE.z + Math.sin(angle) * rz,
+      )
+      // Facing along the velocity of the circle it flies.
+      const yaw = Math.atan2(-Math.sin(angle) * rx, Math.cos(angle) * rz)
+      scratch.quaternion.setFromAxisAngle(scratch.up, yaw)
+      const flap = 0.2 + Math.abs(Math.sin(t * (4.6 + i * 0.7) + bird.phase)) * 0.9
+      scratch.scale.set(1, flap, 1)
+      scratch.matrix.compose(scratch.position, scratch.quaternion, scratch.scale)
+      node.setMatrixAt(i, scratch.matrix)
+    })
+    node.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={mesh} args={[geometry, undefined, FLOCK.length]} frustumCulled={false}>
+      <meshBasicMaterial
+        ref={material}
+        color="#2b2f33"
+        transparent
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+    </instancedMesh>
+  )
+}
+
+/** The corners the frame loop stretches the outdoors between. */
+const BACKGROUND = colorCorners({
+  day: '#9dc0dc',
+  dayRain: '#818b93',
+  night: '#0b101c',
+  nightRain: '#171a21',
+})
+const FOG_COLOUR = colorCorners({
+  day: '#c3d2dd',
+  dayRain: '#8d969c',
+  night: '#101624',
+  nightRain: '#161a21',
+})
+const FOG_DENSITY = { day: 0.0085, dayRain: 0.019, night: 0.0105, nightRain: 0.018 }
+const WATER_COLOUR = colorCorners({
+  day: '#3f6076',
+  dayRain: '#4b5a63',
+  night: '#22344a',
+  nightRain: '#2c3540',
+})
+const WATER_ROUGHNESS = { day: 0.12, dayRain: 0.62, night: 0.1, nightRain: 0.62 }
+const WATER_METALNESS = { day: 0.55, dayRain: 0.2, night: 0.6, nightRain: 0.2 }
+
+/**
+ * A bank of mist where the ground runs out: an open cylinder round the edge of
+ * the world wearing a vertical fade, coloured to whatever the fog is. It is
+ * what makes the horizon a soft line of atmosphere rather than the rim of a
+ * disc — the geometric edge is still there, but nobody ever sees it.
+ */
+function MistRing() {
+  const material = useRef<THREE.MeshBasicMaterial>(null)
+
+  const fade = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 2
+    canvas.height = 64
+    const ctx = canvas.getContext('2d')!
+    // The canvas's top row is the cylinder's top: clear above, mist below.
+    const gradient = ctx.createLinearGradient(0, 0, 0, 64)
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0)')
+    gradient.addColorStop(0.55, 'rgba(255, 255, 255, 0.4)')
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.85)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 2, 64)
+    const texture = new THREE.CanvasTexture(canvas)
+    return texture
+  }, [])
+  useEffect(() => () => fade.dispose(), [fade])
+
+  const colour = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const paint = material.current
+    if (!paint) return
+    paint.color.copy(mixColor(colour, FOG_COLOUR))
+    paint.opacity = 0.55 + ambienceBlend.rain * 0.25
+  })
+
+  return (
+    <mesh position={[0, GROUND_Y + 6, 0]}>
+      <cylinderGeometry args={[GROUND_RADIUS - 28, GROUND_RADIUS - 28, 18, 48, 1, true]} />
+      <meshBasicMaterial
+        ref={material}
+        map={fade}
+        transparent
+        side={THREE.BackSide}
+        depthWrite={false}
+        fog={false}
+      />
+    </mesh>
+  )
+}
+
 export function Outside() {
   const world = useWorldStore((s) => s.world)
-  const night = useLightStore((s) => s.night)
-  const rain = useLightStore((s) => s.rain)
+  const night = useAmbienceStore((s) => s.night)
+  const rain = useAmbienceStore((s) => s.rain)
+
+  const background = useRef<THREE.Color>(null)
+  const fog = useRef<THREE.FogExp2>(null)
+  const waterMaterial = useRef<THREE.MeshStandardMaterial>(null)
+
+  const ripples = useMemo(() => makeWaterNormals(), [])
+  useEffect(() => () => ripples.dispose(), [ripples])
+
+  /**
+   * The one place the ambience blend advances, plus everything this component
+   * colours by it: the clear colour, the fog and the lake. Advancing and
+   * reading in the same component keeps the sky and the ground the same
+   * evening; the other readers (`Sky`, the lights) are at most a frame behind,
+   * which nothing can see.
+   */
+  useFrame(({ clock }, delta) => {
+    advanceAmbience(night, rain, delta)
+
+    if (background.current) mixColor(background.current, BACKGROUND)
+    if (fog.current) {
+      mixColor(fog.current.color, FOG_COLOUR)
+      fog.current.density = mixNumber(FOG_DENSITY)
+    }
+
+    const water = waterMaterial.current
+    if (water) {
+      mixColor(water.color, WATER_COLOUR)
+      water.roughness = mixNumber(WATER_ROUGHNESS)
+      water.metalness = mixNumber(WATER_METALNESS)
+      // The ripples drift diagonally, faster and choppier in the rain.
+      const t = clock.elapsedTime
+      ripples.offset.set(t * 0.012, t * 0.0085)
+      const chop = 0.3 + ambienceBlend.rain * 0.9
+      water.normalScale.set(chop, chop)
+    }
+  })
 
   // The same trunks the walk controller collides with. Grown in `deriveWorld`
   // rather than here, which is what stops the forest you can see and the forest
   // you can bump into drifting apart.
   const trees = world?.trees ?? []
 
+  // The water and the sand, cut once from the walkable outline.
+  const water = useMemo(() => lakeSheet(1), [])
+  const shore = useMemo(() => lakeSheet(SHORE_EDGE), [])
+  useEffect(
+    () => () => {
+      water.dispose()
+      shore.dispose()
+    },
+    [water, shore],
+  )
+
+  // The same margin the forest keeps off the buildings, for the ground litter.
+  const keepOut = useMemo(
+    () =>
+      (world?.rooms ?? []).map((room) => {
+        const bounds = roomBounds(room)
+        return {
+          minX: bounds.minX - CLEARING,
+          maxX: bounds.maxX + CLEARING,
+          minZ: bounds.minZ - CLEARING,
+          maxZ: bounds.maxZ + CLEARING,
+        }
+      }),
+    [world],
+  )
+
   return (
     <group>
       {/* The clear colour behind everything lives with the sky it has to match,
-          not in App: the two changing in different frames is a visible flash. */}
-      <color
-        attach="background"
-        args={[night ? (rain ? '#171a21' : '#0b101c') : rain ? '#818b93' : '#9dc0dc']}
-      />
-      <Sky night={night} rain={rain} />
+          not in App: the two changing in different frames is a visible flash.
+          Faded by the frame loop above, like everything else out here. */}
+      <color ref={background} attach="background" args={['#9dc0dc']} />
+      <Sky />
       <Hills />
+      <MistRing />
+      <Birds />
 
       {/* The ground you now walk on, a whisker below the floor slabs so the two
           never z-fight and the reveal reads as a shadow line at the base of a
@@ -360,50 +1002,37 @@ export function Outside() {
           The gaps are 1.5 cm: any wider and they read as three floating discs
           from the beach. The beach itself is walkable — the refusal is at the
           water's edge, inside it. */}
-      <mesh
-        position={[LAKE.x, SHORE_Y, LAKE.z]}
-        rotation-x={-Math.PI / 2}
-        scale={[LAKE.radiusX * SHORE_EDGE, LAKE.radiusZ * SHORE_EDGE, 1]}
-      >
-        <circleGeometry args={[1, 64]} />
+      <mesh geometry={shore} position={[0, SHORE_Y, 0]}>
         <meshStandardMaterial color="#8f8266" roughness={1} />
       </mesh>
 
       {/* The lake. Smooth and a little metallic, which at this distance is all
           that separates water from a green field of a different colour — and
           rough and grey in the rain, because what a shower does to a lake is
-          take the reflection off it. */}
-      <mesh
-        position={[LAKE.x, WATER_Y, LAKE.z]}
-        rotation-x={-Math.PI / 2}
-        scale={[LAKE.radiusX, LAKE.radiusZ, 1]}
-      >
-        <circleGeometry args={[1, 64]} />
+          take the reflection off it. The scrolling normal map is what keeps it
+          from being a painted floor: water moves, even from the porch. */}
+      <mesh geometry={water} position={[0, WATER_Y, 0]}>
         <meshStandardMaterial
-          color={rain ? '#4b5a63' : '#3f6076'}
-          roughness={rain ? 0.62 : 0.12}
-          metalness={rain ? 0.2 : 0.55}
+          ref={waterMaterial}
+          color="#3f6076"
+          roughness={0.12}
+          metalness={0.55}
+          normalMap={ripples}
+          normalScale={[0.3, 0.3]}
         />
       </mesh>
+
+      <Shoreline />
+      <Erratics keepOut={keepOut} />
 
       <Forest trees={trees} />
 
       {/* Haze, which is what makes a hundred metres of forest read as distance
           rather than as a lot of cones. Thin enough not to fog the room. At
           night it thickens a little and goes dark, which is what darkness at a
-          distance actually looks like. */}
-      <fogExp2
-        attach="fog"
-        args={
-          night
-            ? rain
-              ? ['#161a21', 0.018]
-              : ['#101624', 0.0105]
-            : rain
-              ? ['#8d969c', 0.019]
-              : ['#c3d2dd', 0.0085]
-        }
-      />
+          distance actually looks like. Colour and density fade with the
+          ambience blend rather than switching. */}
+      <fogExp2 ref={fog} attach="fog" args={['#c3d2dd', 0.0085]} />
     </group>
   )
 }

@@ -15,6 +15,7 @@ import { mulberry32 } from '../lib/rng'
 import {
   arrangeInto,
   emptyRowsFirst,
+  nearestRowsFirst,
   packLayout,
   packRow,
   rowFits,
@@ -22,14 +23,23 @@ import {
   type PackedBook,
   type RowKey,
 } from '../scene/shelving'
-import { floorAt, supportAt, type DerivedWorld, type FurnitureOverride } from '../world/derive'
+import {
+  floorAt,
+  roomAt,
+  supportAt,
+  type DerivedWorld,
+  type FurnitureOverride,
+  type SpawnedBox,
+} from '../world/derive'
 import { boxesIn } from '../world/boxes'
 import {
   LAYOUT_SCHEMA_VERSION,
+  bookFolder,
   describeReconciliation,
   reconcile,
   type Reconciliation,
 } from '../world/reconcile'
+import { useSettings } from './settings'
 import { useWorldStore } from './world'
 import { useMediaStore } from './media'
 import { useVideoStore } from './video'
@@ -91,6 +101,10 @@ type LibraryState = {
   looseRecords: Record<string, RecordPlacement>
   /** Furniture that has been shoved somewhere else. Boxes, in practice. */
   placements: Record<string, FurnitureOverride>
+  /** Boxes made up off the stack in the kitchen, by the id given to each. */
+  spawnedBoxes: Record<string, SpawnedBox>
+  /** Document boxes that have been broken down. */
+  removedBoxes: string[]
 
   loaded: boolean
   scanning: boolean
@@ -151,9 +165,27 @@ type LibraryState = {
   freeRecord: (trackId: string) => void
   /** Shove a piece of furniture. Only the moving boxes accept this. */
   moveFurniture: (id: string, at: [number, number], facing: number, elevation?: number) => void
+  /**
+   * Make a new box up off the stack and stand it at a world position. Returns
+   * its id — every id is fresh, so two boxes can never fight over one entry.
+   */
+  spawnBox: (x: number, z: number, facing: number, elevation: number) => string | null
+  /**
+   * Break a box down. Only an *empty* box goes — a boxful of books is not
+   * something to vanish with a keystroke. Returns false if it refused.
+   */
+  deleteBox: (boxId: string) => boolean
   bookAt: (id: string) => IndexedBook | undefined
   dimensionsOf: (id: string) => BookDimensions | undefined
 }
+
+/**
+ * What `carriedBox` holds while you are carrying a box that does not exist yet
+ * — one fresh off the stack in the kitchen. It becomes real furniture, with a
+ * real id, the moment it is set down. Starts with `#` so it can never collide
+ * with a document id.
+ */
+export const NEW_BOX = '#new-box'
 
 /** Bumped per sheet pinned up, so two in the same millisecond differ. */
 let pinCounter = 0
@@ -231,6 +263,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       progress: state.readProgress,
       loose: state.loose,
       furniture: state.placements,
+      spawnedBoxes: state.spawnedBoxes,
+      removedBoxes: state.removedBoxes,
       labels: state.labels,
       pins: state.pins,
       drawings: state.drawings,
@@ -297,6 +331,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     filedRecords: {},
     looseRecords: {},
     placements: {},
+    spawnedBoxes: {},
+    removedBoxes: [],
 
     loaded: false,
     scanning: false,
@@ -428,8 +464,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         )
 
         const placements = layout?.furniture ?? {}
-        // The world has to know where the boxes were pushed to before the books
-        // are reconciled against it, or a box's pile is drawn at its old place.
+        const spawnedBoxes = layout?.spawnedBoxes ?? {}
+        const removedBoxes = layout?.removedBoxes ?? []
+        // The world has to know where the boxes were pushed to — and which
+        // boxes exist at all — before the books are reconciled against it, or
+        // a box's pile is drawn at its old place and a made-up box's books
+        // tip into the others.
+        useWorldStore.getState().setBoxEdits({ spawned: spawnedBoxes, removed: removedBoxes })
         useWorldStore.getState().setPlacements(placements)
 
         set({
@@ -451,6 +492,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           filedRecords: layout?.records?.filed ?? {},
           looseRecords: layout?.records?.loose ?? {},
           placements,
+          spawnedBoxes,
+          removedBoxes,
           hasSavedLayout: layout !== null,
           loaded: true,
           error: null,
@@ -476,6 +519,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           : null,
         books.map((b) => b.id),
         (id) => dims.get(id),
+        // One Box per Folder: arrivals are packed a folder at a time, so the
+        // boxes come out of the van pre-sorted.
+        useSettings.getState().boxPerFolder
+          ? (id) => bookFolder(get().byId.get(id)?.path ?? '')
+          : undefined,
       )
       set(project(world, result, dims))
 
@@ -533,6 +581,74 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({ placements })
       useWorldStore.getState().setPlacements(placements)
       scheduleSave()
+    },
+
+    spawnBox: (x, z, facing, elevation) => {
+      const world = currentWorld()
+      if (!world || world.rooms.length === 0) return null
+
+      // The room whose frame the position is written in: the one you are
+      // standing in, or — set down outdoors — the nearest one. Any room works
+      // as a frame; nearest keeps the numbers small and survives far edits.
+      const room =
+        roomAt(world, x, z, elevation) ??
+        [...world.rooms].sort(
+          (a, b) =>
+            Math.hypot(a.origin[0] - x, a.origin[1] - z) -
+            Math.hypot(b.origin[0] - x, b.origin[1] - z),
+        )[0]!
+
+      // A fresh id, skipping everything the room has, has spawned, or has
+      // broken down — a broken-down id must stay burned, or its leftover
+      // layout entries would haunt the next box to take it.
+      const taken = new Set([
+        ...world.furniture.map((item) => item.id),
+        ...Object.keys(get().spawnedBoxes),
+        ...get().removedBoxes,
+      ])
+      let n = 1
+      while (taken.has(`box-${n}`)) n += 1
+      const id = `box-${n}`
+
+      const spawnedBoxes: Record<string, SpawnedBox> = {
+        ...get().spawnedBoxes,
+        [id]: {
+          room: room.id,
+          at: [x - room.origin[0], z - room.origin[1]],
+          facing,
+          elevation,
+        },
+      }
+      set({ spawnedBoxes })
+      useWorldStore.getState().setBoxEdits({ spawned: spawnedBoxes, removed: get().removedBoxes })
+      scheduleSave()
+      return id
+    },
+
+    deleteBox: (boxId) => {
+      const world = currentWorld()
+      if (!world || !boxesIn(world).some((box) => box.id === boxId)) return false
+      // Only an empty box breaks down. Books do not vanish with the cardboard.
+      if ((get().boxes[boxId]?.length ?? 0) > 0) return false
+
+      const spawnedBoxes = { ...get().spawnedBoxes }
+      delete spawnedBoxes[boxId]
+      // Document boxes go on the broken-down list; a spawned one goes there
+      // too, which burns its id — see `spawnBox`.
+      const removedBoxes = [...get().removedBoxes, boxId]
+
+      // Its shove and any stale box entry go with it.
+      const placements = { ...get().placements }
+      delete placements[boxId]
+      const savedBoxes = { ...get().savedBoxes }
+      delete savedBoxes[boxId]
+
+      set({ spawnedBoxes, removedBoxes, placements, savedBoxes })
+      const worldStore = useWorldStore.getState()
+      if (boxId in worldStore.placements) worldStore.setPlacements(placements)
+      worldStore.setBoxEdits({ spawned: spawnedBoxes, removed: removedBoxes })
+      scheduleSave()
+      return true
     },
 
     scan: async () => {
@@ -657,8 +773,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Unpack a box: every book in it onto the shelves, empty rows first and in a
-     * shuffled order, so four boxes fill the room rather than the first case.
+     * Unpack a box: every book in it onto the shelves, empty rows in the
+     * nearest case first. Carrying the box to a bookcase and pressing G fills
+     * *that* case — which is the whole point of being able to carry one.
      */
     emptyBoxOntoShelves: (boxId) => {
       const { rows, boxes, dims, savedBoxes } = get()
@@ -667,9 +784,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       if (!world || ids.length === 0) return 0
 
       const lookup = (id: string) => dims.get(id)
-      // Seeded on the box, so unpacking one is repeatable rather than a new
-      // room every time you look at it.
-      const order = emptyRowsFirst(world, rows, mulberry32(hashId(boxId)))
+      const box = boxesIn(world).find((item) => item.id === boxId)
+      const order = box
+        ? nearestRowsFirst(world, rows, box)
+        : emptyRowsFirst(world, rows, mulberry32(hashId(boxId)))
       const arranged = arrangeInto(world, rows, ids, lookup, order)
 
       const leftOver = new Set(arranged.leftOver)
@@ -713,6 +831,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {}, boxes: {} },
         books.map((b) => b.id),
         (id) => dims.get(id),
+        // The same folder-per-box rule a scan follows, so clearing the shelves
+        // with the option on repacks the library sorted rather than levelled.
+        useSettings.getState().boxPerFolder
+          ? (id) => bookFolder(get().byId.get(id)?.path ?? '')
+          : undefined,
       )
 
       set({

@@ -5,7 +5,7 @@ import { placeRain, stopRain } from './rainSound'
 import { player } from '../state/player'
 import { musicElement, useMediaStore } from '../state/media'
 import { useVideoStore, videoElement } from '../state/video'
-import { useLightStore } from '../state/lights'
+import { useAmbienceStore } from '../state/ambience'
 import { useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 import { openingSpots, roomAt, type DerivedWorld, type OpeningSpot } from '../world/derive'
@@ -63,7 +63,7 @@ function openness(world: DerivedWorld, spots: Map<string, OpeningSpot[]>): numbe
 export function Sound() {
   const frame = useRef(0)
   const world = useWorldStore((s) => s.world)
-  const raining = useLightStore((s) => s.rain)
+  const raining = useAmbienceStore((s) => s.rain)
 
   // One walk of the document per world rather than one per frame: openings do
   // not move, and this is read fifteen times a second.

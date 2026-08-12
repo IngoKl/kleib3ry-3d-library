@@ -1,6 +1,6 @@
 # Building a map
 
-A library is a folder, and the *room* is one file in it:
+A library is a folder, and the _room_ is one file in it:
 `<your library folder>/.library/library.json`. Edit it and the building reloads
 while you are standing in it. Break it and nothing happens except an error in
 the panel — the room you are in keeps running and your file is never written
@@ -20,24 +20,24 @@ is commented throughout, and reading it top to bottom is the fastest way in.
   "schemaVersion": 2,
   "name": "The Cabin",
   "spawn": { "room": "main", "at": [0, 1.0], "facing": 0 },
-  "rooms": [ /* … */ ]
+  "rooms": [/* … */],
 }
 ```
 
 Metres throughout, and the vertical axis is Y.
 
 - A room's `origin` is its **centre**, in world metres.
-- Everything *inside* a room — shelves, furniture, spawn — is positioned
+- Everything _inside_ a room — shelves, furniture, spawn — is positioned
   relative to **that room's centre**, so moving a whole room moves its contents.
 - `facing` is **degrees clockwise about Y**. For a thing, `0` points its front
-  at +Z (south); `90` points east, `180` north, `270` west. For a *person* —
+  at +Z (south); `90` points east, `180` north, `270` west. For a _person_ —
   `spawn.facing` — it is the direction they are looking, and `0` is north. The
   two are opposite because a bookcase's front faces you and your front faces
   away; it is easier to remember than to justify.
 
 Nothing the app does is ever written back into this file. Where you shove the
 boxes, which lamps you switch off, what you write on a shelf label: all of that
-lives in `books.json` and `lights.json` beside it, so your comments and your
+lives in `books.json` and `ambience.json` beside it, so your comments and your
 formatting are yours.
 
 ---
@@ -46,20 +46,20 @@ formatting are yours.
 
 ```jsonc
 {
-  "id": "main",              // required, unique, no colons
-  "name": "Great room",      // optional, defaults to the id
-  "origin": [0, 0],          // centre, in world metres
-  "size": [10, 8],           // width along X, depth along Z
-  "height": 4.8,             // floor to ceiling
-  "elevation": 0,            // height of this room's floor. A loft has one.
-  "walls": ["north", "south", "east", "west"],   // which walls to build
+  "id": "main", // required, unique, no colons
+  "name": "Great room", // optional, defaults to the id
+  "origin": [0, 0], // centre, in world metres
+  "size": [10, 8], // width along X, depth along Z
+  "height": 4.8, // floor to ceiling
+  "elevation": 0, // height of this room's floor. A loft has one.
+  "walls": ["north", "south", "east", "west"], // which walls to build
   "ceiling": true,
-  "floor": "boards",         // boards | deck | stone
-  "outdoor": false,          // a porch: decking, no skirting, no room light
-  "holes": [],               // rectangles missing from the floor
-  "openings": [ /* … */ ],
-  "shelves": [ /* … */ ],
-  "furniture": [ /* … */ ]
+  "floor": "boards", // boards | deck | stone
+  "outdoor": false, // a porch: decking, no skirting, no room light
+  "holes": [], // rectangles missing from the floor
+  "openings": [/* … */],
+  "shelves": [/* … */],
+  "furniture": [/* … */],
 }
 ```
 
@@ -89,7 +89,7 @@ knowing before you site one:
 - **the walk round the lake and the trail between the buildings are cleared
   ground**, and putting a room on top of one means walking through your own
   building to get past. Both live in `src/world/terrain.ts`, which is also
-  where the trail is drawn — the *route* between two buildings is a fact about
+  where the trail is drawn — the _route_ between two buildings is a fact about
   the valley rather than about either of them, so it is not in this file.
 
 ### Openings
@@ -101,14 +101,14 @@ knowing before you site one:
   "kind": "window", "glazed": false }
 ```
 
-| field | meaning |
-| --- | --- |
-| `wall` | `north` (−Z), `south` (+Z), `east` (+X), `west` (−X) |
-| `at` | centre of the opening, measured from the **middle** of that wall |
-| `width`, `height` | the hole |
-| `sill` | height of its bottom edge above **this room's floor** |
-| `kind` | `door` or `window` |
-| `glazed` | whether a pane is fitted. Defaults to true for a window. |
+| field             | meaning                                                          |
+| ----------------- | ---------------------------------------------------------------- |
+| `wall`            | `north` (−Z), `south` (+Z), `east` (+X), `west` (−X)             |
+| `at`              | centre of the opening, measured from the **middle** of that wall |
+| `width`, `height` | the hole                                                         |
+| `sill`            | height of its bottom edge above **this room's floor**            |
+| `kind`            | `door` or `window`                                               |
+| `glazed`          | whether a pane is fitted. Defaults to true for a window.         |
 
 A `door` at floor level is walkable. A `window` is not — its apron is a wall you
 bump into, which is what you want when the sill is at 0.9 m.
@@ -132,15 +132,15 @@ default document:
   "id": "loft",
   "origin": [0, -1.3],
   "size": [10, 5.4],
-  "elevation": 2.5,          // 1. its floor is 2.5 m up. A bookcase is 2.24 m
-                             //    tall and the floor slab 0.22 m thick, so any
-                             //    lower and the cases downstairs stand up into
-                             //    the boards.
-  "height": 2.3,             // …and its head height is the cabin's ceiling
-  "walls": ["south"],        // 2. only the balustrade. The other three walls
-                             //    are the cabin's, which run the full 4.8 m.
-  "ceiling": false,          // 3. its ceiling is the cabin's
-  "holes": [{ "at": [4.4, 0.675], "size": [1.45, 2.95] }]  // 4. the stairwell
+  "elevation": 2.5, // 1. its floor is 2.5 m up. A bookcase is 2.24 m
+  //    tall and the floor slab 0.22 m thick, so any
+  //    lower and the cases downstairs stand up into
+  //    the boards.
+  "height": 2.3, // …and its head height is the cabin's ceiling
+  "walls": ["south"], // 2. only the balustrade. The other three walls
+  //    are the cabin's, which run the full 4.8 m.
+  "ceiling": false, // 3. its ceiling is the cabin's
+  "holes": [{ "at": [4.4, 0.675], "size": [1.45, 2.95] }], // 4. the stairwell
 }
 ```
 
@@ -148,7 +148,7 @@ default document:
    stand on it, boxes sit on it, books dropped on it land on it.
 2. **`walls`** stops you building a second wall in the same place as the room
    below's. Rooms on different levels are allowed to overlap in plan; rooms on
-   the *same* level should not.
+   the _same_ level should not.
 3. **`ceiling: false`** where the room below already has one at the same height.
 4. **`holes`** cuts rectangles out of the floor, in room-local metres. Without
    one, the staircase arrives underneath a floor.
@@ -156,8 +156,14 @@ default document:
 ### Stairs
 
 ```jsonc
-{ "id": "stairs", "kind": "stairs", "at": [4.4, -0.4],
-  "facing": 180, "size": [1.05, 3.4], "rise": 2.5 }
+{
+  "id": "stairs",
+  "kind": "stairs",
+  "at": [4.4, -0.4],
+  "facing": 180,
+  "size": [1.05, 3.4],
+  "rise": 2.5,
+}
 ```
 
 A flight climbs **towards its facing direction**. `size` is `[width, run]` and
@@ -186,7 +192,7 @@ the stairwell hole must therefore END at z = -2.10, not after it
   → local to a room at origin z = -1.3:  "at": [4.4, 0.675], "size": [1.45, 2.95]
 ```
 
-Ending the hole *later* than the top of the flight leaves a strip with no floor
+Ending the hole _later_ than the top of the flight leaves a strip with no floor
 at either height — the ramp has run out and the boards have not started — and
 you will climb the stairs and stop dead one pace short of the landing. Ending it
 earlier is harmless as long as the ramp is within a step of the floor by then.
@@ -213,7 +219,7 @@ A case is 1.0 m wide and 0.32 m deep, so `1.05` apart is the tightest a run can
 stand. The default map uses `1.2`, which leaves a hand's width between cases and
 reads as furniture rather than as built-in shelving.
 
-`label` is an optional *starting* label for the card on its top edge, and the
+`label` is an optional _starting_ label for the card on its top edge, and the
 default map deliberately uses it nowhere: a bookcase arrives bare, and you write
 on it with `L` once you have decided what is in it. A room that arrives
 pre-sorted into somebody else's categories is a room you have to undo first.
@@ -238,53 +244,54 @@ moving boxes. See [the library folder](library-folder.md#what-happens-to-your-bo
 
 Common fields: `id`, `kind`, `at`, `facing`. Then:
 
-| field | meaning |
-| --- | --- |
-| `size` | footprint `[width, depth]` — or for anything hung on a wall, `[width, height]` |
-| `height` | height override, for the kinds where it is worth varying |
-| `y` | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a `whiteboard`, a `clock`, a `lightswitch` — it is the centre of the thing; for a **pendant** it is where the fitting is, and for `fairylights` it is the line they hang from. |
-| `source` | which file in `artwork/` a picture shows |
-| `rise` | how far a flight of stairs climbs |
-| `on` | whether a lamp starts lit |
+| field    | meaning                                                                                                                                                                                                                                                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `size`   | footprint `[width, depth]` — or for anything hung on a wall, `[width, height]`                                                                                                                                                                                                                                          |
+| `height` | height override, for the kinds where it is worth varying                                                                                                                                                                                                                                                                |
+| `y`      | how far off this room's floor the piece sits. A coffee maker on a counter is `"y": 0.92`. For anything **hung on a wall** — a `picture`, a `whiteboard`, a `clock`, a `lightswitch` — it is the centre of the thing; for a **pendant** it is where the fitting is, and for `fairylights` it is the line they hang from. |
+| `source` | which file in `artwork/` a picture shows                                                                                                                                                                                                                                                                                |
+| `rise`   | how far a flight of stairs climbs                                                                                                                                                                                                                                                                                       |
+| `on`     | whether a lamp starts lit                                                                                                                                                                                                                                                                                               |
 
 ### The kinds
 
-| kind | solid | you can | notes |
-| --- | --- | --- | --- |
-| `armchair` | yes | sit (`E`) | |
-| `sofa` | yes | sit | `size` sets its length |
-| `diningchair` | yes | sit | |
-| `bench` | yes | sit | a porch bench; sitting wins over setting things down |
-| `footstool` | yes | put books on | for feet |
-| `sidetable` | yes | put books on | |
-| `table` | yes | put books on | `size` and `height` both worth setting |
-| `desk` | yes | put books on | deeper and a little higher than a table |
-| `bed` | yes | sit, put books on | headboard is its back; `facing` points the foot into the room |
-| `kitchencounter` | yes | put books on | comes with a sink |
-| `recordshelf` | yes | put books on, file records in | fills with records from `music/` |
-| `tapecrate` | yes | put books on | fills with tapes from `video/`; low, so the labels stand proud |
-| `bathtub` | yes | put books on | its rim is a surface |
-| `toilet` | yes | — | `facing` points the seat into the room |
-| `basin` | yes | put books on | on a pedestal |
-| `box` | yes | fill, carry (`X`) | a moving box; books with no shelf pile up in it |
-| `recordplayer` | no | play (`E`) | put it on a `y` so it stands on something. An empty one does nothing: bring it a record |
-| `crt` | yes | play a tape (`E`) | a television. `E` with a tape in hand puts it in; `E` empty-handed pauses |
-| `coffeemaker` | no | brew (`E`) | ditto |
-| `computer` | no | search (`E`) | the catalogue terminal. Searches every book, record, tape and picture the library knows about and says where each one is. Stand it on a desk with a `y` |
-| `postits` | no | take one (`E`) | a pad of notes. `E` peels one off and opens the field you write on it — the same note `T` writes |
-| `marker` | no | take it (`E`) | a whiteboard marker. With it in hand, hold the left mouse button to draw on any `whiteboard`; `F` changes pen, `G` wipes the board |
-| `fireplace` | yes | switch (`E`) | lights the room it is in |
-| `floorlamp` | yes | switch (`E`) | |
-| `pendant` | no | switch (`E`) | hangs from `y`; do not hang one under a loft floor |
-| `fairylights` | no | switch (`E`) | a string of bulbs. `size` is `[length, sag]` and `y` is the line it hangs from |
-| `lightswitch` | no | switch everything (`E`) | one press works every light in the library. Hung like a picture |
-| `plant` | yes | — | `height` varies it |
-| `rug` | no | — | `size` sets its footprint |
-| `picture` | no | — | takes an image from `artwork/` |
-| `clock` | no | — | tells this machine's time. Hung like a picture; `size` is the dial |
-| `whiteboard` | no | pin things to (`E`), draw on | hung like a picture; `size` is `[width, height]` |
-| `stairs` | no | climb | see above |
-| `step` | no | walk down | a pair of treads hanging off the edge of a deck. Decoration: the walk controller takes a 24 cm drop unaided |
+| kind             | solid | you can                                                 | notes                                                                                                                                                   |
+| ---------------- | ----- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `armchair`       | yes   | sit (`E`)                                               |                                                                                                                                                         |
+| `sofa`           | yes   | sit                                                     | `size` sets its length                                                                                                                                  |
+| `diningchair`    | yes   | sit                                                     |                                                                                                                                                         |
+| `bench`          | yes   | sit                                                     | a porch bench; sitting wins over setting things down                                                                                                    |
+| `footstool`      | yes   | put books on                                            | for feet                                                                                                                                                |
+| `sidetable`      | yes   | put books on                                            |                                                                                                                                                         |
+| `table`          | yes   | put books on                                            | `size` and `height` both worth setting                                                                                                                  |
+| `desk`           | yes   | put books on                                            | deeper and a little higher than a table                                                                                                                 |
+| `bed`            | yes   | sit, put books on                                       | headboard is its back; `facing` points the foot into the room                                                                                           |
+| `kitchencounter` | yes   | put books on                                            | comes with a sink                                                                                                                                       |
+| `recordshelf`    | yes   | put books on, file records in                           | fills with records from `music/`                                                                                                                        |
+| `tapecrate`      | yes   | put books on                                            | fills with tapes from `video/`; low, so the labels stand proud                                                                                          |
+| `bathtub`        | yes   | put books on                                            | its rim is a surface                                                                                                                                    |
+| `toilet`         | yes   | —                                                       | `facing` points the seat into the room                                                                                                                  |
+| `basin`          | yes   | put books on                                            | on a pedestal                                                                                                                                           |
+| `box`            | yes   | fill, carry (`X`), break down (`Backspace`, empty only) | a moving box; books with no shelf pile up in it                                                                                                         |
+| `boxstack`       | yes   | take a box (`E`)                                        | flattened spares. `E` puts one in your arms; `X` stands it up as a real box, remembered in `books.json`                                                 |
+| `recordplayer`   | no    | play (`E`)                                              | put it on a `y` so it stands on something. An empty one does nothing: bring it a record                                                                 |
+| `crt`            | yes   | play a tape (`E`)                                       | a television. `E` with a tape in hand puts it in; `E` empty-handed pauses                                                                               |
+| `coffeemaker`    | no    | brew (`E`)                                              | ditto                                                                                                                                                   |
+| `computer`       | no    | search (`E`)                                            | the catalogue terminal. Searches every book, record, tape and picture the library knows about and says where each one is. Stand it on a desk with a `y` |
+| `postits`        | no    | take one (`E`)                                          | a pad of notes. `E` peels one off and opens the field you write on it — the same note `T` writes                                                        |
+| `marker`         | no    | take it (`E`)                                           | a whiteboard marker. With it in hand, hold the left mouse button to draw on any `whiteboard`; `F` changes pen, `G` wipes the board                      |
+| `fireplace`      | yes   | switch (`E`)                                            | lights the room it is in                                                                                                                                |
+| `floorlamp`      | yes   | switch (`E`)                                            |                                                                                                                                                         |
+| `pendant`        | no    | switch (`E`)                                            | hangs from `y`; do not hang one under a loft floor                                                                                                      |
+| `fairylights`    | no    | switch (`E`)                                            | a string of bulbs. `size` is `[length, sag]` and `y` is the line it hangs from                                                                          |
+| `lightswitch`    | no    | switch everything (`E`)                                 | one press works every light in the library. Hung like a picture                                                                                         |
+| `plant`          | yes   | —                                                       | `height` varies it                                                                                                                                      |
+| `rug`            | no    | —                                                       | `size` sets its footprint                                                                                                                               |
+| `picture`        | no    | —                                                       | takes an image from `artwork/`                                                                                                                          |
+| `clock`          | no    | —                                                       | tells this machine's time. Hung like a picture; `size` is the dial                                                                                      |
+| `whiteboard`     | no    | pin things to (`E`), draw on                            | hung like a picture; `size` is `[width, height]`                                                                                                        |
+| `stairs`         | no    | climb                                                   | see above                                                                                                                                               |
+| `step`           | no    | walk down                                               | a pair of treads hanging off the edge of a deck. Decoration: the walk controller takes a 24 cm drop unaided                                             |
 
 Everything marked solid is something you bump into, so keep furniture out of the
 line you walk in on. (The default reading corner has a comment about exactly
@@ -309,16 +316,16 @@ anything `"outdoor"`. Say otherwise with a `roof` block:
 "roof": { "kind": "gable", "pitch": 28, "overhang": 0.5, "fall": "south" }
 ```
 
-| field | means |
-| --- | --- |
-| `kind` | `gable` (two slopes, a ridge), `shed` (one slope), `flat`, or `none` |
-| `pitch` | degrees from horizontal. 0 is flat, 30 is a house, 45 is steep |
-| `overhang` | how far the eaves stand out past the walls, in metres |
-| `fall` | for a gable, the sides the **eaves** run along; for a shed, the **low** side |
+| field      | means                                                                        |
+| ---------- | ---------------------------------------------------------------------------- |
+| `kind`     | `gable` (two slopes, a ridge), `shed` (one slope), `flat`, or `none`         |
+| `pitch`    | degrees from horizontal. 0 is flat, 30 is a house, 45 is steep               |
+| `overhang` | how far the eaves stand out past the walls, in metres                        |
+| `fall`     | for a gable, the sides the **eaves** run along; for a shed, the **low** side |
 
 `fall` is the one worth thinking about. `"south"` puts the eaves on the north and
 south walls, which runs the ridge east to west — along the length of a building
-that is wider than it is deep. And a lean-to must fall *away* from what it leans
+that is wider than it is deep. And a lean-to must fall _away_ from what it leans
 on: get the porch's backwards and you have a roof draining into the house.
 
 Two things are handled for you. The plane is pinned to the **top of the walls** and
@@ -327,7 +334,7 @@ through the ceiling below it. And a roof does not overhang into a building it
 abuts — without that, the porch's shed roof reaches 45 cm through the cabin's
 south wall and comes out over the great room.
 
-An opening's *head* is your problem, though. The great room's north window used to
+An opening's _head_ is your problem, though. The great room's north window used to
 reach 2.9 m up a wall the loft floor crosses at 2.28, so from the lake the view
 window had a plank across it. It is invisible from inside, where the sill and the
 head are both just wall, and there is a test that now refuses it.
@@ -342,9 +349,9 @@ gets one soft ceiling fixture so that a map you are halfway through writing is
 not pitch dark while you write it.
 
 Switching a lamp is `E` while looking at it, and which lamps are on is saved in
-`.library/lights.json`, keyed by furniture id. Delete that file and every light
+`.library/ambience.json`, keyed by furniture id. Delete that file and every light
 goes back to whatever the document says. `"on": false` in the document is the
-*initial* state, not a lock.
+_initial_ state, not a lock.
 
 Two things to watch:
 
@@ -432,6 +439,6 @@ board in `library.json` keeps the drawing on it rather than scattering it.
 
 Delete `.library/library.json` and the app writes a fresh default the next time
 it starts. Delete `.library/books.json` as well and your whole library goes back
-into the boxes. Delete `.library/lights.json` and every lamp comes back on.
+into the boxes. Delete `.library/ambience.json` and every lamp comes back on.
 
 None of the three take your books with them.

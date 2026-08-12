@@ -10,13 +10,23 @@ import {
   floorAt,
   roomBounds,
 } from '../src/world/derive'
-import { GROUND_Y, LAKE, PATH, WALK_RADIUS, lakeRadius, terrainAt } from '../src/world/terrain'
+import {
+  GROUND_Y,
+  LAKE,
+  PATH,
+  SHORE_EDGE,
+  WALK_RADIUS,
+  lakePoint,
+  lakeRadius,
+  shoreShape,
+  terrainAt,
+} from '../src/world/terrain'
 import { occupied } from '../src/world/forest'
 import { parseWorldText, type WorldDocument } from '../src/world/schema'
 import { DEFAULT_WORLD_TEXT } from '../src/world/defaults'
-import { LAYOUT_SCHEMA_VERSION, reconcile } from '../src/world/reconcile'
-import { packBoxes } from '../src/world/boxes'
-import { allRowKeys, arrangeInto, emptyRowsFirst } from '../src/scene/shelving'
+import { LAYOUT_SCHEMA_VERSION, bookFolder, reconcile } from '../src/world/reconcile'
+import { boxesIn, packBoxes } from '../src/world/boxes'
+import { allRowKeys, arrangeInto, emptyRowsFirst, nearestRowsFirst, parseRowKey } from '../src/scene/shelving'
 import { dimensionsFor } from '../src/data/dimensions'
 import { mulberry32 } from '../src/lib/rng'
 import type { IndexedBook } from '../src/services/types'
@@ -718,5 +728,174 @@ test.describe('moving boxes', () => {
     // ...but they are still unshelved, and still counted.
     expect([...result.boxed].sort()).toEqual([...unshelved].sort())
     expect(packBoxes(bare, result.boxes, lookup).placed).toEqual([])
+  })
+})
+
+test.describe('the lake', () => {
+  test('the shore you see is the shore you stand at', () => {
+    // The renderer builds the water from `lakePoint`; the walk controller
+    // refuses steps with `lakeRadius`. Every point on the drawn waterline must
+    // measure as exactly the waterline, or the two have come apart.
+    for (let i = 0; i < 96; i++) {
+      const angle = (i / 96) * Math.PI * 2
+      const [wx, wz] = lakePoint(angle, 1)
+      expect(lakeRadius(wx, wz)).toBeCloseTo(1, 6)
+      const [sx, sz] = lakePoint(angle, SHORE_EDGE)
+      expect(lakeRadius(sx, sz)).toBeCloseTo(SHORE_EDGE, 6)
+    }
+  })
+
+  test('the wobble is a pond, not a monster: bounded, and never folding', () => {
+    let least = Infinity
+    let most = 0
+    for (let i = 0; i < 720; i++) {
+      const shape = shoreShape((i / 720) * Math.PI * 2)
+      least = Math.min(least, shape)
+      most = Math.max(most, shape)
+    }
+    // Small enough that every ring in shoreline units (beach, path, tree line)
+    // deforms without crossing its neighbours, and visibly not an ellipse.
+    expect(least).toBeGreaterThan(0.85)
+    expect(most).toBeLessThan(1.15)
+    expect(most - least).toBeGreaterThan(0.05)
+  })
+})
+
+test.describe('unpacking to the nearest case', () => {
+  // The same metric the ordering uses: the climb to another storey weighted double.
+  const nearestShelfTo = (x: number, y: number, z: number) =>
+    [...WORLD.shelves].sort(
+      (a, b) =>
+        Math.hypot(a.x - x, 2 * (a.y - y), a.z - z) - Math.hypot(b.x - x, 2 * (b.y - y), b.z - z),
+    )[0]!
+
+  test('the case beside the box fills before the one across the room', () => {
+    const box = boxesIn(WORLD)[0]!
+    const order = nearestRowsFirst(WORLD, {}, box)
+
+    // Every row exactly once, like any fill order.
+    expect(new Set(order).size).toBe(order.length)
+    expect([...order].sort()).toEqual([...allRowKeys(WORLD)].sort())
+
+    // The order opens with every row of the nearest bookcase, top to bottom.
+    const nearest = nearestShelfTo(box.x, box.y, box.z)
+    expect(order.slice(0, nearest.rows)).toEqual(
+      Array.from({ length: nearest.rows }, (_, row) => `${nearest.id}:${row}`),
+    )
+  })
+
+  test('a row already holding books goes to the back of the queue', () => {
+    const box = boxesIn(WORLD)[0]!
+    const nearest = nearestShelfTo(box.x, box.y, box.z)
+    const inUse = { [`${nearest.id}:0`]: [BOOKS[0]!.id] }
+    const order = nearestRowsFirst(WORLD, inUse, box)
+    expect(order.at(-1)).toBe(`${nearest.id}:0`)
+    expect(order[0]).toBe(`${nearest.id}:1`)
+  })
+
+  test('a storey away is farther than the metres say', () => {
+    // Stand directly under a loft case. It is 2.5 m up, which the ordering
+    // weights double: any ground-floor case within that weighted reach must
+    // fill before the one overhead — a box set down in the great room should
+    // not start the unpacking upstairs.
+    const upstairs = WORLD.shelves.find((shelf) => shelf.y > 1)!
+    const from = { x: upstairs.x, y: 0, z: upstairs.z }
+    const order = nearestRowsFirst(WORLD, {}, from)
+    const upstairsAt = order.findIndex((key) => parseRowKey(key)!.shelfId === upstairs.id)
+    expect(upstairsAt).toBeGreaterThanOrEqual(0)
+
+    const beats = 2 * upstairs.y
+    const closerCases = WORLD.shelves.filter(
+      (shelf) => shelf.y < 0.01 && Math.hypot(shelf.x - from.x, shelf.z - from.z) < beats,
+    )
+    expect(closerCases.length).toBeGreaterThan(0)
+    const before = new Set(order.slice(0, upstairsAt).map((key) => parseRowKey(key)!.shelfId))
+    for (const shelf of closerCases) expect(before.has(shelf.id), `case ${shelf.id}`).toBe(true)
+  })
+})
+
+test.describe('one box per folder', () => {
+  test('bookFolder names the top-level folder under books/', () => {
+    expect(bookFolder('C:\\lib\\books\\Fiction\\a.pdf')).toBe('Fiction')
+    expect(bookFolder('C:\\lib\\books\\Fiction\\sub\\a.pdf')).toBe('Fiction')
+    expect(bookFolder('/home/me/lib/books/Papers/x.epub')).toBe('Papers')
+    // A file straight in books/ has no folder to speak of.
+    expect(bookFolder('C:\\lib\\books\\a.pdf')).toBe('')
+    // No books/ segment at all: the file's own directory is the grouping.
+    expect(bookFolder('C:\\stuff\\Novels\\a.pdf')).toBe('Novels')
+  })
+
+  test('a folder arrives whole, in one box', () => {
+    const sorted = [
+      ...Array.from({ length: 12 }, (_, i) => book(`f${i}`, { path: `C:\\l\\books\\Fiction\\f${i}.pdf` })),
+      ...Array.from({ length: 9 }, (_, i) => book(`s${i}`, { path: `C:\\l\\books\\Science\\s${i}.pdf` })),
+      ...Array.from({ length: 5 }, (_, i) => book(`p${i}`, { path: `C:\\l\\books\\Poetry\\p${i}.pdf` })),
+    ]
+    const dims = new Map(sorted.map((b) => [b.id, dimensionsFor(b)]))
+    const byId = new Map(sorted.map((b) => [b.id, b]))
+
+    const result = reconcile(
+      WORLD,
+      null,
+      sorted.map((b) => b.id),
+      (id) => dims.get(id),
+      (id) => bookFolder(byId.get(id)!.path),
+    )
+
+    // Every folder's books share one box — a folder is never split.
+    for (const prefix of ['f', 's', 'p']) {
+      const homes = new Set(
+        Object.entries(result.boxes)
+          .filter(([, ids]) => ids.some((id) => id.startsWith(prefix)))
+          .map(([boxId]) => boxId),
+      )
+      expect(homes.size, `folder ${prefix} split across ${homes.size} boxes`).toBe(1)
+    }
+    // And nothing was lost in the sorting.
+    expect(result.boxed.length).toBe(sorted.length)
+  })
+
+  test('without the option, arrivals still level out book by book', () => {
+    const result = reconcile(WORLD, null, BOOKS.map((b) => b.id), lookup)
+    const counts = Object.values(result.boxes).map((ids) => ids.length)
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1)
+  })
+})
+
+test.describe('boxes you make up and break down', () => {
+  test('a spawned box is real furniture, standing where it was set down', () => {
+    const doc = parseWorldText(DEFAULT_WORLD_TEXT)
+    const world = deriveWorld(doc, {}, {
+      spawned: { 'box-9': { room: 'kitchen', at: [0.5, -0.5], facing: 90 } },
+    })
+
+    const spawned = boxesIn(world).find((box) => box.id === 'box-9')
+    expect(spawned).toBeDefined()
+    const kitchen = doc.rooms.find((room) => room.id === 'kitchen')!
+    expect(spawned!.x).toBeCloseTo(kitchen.origin[0] + 0.5, 6)
+    expect(spawned!.z).toBeCloseTo(kitchen.origin[1] - 0.5, 6)
+    // And books reconcile into it like any other box.
+    const result = reconcile(world, null, BOOKS.slice(0, 20).map((b) => b.id), lookup)
+    expect(Object.keys(result.boxes)).toContain('box-9')
+  })
+
+  test('a spawned box whose room was edited away survives in the first room', () => {
+    const world = deriveWorld(parseWorldText(DEFAULT_WORLD_TEXT), {}, {
+      spawned: { 'box-9': { room: 'no-such-room', at: [0, 0], facing: 0 } },
+    })
+    expect(boxesIn(world).some((box) => box.id === 'box-9')).toBe(true)
+  })
+
+  test('a broken-down box is gone, and its saved books tip into the others', () => {
+    const world = deriveWorld(parseWorldText(DEFAULT_WORLD_TEXT), {}, { removed: ['box-1'] })
+    expect(boxesIn(world).some((box) => box.id === 'box-1')).toBe(false)
+    // Only boxes break down: the rest of the furniture is untouchable.
+    expect(world.furniture.length).toBe(WORLD.furniture.length - 1)
+
+    const ids = BOOKS.slice(0, 10).map((b) => b.id)
+    const saved = { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {}, boxes: { 'box-1': ids } }
+    const result = reconcile(world, saved, ids, lookup)
+    expect(result.boxes['box-1']).toBeUndefined()
+    expect([...result.boxed].sort()).toEqual([...ids].sort())
   })
 })

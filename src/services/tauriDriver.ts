@@ -8,7 +8,7 @@ import type {
   IndexedTrack,
   LayoutDocument,
   LibraryService,
-  LightState,
+  AmbienceState,
   SavePaths,
   ScanProgress,
   ScanSummary,
@@ -116,12 +116,12 @@ export const tauriDriver: LibraryService = {
     return invoke<IndexedTape[]>('list_videos')
   },
 
-  async loadLights() {
-    return invoke<LightState | null>('get_lights')
+  async loadAmbience() {
+    return invoke<AmbienceState | null>('get_ambience')
   },
 
-  async saveLights(state) {
-    await invoke('save_lights', { state })
+  async saveAmbience(state) {
+    await invoke('save_ambience', { state })
   },
 
   assetUrl(path) {

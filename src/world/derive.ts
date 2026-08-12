@@ -58,6 +58,10 @@ export const FURNITURE_SIZE: Record<
   // A surface, so a book can be left on the covers — where books end up.
   bed: { width: 1.5, depth: 2.05, height: 0.55, solid: true, surface: true },
   box: { width: 0.52, depth: 0.4, height: 0.36, solid: true, surface: false },
+  // Flattened boxes leaning against a wall, waiting to be made up. E takes one
+  // — see `spawnBox` — which is how a room gets more boxes than the document
+  // put in it.
+  boxstack: { width: 0.6, depth: 0.3, height: 0.62, solid: true, surface: false },
   recordshelf: { width: 0.9, depth: 0.36, height: 0.78, solid: true, surface: true },
   // Long, shallow and open-topped: the tapes stand in it spine-out, and it has
   // to be lower than they are tall or a box of tapes shows you nothing but its
@@ -139,6 +143,7 @@ export const APPLIANCES = new Set<FurnitureKind>([
   'postits',
   'marker',
   'lightswitch',
+  'boxstack',
 ])
 
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -681,9 +686,31 @@ export type DerivedWorld = {
  */
 export type FurnitureOverride = { at: [number, number]; facing: number; elevation?: number }
 
+/**
+ * A moving box the app made, off the stack in the kitchen, rather than one the
+ * document placed.
+ *
+ * Same shape as an override plus the room whose frame `at` is written in —
+ * a spawned box has no document entry to inherit a room from. It lives in
+ * `books.json` beside the shoved-furniture overrides, and for the same reason:
+ * the app must not write furniture into `library.json`.
+ */
+export type SpawnedBox = FurnitureOverride & { room: string }
+
+/**
+ * The app's edits to the document's box population: boxes taken off the stack,
+ * and document boxes broken down. Nothing but `box` furniture is ever in
+ * either — the rest of the room is the document's alone.
+ */
+export type BoxEdits = {
+  spawned?: Record<string, SpawnedBox>
+  removed?: readonly string[]
+}
+
 export function deriveWorld(
   doc: WorldDocument,
   overrides: Record<string, FurnitureOverride> = {},
+  boxEdits: BoxEdits = {},
 ): DerivedWorld {
   const shelves: DerivedShelf[] = []
   const furniture: DerivedFurniture[] = []
@@ -691,6 +718,24 @@ export function deriveWorld(
   const lights: DerivedLight[] = []
   const solids: Solid[] = []
   const slabs: Slab[] = []
+
+  // Boxes made off the stack join their room's furniture list; a spawned box
+  // whose room has been edited away falls back to the first room rather than
+  // vanishing with the books in it.
+  const removed = new Set(boxEdits.removed ?? [])
+  const extraBoxes = new Map<string, FurnitureSpec[]>()
+  const extraElevation = new Map<string, number | undefined>()
+  for (const [id, spawn] of Object.entries(boxEdits.spawned ?? {})) {
+    const roomId = doc.rooms.some((room) => room.id === spawn.room)
+      ? spawn.room
+      : doc.rooms[0]?.id
+    if (roomId === undefined) continue
+    const list = extraBoxes.get(roomId)
+    const spec: FurnitureSpec = { id, kind: 'box', at: spawn.at, facing: spawn.facing }
+    if (list) list.push(spec)
+    else extraBoxes.set(roomId, [spec])
+    extraElevation.set(id, spawn.elevation)
+  }
 
   for (const room of doc.rooms) {
     const [ox, oz] = room.origin
@@ -711,7 +756,12 @@ export function deriveWorld(
       })
     }
 
-    for (const item of room.furniture) {
+    const pieces = [
+      // A broken-down box is gone from the room; everything else is untouchable.
+      ...room.furniture.filter((item) => !(item.kind === 'box' && removed.has(item.id))),
+      ...(extraBoxes.get(room.id) ?? []),
+    ]
+    for (const item of pieces) {
       const base = FURNITURE_SIZE[item.kind]
       const override = overrides[item.id]
       const at = override?.at ?? item.at
@@ -730,7 +780,10 @@ export function deriveWorld(
           ? (item.rise ?? base.height)
           : (item.height ?? base.height)
       const rotationY = radians(facing)
-      const baseY = override?.elevation ?? mountHeight(room, item, height)
+      // A spawned box carries the floor it was set down on the same way a
+      // shoved one does; an unshoved document piece stands on its room's own.
+      const baseY =
+        override?.elevation ?? extraElevation.get(item.id) ?? mountHeight(room, item, height)
 
       const derived: DerivedFurniture = {
         ...item,

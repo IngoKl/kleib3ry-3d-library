@@ -2,7 +2,12 @@ import { create } from 'zustand'
 import { library } from '../services'
 import type { SavePaths } from '../services/types'
 import { DEFAULT_WORLD_TEXT } from '../world/defaults'
-import { deriveWorld, type DerivedWorld, type FurnitureOverride } from '../world/derive'
+import {
+  deriveWorld,
+  type BoxEdits,
+  type DerivedWorld,
+  type FurnitureOverride,
+} from '../world/derive'
 import { WorldError, parseWorldText } from '../world/schema'
 
 /**
@@ -36,12 +41,20 @@ type WorldState = {
    * layout owns the persistence; this store only owns the effect.
    */
   placements: Record<string, FurnitureOverride>
+  /**
+   * Boxes the app has added to or taken out of the room: made up off the stack
+   * in the kitchen, or broken down. Persisted by the book layout, like the
+   * placements above, and for the same reason.
+   */
+  boxEdits: BoxEdits
 
   load: () => Promise<void>
   /** Re-read the file and apply it if it parses. Returns true if it changed. */
   refresh: () => Promise<boolean>
   /** Re-derive with a new set of furniture overrides. */
   setPlacements: (placements: Record<string, FurnitureOverride>) => void
+  /** Re-derive with a new set of spawned and broken-down boxes. */
+  setBoxEdits: (boxEdits: BoxEdits) => void
   watch: () => () => void
 }
 
@@ -49,7 +62,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
   /** Parse and apply, or record why not. Never partially applies. */
   const apply = (text: string): boolean => {
     try {
-      const world = deriveWorld(parseWorldText(text), get().placements)
+      const world = deriveWorld(parseWorldText(text), get().placements, get().boxEdits)
       set((state) => ({
         world,
         text,
@@ -81,6 +94,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     paths: null,
     revision: 0,
     placements: {},
+    boxEdits: {},
 
     load: async () => {
       try {
@@ -123,7 +137,16 @@ export const useWorldStore = create<WorldState>((set, get) => {
       // Re-derive from the same text: a shoved box changes where things are,
       // not what the document says, and the document is still the only source.
       if (text !== null) {
-        set({ world: deriveWorld(parseWorldText(text), placements) })
+        set({ world: deriveWorld(parseWorldText(text), placements, get().boxEdits) })
+        set((state) => ({ revision: state.revision + 1 }))
+      }
+    },
+
+    setBoxEdits: (boxEdits) => {
+      const text = get().text
+      set({ boxEdits })
+      if (text !== null) {
+        set({ world: deriveWorld(parseWorldText(text), get().placements, boxEdits) })
         set((state) => ({ revision: state.revision + 1 }))
       }
     },

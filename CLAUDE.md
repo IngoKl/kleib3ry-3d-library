@@ -10,7 +10,7 @@ shell, with a Rust core doing indexing, SQLite persistence and format probing.
 **There are exactly two shipped modes**, and a change that adds a way to run this
 is a change to that list: the **desktop app** (Tauri, `tauriDriver`) and
 **hosted** (the Docker container — the same core behind an HTTP server, serving a
-library folder to a browser, `httpDriver`). `browserDriver` is a *test fixture*
+library folder to a browser, `httpDriver`). `browserDriver` is a _test fixture_
 with a generated catalogue, not a third mode, and it is also the fallback for any
 non-Tauri bundle built without `VITE_DRIVER=http`. Say "container", not "web
 version" — [docs/modes.md](docs/modes.md) is the record of all of this, and
@@ -83,7 +83,7 @@ placeholder catalogue). A driver advertises what it can do (`kind`, `canPickFold
 time; unsupported operations throw `UnsupportedOperation`.
 
 `isTauri()` picks the desktop driver at runtime. The other two are indistinguishable
-at runtime, so `httpDriver` is selected at *build* time by `VITE_DRIVER=http`
+at runtime, so `httpDriver` is selected at _build_ time by `VITE_DRIVER=http`
 (`npm run build:http`) — see [src/services/index.ts](src/services/index.ts) for why
 a runtime probe would be worse. The HTTP driver and the whole container were added
 without a single change above `src/services/`, which is what this rule is for.
@@ -124,7 +124,7 @@ have somewhere to be. Only what you have moved is stored — `records.filed` (on
 crate id) and `records.loose` (one point) in `books.json` — and the deal honours
 explicit filings first, or putting a record away would be undone by the next
 deal. There is one of each record: it is on whichever deck you carried it to,
-`state/media.ts` remembers *which* deck, an empty deck does nothing, and `F`
+`state/media.ts` remembers _which_ deck, an empty deck does nothing, and `F`
 takes one back off.
 
 **A whiteboard is drawn on with the mouse held down.** [src/scene/board.ts](src/scene/board.ts)
@@ -137,19 +137,24 @@ app, which is why it is not another branch in `Player.tsx`.
 **The app never writes to `library.json`.** That file is hand-edited prose with
 comments in it. Everything the app decides about the room — where you shoved the
 boxes (`furniture`), what you wrote on a shelf (`labels`), which lamps are off
-(`.library/lights.json`) — goes to files beside it. `deriveWorld(doc, overrides)`
-takes the furniture overrides as an argument for exactly this reason.
+and whether it is raining (`.library/ambience.json`) — goes to files beside it.
+`deriveWorld(doc, overrides, boxEdits)` takes both as arguments for exactly this
+reason.
 
 **Nothing shelves itself.** A newly indexed book goes into a moving box, not onto
 a shelf ([src/world/reconcile.ts](src/world/reconcile.ts)), so a fresh library is
-four full boxes and empty shelves. Unpacking is an interaction: `G` on a box runs
-`emptyBoxOntoShelves`, which fills empty rows in a seeded-random order; `E` takes
-one book out or puts one back into the box you are looking at.
+full boxes and empty shelves — levelled book by book, or a folder of `books/` per
+box with "One Box per Folder" on in settings. Unpacking is an interaction: `G` on
+a box runs `emptyBoxOntoShelves`, which fills empty rows nearest case first;
+`E` takes one book out or puts one back into the box you are looking at. The
+boxes are furniture you manage: `X` carries one, `Backspace` breaks an empty one
+down, and `E` on the kitchen's `boxstack` makes a new one up — spawned and
+removed boxes are layout state (`books.json`, schema 7), never `library.json`.
 
 **Books live in `<library>/books/`.** `index::discover` confines the scan to that
 folder when it exists — `music/`, `artwork/` and `video/` are the reserved names —
 and falls back to the whole folder minus those three when it does not. The other
-three are read by [core/src/media.rs](core/src/media.rs), *not* through SQLite: a
+three are read by [core/src/media.rs](core/src/media.rs), _not_ through SQLite: a
 music folder is hundreds of files, so walking it on demand beats a second cache to
 keep in sync. Tags are read without a crate — ID3v2 and FLAC Vorbis comments only,
 in [core/src/probe/audio.rs](core/src/probe/audio.rs). A tape is not probed at
@@ -161,8 +166,8 @@ pdf.js, so the drag, the turn, bookmarks, `J` and `P` are identical for a PDF an
 an EPUB. An EPUB is unzipped by [src/reader/zip.ts](src/reader/zip.ts) with the
 platform's own `DecompressionStream` (no dependency), reduced to headings and
 paragraphs by [epub.ts](src/reader/epub.ts), and set in type by
-[epubPages.ts](src/reader/epubPages.ts). Pagination happens *once, in abstract
-units, at open time* — not at the texture's pixel size — so page 200 is page 200
+[epubPages.ts](src/reader/epubPages.ts). Pagination happens _once, in abstract
+units, at open time_ — not at the texture's pixel size — so page 200 is page 200
 on any monitor and a bookmark keeps meaning something.
 
 **Book appearance is a pure function of index data.** [src/data/dimensions.ts](src/data/dimensions.ts)
@@ -183,7 +188,7 @@ off the loft.
 
 **Only the topmost room over a patch of ground is roofed.** `roofsOf` derives that
 from the document rather than making you declare it. A roof's plane is pinned to the
-*top of the walls* and rises from there, so it can never intrude on headroom or cut
+_top of the walls_ and rises from there, so it can never intrude on headroom or cut
 through the ceiling below; and it does not overhang into a building it abuts, or the
 porch's shed roof comes out through the cabin's south wall. Roofs are deliberately
 out of the shadow pass: they are the largest surfaces in the scene and cast almost
@@ -212,13 +217,13 @@ to extract something new.
 focus, held book, held tape, held sheet, driver, whether you have gone in yet).
 `state/library.ts` holds the catalogue, shelving and pins, reconciles a saved layout
 against the latest scan on load, and debounces layout saves (600 ms).
-`state/lights.ts`, `state/media.ts` and `state/video.ts` own the smaller save files,
+`state/ambience.ts`, `state/media.ts` and `state/video.ts` own the smaller save files,
 the record player and the television. `state/player.ts`, `state/cat.ts` and
 `state/metrics.ts` are plain mutable objects deliberately outside zustand — they
 change every frame and must not trigger React renders.
 
 **A room fact goes in the library folder; a machine fact does not.** Which lamps
-are on, whether it is night and whether it is raining live in `lights.json` and
+are on, whether it is night and whether it is raining live in `ambience.json` and
 travel with the library. Low Performance Mode, the body, the volumes and the
 mouse sensitivity live in `state/settings.ts`, backed by `localStorage` — a
 folder you sync to another computer must not carry an assertion about that
@@ -232,23 +237,23 @@ to silence rather than throwing.
 
 **The HUD is what is under the crosshair and what is going wrong; everything else
 is behind a key.** The main menu (`src/ui/MainMenu.tsx`) chooses a library while
-the room loads *behind* it, and settings (`F2`) hold the switches. Nothing reaches
+the room loads _behind_ it, and settings (`F2`) hold the switches. Nothing reaches
 the room until you have gone in — `roomHasKeyboard()` in `state/store.ts` is the
 one place that decides, and every key handler asks it.
 
 Anything that re-derives the world (`setPlacements`) re-reconciles the whole library, so
-it belongs on an *edit* and never in a frame loop: carrying a moving box renders a
+it belongs on an _edit_ and never in a frame loop: carrying a moving box renders a
 preview and commits once, when you set it down.
 
 **Interaction goes through instanced meshes.** Books, shelves, records, tapes and loose
 books are all `InstancedMesh`; [src/scene/refs.ts](src/scene/refs.ts) is a module-level
 handle so the single per-frame raycast in `Interaction.tsx` can reach them. Furniture is
-published as *groups* — seats, surfaces, fixtures, boxes, boards — because the crosshair
+published as _groups_ — seats, surfaces, fixtures, boxes, boards — because the crosshair
 asks a different question of each. Collision is hand-rolled axis-separated AABB sliding
 in [src/scene/collision.ts](src/scene/collision.ts) — no physics engine, deliberately,
 which also keeps `wasm-unsafe-eval` out of the desktop CSP. A dropped book gets gravity
 and friction from [src/scene/drop.ts](src/scene/drop.ts), which is forty lines and not a
-solver; it runs per frame in `LooseBooks` and tells the store *once*, when the book stops.
+solver; it runs per frame in `LooseBooks` and tells the store _once_, when the book stops.
 
 **The spine atlas has a fixed byte budget.** Its whole texture re-uploads whenever any
 cell changes, so its size is a per-pass cost — about 15 MB is what the frame times carry,
@@ -261,7 +266,7 @@ the numbers. The tapes share the machinery with a much smaller grid of their own
 the front end rasterises page one with pdf.js and posts it to `save_rendered_cover`.
 `warmCovers` walks the whole catalogue in a background lane behind anything urgent, so
 a library finishes rather than resolving as you approach it. Book bytes come back
-through the `read_book_file` command, *not* the asset protocol. The asset scope starts
+through the `read_book_file` command, _not_ the asset protocol. The asset scope starts
 empty and is granted at runtime for exactly four directories — `covers`, `music`,
 `artwork`, `video` — each only when something asks; audio and video are the reason a
 folder rather than a command, since a track or a tape is streamed while it plays.
@@ -272,7 +277,7 @@ time it is drawn. "Tear out" is the gesture, not the effect.
 
 ## Conventions
 
-- Comments explain *why* a decision was made, and do it **briefly**: a line or
+- Comments explain _why_ a decision was made, and do it **briefly**: a line or
   two, no narrative, no history of what it used to be, no arguing with the
   reader. If a comment needs a paragraph, the reasoning belongs in `docs/`.
 - **UI text is Headline Case** for anything that is a label, a title, a heading
@@ -289,9 +294,9 @@ time it is drawn. "Tear out" is the gesture, not the effect.
   needs covering.
 - Assertions are on measurable facts (draw calls, triangles, frames, zero console errors);
   screenshots are for a human to glance at, not for comparison. Anything whose value
-  depends on how many frames have been rendered is *waited for*, not sampled after a
+  depends on how many frames have been rendered is _waited for_, not sampled after a
   fixed sleep — the smoke tests run on SwiftShader at a few frames a second, and a fixed
   sleep measures the host's spare capacity instead of the app.
-- Rust release profiles are *not* `panic = "abort"` — the indexer catches per-file unwinds
+- Rust release profiles are _not_ `panic = "abort"` — the indexer catches per-file unwinds
   so one malformed book can't kill a scan.
 - Fixed ports: Vite dev 5180, Playwright preview 5190, desktop CDP probe 9223, server 8080.

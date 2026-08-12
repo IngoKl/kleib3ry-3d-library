@@ -19,11 +19,11 @@ already up.
 There are three front-end hosts, and which one you want depends on what you are
 working on:
 
-| command | driver | good for |
-| --- | --- | --- |
-| `npm run tauri:dev` | `tauri` | anything touching real files, indexing, the CSP |
-| `npm run dev` | `browser` | the room, the scene, the reader, the HUD |
-| `npm run dev:http` | `http` | the container's driver, against a running server |
+| command             | driver    | good for                                         |
+| ------------------- | --------- | ------------------------------------------------ |
+| `npm run tauri:dev` | `tauri`   | anything touching real files, indexing, the CSP  |
+| `npm run dev`       | `browser` | the room, the scene, the reader, the HUD         |
+| `npm run dev:http`  | `http`    | the container's driver, against a running server |
 
 The browser build has a generated 1,700-book placeholder catalogue plus one real
 PDF, so read mode works and the shelves are full without pointing at anything.
@@ -39,15 +39,15 @@ npm run verify         # lint + typecheck + build + Playwright + clippy + cargo 
 
 That is what "done" means. Individually:
 
-| command | proves |
-| --- | --- |
-| `npm run lint` | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can |
-| `npm run typecheck` | the front end type-checks |
-| `npm run build` | the production bundle builds from the CLI |
-| `npm test` | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
-| `npm run lint:rust` | `cargo clippy -D warnings` over all three crates |
-| `npm run test:rust` | all three crates: core, the desktop shell, the server |
-| `npm run scan -- <folder>` | indexes a library folder's `books/` from the command line, no app needed |
+| command                    | proves                                                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint`             | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can                                 |
+| `npm run typecheck`        | the front end type-checks                                                                                                                     |
+| `npm run build`            | the production bundle builds from the CLI                                                                                                     |
+| `npm test`                 | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
+| `npm run lint:rust`        | `cargo clippy -D warnings` over all three crates                                                                                              |
+| `npm run test:rust`        | all three crates: core, the desktop shell, the server                                                                                         |
+| `npm run scan -- <folder>` | indexes a library folder's `books/` from the command line, no app needed                                                                      |
 
 Beyond the gate (needs a build first; Windows-only):
 
@@ -85,7 +85,7 @@ cargo test --manifest-path core/Cargo.toml index::
 ```
 
 `scripts/make-test-library.mjs` generates a folder of throwaway PDFs and EPUBs to
-point the desktop probe at. For working *by hand* against something that looks
+point the desktop probe at. For working _by hand_ against something that looks
 like a real collection, `demo-data/demo-library/` is a small freely-licensed one
 in the repository — ten EPUBs, two records, two pictures and a tape — and it is
 what to mount into the container when you are changing the hosted mode.
@@ -99,7 +99,7 @@ as an opaque binary: `scripts/make-icon.mjs` writes `assets/icon-source.png` and
 Three files, three jobs:
 
 - **`tests/collision.spec.ts`** and **`tests/world.spec.ts`** unit-test pure
-  modules *through the Playwright runner* — no browser, no page. They are there
+  modules _through the Playwright runner_ — no browser, no page. They are there
   because Playwright already transpiles the TypeScript, so this costs no second
   toolchain. They cover collision, shelving, the world document, reconciliation,
   the roof and the terrain.
@@ -130,7 +130,7 @@ Three things about the smoke tests worth knowing before you debug one:
 - **They derive their coordinates from the world**, not from written-down
   numbers. `faceTheShelves` asks the document where the bookcases are and sweeps
   the height of one until the crosshair finds a book. A test that knows where a
-  bookcase *was* is a test that fails the day somebody rearranges the room.
+  bookcase _was_ is a test that fails the day somebody rearranges the room.
 
 Assertions are on measurable facts — draw calls, triangles, frames, zero console
 errors, where a book ended up. `tests/screenshots/` is written for a human to
@@ -139,31 +139,28 @@ glance at, never compared.
 ## The frame budget is real
 
 The atlas is the thing to watch. Its whole texture is re-uploaded whenever any
-cell changes, so its *size* is a per-pass cost — and on the software rasteriser
+cell changes, so its _size_ is a per-pass cost — and on the software rasteriser
 the tests run on, taking it from 15 MB to 23 MB was enough that Playwright's own
 clicks began timing out. If you change cell size or cell count in
 [../src/scene/spineAtlas.ts](../src/scene/spineAtlas.ts), keep the product about
 where it is, and run the whole smoke suite rather than one test.
 
 The same applies to anything that adds a shadow caster covering a lot of screen,
-or a second atlas — and to anything drawn *near the camera*, which is what put
+or a second atlas — and to anything drawn _near the camera_, which is what put
 the player's body a hand's width behind the eyes rather than around them: a
 surface 10 cm from the near plane fills half the screen with fragments nobody
 sees. Assemblies of more than a handful of boxes are merged into one geometry
 per material (the plants, the staircases, the cat, the body) for the same
-reason a draw call is worth counting at all here. `window.__app.stats()` reports draw calls, triangles and
-frames; `window.__app.spines()` reports how many cells are printed and how many
+reason a draw call is worth counting at all here. `window.__app.stats()` reports draw calls, triangles and frames; `window.__app.spines()` reports how many cells are printed and how many
 have changed hands.
 
 ## Conventions
 
-- **Comments explain why, not what.** The interesting content of this codebase is
-  the reasoning; match the density of what is around you.
 - **Ease with `approach`, not with `min(1, delta * k)`.**
   [../src/lib/ease.ts](../src/lib/ease.ts) is the exponential form; the naive one
-  is a fraction *per frame*, so the same code settles at a different speed on
+  is a fraction _per frame_, so the same code settles at a different speed on
   every machine and clamps to a hard snap on the software rasteriser the tests
-  run on. Anything that asymptotes should also *arrive* — snap to the target
+  run on. Anything that asymptotes should also _arrive_ — snap to the target
   inside a millimetre or two, or a thing that has stopped keeps creeping.
 - **Auto-repeat moves you; it does not act for you.** Any key handler that does
   something once takes `if (e.repeat) return`, or holding the key repeats the
@@ -196,12 +193,12 @@ predicate, asked by every key handler, because `W` has to be a letter while
 somebody is typing a word. Add it to `ControlsCard.tsx` and to
 [controls.md](controls.md).
 
-**A setting.** If it is about the *machine* — the renderer, the mouse, the
+**A setting.** If it is about the _machine_ — the renderer, the mouse, the
 volume — it goes in [../src/state/settings.ts](../src/state/settings.ts) and is
-read where it applies. If it is about the *room* — the lamps, night, weather — it
+read where it applies. If it is about the _room_ — the lamps, night, weather — it
 goes in `lights.ts` and is saved into the library folder. Getting that the wrong
 way round means a library folder that carries an assertion about somebody else's
-GPU, or a graphics setting that vanishes when you delete `lights.json`.
+GPU, or a graphics setting that vanishes when you delete `ambience.json`.
 
 **A field in the world document.** Parse it in `schema.ts` with a default, so no
 existing document has to mention it, and make the failure message name the path

@@ -2,25 +2,25 @@
 
 kleib3ry ships in two forms, and they are the same program:
 
-| | **desktop app** | **hosted** |
-| --- | --- | --- |
-| what it is | a Tauri 2 window on your own machine | the Docker container, serving to a browser |
-| you run | `npm run tauri:dev`, or the built installer | `docker run … -v /your/library:/library` |
-| the library is | a folder you pick, on that machine | the folder you mounted into the container |
-| the Rust half | `core/` behind `src-tauri/`, over IPC | `core/` behind `server/`, over HTTP |
-| the front-end driver | `tauriDriver` | `httpDriver` |
-| built by | `npm run tauri:build` | `npm run docker:build` |
+|                      | **desktop app**                             | **hosted**                                 |
+| -------------------- | ------------------------------------------- | ------------------------------------------ |
+| what it is           | a Tauri 2 window on your own machine        | the Docker container, serving to a browser |
+| you run              | `npm run tauri:dev`, or the built installer | `docker run … -v /your/library:/library`   |
+| the library is       | a folder you pick, on that machine          | the folder you mounted into the container  |
+| the Rust half        | `core/` behind `src-tauri/`, over IPC       | `core/` behind `server/`, over HTTP        |
+| the front-end driver | `tauriDriver`                               | `httpDriver`                               |
+| built by             | `npm run tauri:build`                       | `npm run docker:build`                     |
 
 Everything above `src/services/` is the same code in both, down to the bundle:
 the room, the walking, the reader, the record player, the cat. What differs is
 the four or five things below that seam, and this document is a list of them.
 
-**The hosted mode *is* the container.** Not "a web version" — there is no
+**The hosted mode _is_ the container.** Not "a web version" — there is no
 deployment of kleib3ry that is not either the desktop app or this image. The
 server is an ordinary binary and you can run it by hand
 ([without Docker](docker.md#without-docker)), but that is the same mode with the
 packaging taken off, useful when you are working on it. In the app itself the
-mode is called *container*, in the panel and in the menu; `http` is the transport
+mode is called _container_, in the panel and in the menu; `http` is the transport
 underneath it, which is why the settings card shows both.
 
 To actually run either one: [getting-started.md](getting-started.md) for the
@@ -99,7 +99,7 @@ placeholder catalogue in `localStorage` plus two real generated books so read
 mode can be tested headlessly. `npm run dev` and the Playwright suite use it.
 
 It is a **fixture**, not a way to run kleib3ry, and it is worth knowing because
-it is also the *fallback* — any non-Tauri bundle built without `VITE_DRIVER=http`
+it is also the _fallback_ — any non-Tauri bundle built without `VITE_DRIVER=http`
 gets it. A hosted deployment built with plain `npm run build` therefore comes up
 looking like a working library full of books that do not exist. If a container
 shows 1,700 books you have never heard of, that is the bundle, not the mount:

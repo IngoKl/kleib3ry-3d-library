@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { library } from '../services'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
-import { useLightStore } from '../state/lights'
+import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
@@ -65,7 +65,7 @@ export function MainMenu() {
       // without these leaves you standing in the new rooms with the old library's
       // music on the shelf.
       await Promise.all([
-        useLightStore.getState().load(),
+        useAmbienceStore.getState().load(),
         useMediaStore.getState().load(),
         useVideoStore.getState().load(),
       ])

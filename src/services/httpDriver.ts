@@ -5,7 +5,7 @@ import type {
   IndexedTrack,
   LayoutDocument,
   LibraryService,
-  LightState,
+  AmbienceState,
   SavePaths,
   ScanProgress,
   ScanSummary,
@@ -206,12 +206,12 @@ export const httpDriver: LibraryService = {
     return ask<IndexedTape[]>('/video')
   },
 
-  async loadLights() {
-    return optional<LightState>('/lights')
+  async loadAmbience() {
+    return optional<AmbienceState>('/ambience')
   },
 
-  async saveLights(state) {
-    await send('/lights', 'PUT', JSON.stringify(state), 'application/json')
+  async saveAmbience(state) {
+    await send('/ambience', 'PUT', JSON.stringify(state), 'application/json')
   },
 
   /**

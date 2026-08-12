@@ -1,4 +1,4 @@
-import type { BookDimensions } from '../data/dimensions'
+import { hashId, type BookDimensions } from '../data/dimensions'
 import type { Random } from '../lib/rng'
 import type { DerivedShelf, DerivedWorld } from '../world/derive'
 import { INTERIOR_WIDTH, SHELF, rowMetrics } from '../world/shelf'
@@ -102,6 +102,22 @@ export function packRow(
     cursor += size.thickness
   }
 
+  // A partly filled row ends with its last book tipped into the gap, the way a
+  // real run of books settles when nothing holds it up. The book is also slid
+  // along by the base its tilt swings back, so it rests against its neighbour
+  // instead of through it. Angle keyed to the book's id: stable, and no two
+  // rows lean identically. Visual only — the row's capacity is unchanged.
+  const last = packed[packed.length - 1]
+  const size = last && dims(last.id)
+  if (last && size && packed.length >= 2) {
+    const free = limit - cursor
+    if (free > 0.055) {
+      const tilt = Math.min(0.1 + (hashId(last.id) % 90) / 1000, (free - 0.01) / size.height)
+      last.lean = -tilt
+      last.localX += Math.sin(tilt) * (size.height / 2)
+    }
+  }
+
   return packed
 }
 
@@ -173,12 +189,12 @@ export function arrangeInto(
 /**
  * An order to fill rows in that puts the empty ones first, shuffled.
  *
- * This is what "empty this box onto the shelves" uses. Filling in document
- * order would stack a boxful into the first bookcase by the door and leave the
- * rest of the room bare; going to empty shelves first spreads the unpacking
- * around the library the way carrying an armful across the room does. Rows that
- * already hold books come after, in document order, so nothing is dropped for
- * want of a tidy place to go.
+ * Filling in document order would stack a boxful into the first bookcase by
+ * the door and leave the rest of the room bare; going to empty shelves first
+ * spreads the unpacking around the library the way carrying an armful across
+ * the room does. Rows that already hold books come after, in document order,
+ * so nothing is dropped for want of a tidy place to go. Unpacking a *box* uses
+ * `nearestRowsFirst` instead — the box knows where it is standing.
  *
  * `random` is a seeded generator, so emptying the same box twice does the same
  * thing and a screenshot is reproducible.
@@ -200,6 +216,45 @@ export function emptyRowsFirst(
     ;[empty[i], empty[j]] = [empty[j]!, empty[i]!]
   }
 
+  return [...empty, ...used]
+}
+
+/**
+ * The same order, but from somewhere: empty rows first, nearest bookcase first.
+ *
+ * This is what unpacking a box uses now that a box can be carried. Carrying it
+ * across the room to the case you mean to fill and pressing G should fill *that*
+ * case — the seeded shuffle `emptyRowsFirst` does instead scattered the boxful
+ * over the whole building, which read as the room ignoring where you were
+ * standing. Within a case, rows fill top to bottom; cases at the same distance
+ * fall back to document order.
+ *
+ * The climb to another storey is weighted double, because a case up a flight of
+ * stairs is farther than the metres say — a box set down in the loft should
+ * fill the loft before it fills the room directly below it.
+ */
+export function nearestRowsFirst(
+  world: DerivedWorld,
+  rows: Record<RowKey, string[]>,
+  from: { x: number; y: number; z: number },
+): RowKey[] {
+  const distance = (index: number) => {
+    const shelf = world.shelves[index]!
+    return Math.hypot(shelf.x - from.x, 2 * (shelf.y - from.y), shelf.z - from.z)
+  }
+  const byDistance = world.shelves
+    .map((_, index) => index)
+    .sort((a, b) => distance(a) - distance(b) || a - b)
+
+  const empty: RowKey[] = []
+  const used: RowKey[] = []
+  for (const index of byDistance) {
+    const shelf = world.shelves[index]!
+    for (let row = 0; row < shelf.rows; row++) {
+      const key = rowKey(shelf.id, row)
+      ;((rows[key]?.length ?? 0) === 0 ? empty : used).push(key)
+    }
+  }
   return [...empty, ...used]
 }
 
