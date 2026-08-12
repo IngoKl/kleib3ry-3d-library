@@ -3,8 +3,7 @@
   "boxes": {
     "box-1": [
       "9b21e71419b48081",
-      "d7e18f9f15bce077",
-      "96e0d61ccfea2a7c"
+      "d7e18f9f15bce077"
     ],
     "box-2": [
       "94dfa57d97920d2d",
@@ -69,6 +68,10 @@
     "filed": {},
     "loose": {}
   },
-  "rows": {},
-  "schemaVersion": 5
+  "rows": {
+    "south-1:2": [
+      "96e0d61ccfea2a7c"
+    ]
+  },
+  "schemaVersion": 6
 }
