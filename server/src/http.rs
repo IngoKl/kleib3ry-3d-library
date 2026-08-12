@@ -126,7 +126,7 @@ pub fn read_request(stream: &TcpStream) -> Option<Request> {
     if reader.read_line(&mut line).ok()? == 0 {
         return None;
     }
-    let mut parts = line.trim_end().split_whitespace();
+    let mut parts = line.split_whitespace();
     let method = parts.next()?.to_string();
     let target = parts.next()?.to_string();
 

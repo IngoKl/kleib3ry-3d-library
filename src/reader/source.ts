@@ -98,10 +98,8 @@ export async function openSource(book: IndexedBook): Promise<PageSource> {
  * One page of one book, rasterised on its own.
  *
  * For the two places that want a page *outside* the reader: a book left lying
- * open on a table, and a page torn out and pinned to a wall. Both used to call
- * pdf.js directly, which is why both were blank for an EPUB — the one kind of
- * book with no pages until something lays it out. Going through the source
- * makes them format-blind like everything else above this file.
+ * open on a table, and a page torn out and pinned to a wall. Going through the
+ * source keeps both format-blind, like everything else above this file.
  *
  * The source is shared while renders overlap and dropped the moment the last
  * one finishes: an open spread asks for two pages at once, and for an EPUB the

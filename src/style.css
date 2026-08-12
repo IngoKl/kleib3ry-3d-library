@@ -188,7 +188,7 @@ button:disabled {
  * The cards arrive rather than appear.
  *
  * They are mounted and unmounted by what the crosshair is on, so a sweep along a
- * shelf used to be a card blinking in and out at whatever rate your wrist moved
+ * shelf would otherwise be a card blinking in and out at whatever rate your wrist moved
  * at. A 130 ms rise takes the flicker off it without putting any delay between
  * seeing a thing and being told what key it answers to — the text is legible
  * before the animation is over.

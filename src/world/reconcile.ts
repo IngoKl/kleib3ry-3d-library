@@ -156,7 +156,7 @@ export function reconcile(
   // A book lying on the table has been put somewhere, deliberately — so it
   // counts as placed, and a rescan does not tidy the room. Marked before the
   // boxes are read, so that if a document somehow claims both, where you last
-  // put it down wins over the box it used to be in.
+  // put it down wins over the box it is recorded in.
   for (const id of Object.keys(saved?.loose ?? {})) wasPlaced.add(id)
 
   // Which books are in which box. A box that has been taken out of the document

@@ -19,7 +19,7 @@ import { useWorldStore } from '../state/world'
 /**
  * What is out there.
  *
- * The windows used to be filled with a flat blue box standing in for daylight,
+ * The alternative is a flat blue box in the windows standing in for daylight,
  * which is fine until you build a cabin and the whole point is the view. So:
  * ground, a lake to the north, a few hundred conifers, and hills behind them.
  *
@@ -357,10 +357,9 @@ export function Outside() {
       {/* A pale shore, so the water meets the grass at something. Under the
           water and over the grass: three sheets stacked centimetres apart,
           rather than a hole cut in the ground for a lake nobody swims in.
-          The gaps used to be 6 cm, which was fine while the nearest you could
-          get was a window; standing on the beach they read as three floating
-          discs, so they are 1.5 cm now. The beach itself is walkable — the
-          refusal is at the water's edge, inside it. */}
+          The gaps are 1.5 cm: any wider and they read as three floating discs
+          from the beach. The beach itself is walkable — the refusal is at the
+          water's edge, inside it. */}
       <mesh
         position={[LAKE.x, SHORE_Y, LAKE.z]}
         rotation-x={-Math.PI / 2}

@@ -3,7 +3,7 @@ import * as THREE from 'three'
 /**
  * Printed spines, in one texture.
  *
- * A shelved book used to be a coloured box with, for the nearest few dozen, an
+ * A shelved book is a coloured box with, for the nearest few dozen, an
  * SDF label floating in front of it — one draw call each, so the budget capped
  * it at 48 and everything else was anonymous cloth. Here the artwork is drawn
  * into cells of a single atlas and each instance is told which cell is its own,

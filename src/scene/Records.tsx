@@ -121,7 +121,6 @@ export function Records() {
         !placed.has(track.id) &&
         !(filedRecords[track.id] !== undefined && known.has(filedRecords[track.id]!)),
     )
-    let cursor = 0
 
     for (const crate of crates) {
       // Records lean back against the divider, filling each bay front to back.
@@ -132,7 +131,7 @@ export function Records() {
 
       const queue = wanted(crate.id)
       for (let slot = 0; slot < perBay * 2; slot++) {
-        const track = queue.shift() ?? pool[cursor++]
+        const track = queue.shift() ?? pool.shift()
         if (!track) break
 
         const bay = slot < perBay ? -1 : 1
@@ -152,14 +151,18 @@ export function Records() {
           art: sleeveArtFor(track),
         })
       }
+      // More records filed into this crate than it holds. The overflow goes back
+      // to the front of the deal so a later crate takes it, rather than the
+      // record vanishing out of the room.
+      pool.unshift(...queue)
     }
 
     return out
   }, [world, tracks, filedRecords, looseRecords])
 
-  const capacity = useMemo(() => Math.max(32, Math.ceil((filed.length + 8) / 32) * 32), [
-    Math.ceil((filed.length + 8) / 32),
-  ])
+  // Rounded up to a block, so the mesh is not rebuilt for every record moved.
+  const blocks = Math.ceil((filed.length + 8) / 32)
+  const capacity = useMemo(() => Math.max(32, blocks * 32), [blocks])
 
   const atlas = useMemo(() => makeSleeveAtlas(), [])
   const geometry = useMemo(() => makeSleeveGeometry(), [])

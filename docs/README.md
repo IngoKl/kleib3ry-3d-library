@@ -28,13 +28,11 @@ Start wherever your question is.
   were. Start here.
 - **[development.md](development.md)** — commands, how the tests are arranged, the
   frame budget, and how to add a furniture kind or a key.
-- **[reading-spike.md](reading-spike.md)** — the findings from the spike that
-  de-risked reading a PDF in 3D. Why the reader is a camera dock, and its DPI
-  budget.
 
 ## What is next
 
-- **[ideas.md](ideas.md)** — the running wish list, and what has come off it.
+- **[known-bugs-ideas.md](known-bugs-ideas.md)** — the running list of known
+  bugs and what to build next.
 
 ---
 

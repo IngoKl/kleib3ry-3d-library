@@ -17,18 +17,13 @@ import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
 import { useVideoStore, videoElement } from '../state/video'
 
 /**
- * Furniture, built from boxes and cylinders rather than shipped as models.
+ * Furniture, built from boxes and cylinders rather than shipped as models: the
+ * repo stays text and the proportions stay arguable. Nothing is detailed enough
+ * to inspect closely — it reads at the distance you see it from.
  *
- * The same reasoning as the floor texture: the repo stays text, the proportions
- * stay legible, and a chair is a few numbers you can argue with. Nothing here is
- * detailed enough to inspect closely — it is meant to read correctly at the
- * distance you actually see it from, which is standing up, across a room.
- *
- * Three groups are published to `sceneRefs` rather than being raycast as one
- * scene: what you can sit on, what you can put a book down on, and what you can
- * *operate* — a lamp, the deck, the coffee maker. The crosshair asks a
- * different question of each, and asking all three of every table leg in the
- * cabin is the one thing in the frame that would actually cost something.
+ * Groups are published to `sceneRefs` rather than raycast as one scene — seats,
+ * surfaces, fixtures, boxes, boards — because the crosshair asks a different
+ * question of each.
  */
 
 // Moss rather than leather: with the floor, the shelves and the ceiling all in
@@ -868,16 +863,10 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
           <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.75} />
         </mesh>
       </group>
-      {/* The sleeve of whatever is on, stood up behind the deck the way a sleeve
-          is actually left while its record plays.
-
-          Behind rather than beside, which is where it used to be: a 12" sleeve is
-          31.5 cm and the plinth is 44 wide on a 90 cm crate, so there is no room
-          to stand one at the side — it was drawn with its bottom corner sunk
-          through the plinth. There is 7 cm of crate behind, which is enough for a
-          sleeve leaning back on its bottom edge, and it stands a clear 20 cm
-          above the deck from the front. Keyed so the artwork mounts a fresh
-          material — see HeldBook for why. */}
+      {/* The sleeve of whatever is on, stood up behind the deck. Behind rather
+          than beside: a 12" sleeve is 31.5 cm and the plinth is 44 wide on a
+          90 cm crate, so there is no room at the side. Keyed so the artwork
+          mounts a fresh material — see `Picture`. */}
       {sleeve && (
         <group position={[0.05, 0.156, -0.215]} rotation-x={-0.16}>
           <mesh castShadow>
@@ -1358,11 +1347,9 @@ function Crt({
 /**
  * The catalogue terminal: a monitor on a box, with a keyboard in front of it.
  *
- * Deliberately the oldest computer in the building. A library's index used to be
- * a cabinet of cards and then, for about fifteen years, exactly this — a green
- * screen on a counter that told you where a thing was and nothing else. What it
- * actually does lives in the HUD, because a search you type is a search you have
- * to be able to read; this is the thing you walk up to.
+ * What it does lives in the HUD: a search you type has to be readable, and a
+ * canvas texture on a 40 cm screen across a desk is not. This is the thing you
+ * walk up to.
  */
 function Computer({ width, depth, height, awake }: { width: number; depth: number; height: number; awake: boolean }) {
   const screenW = width * 0.62
@@ -1609,12 +1596,9 @@ export function Furniture() {
   }, [world, artwork])
 
   /**
-   * Which picture hangs in which frame.
-   *
-   * A frame with a `source` names its file; the rest are dealt out of the
-   * artwork folder in document order, so dropping images into `artwork/` is the
-   * whole of the work. Dealing rather than repeating means two frames in the
-   * same room do not show the same print.
+   * Which picture hangs in which frame. A frame with a `source` names its file;
+   * the rest are dealt out of `artwork/` in document order, so two frames in a
+   * room do not show the same print.
    */
   const sources = useMemo(() => {
     if (!world) return new Map<string, string>()
@@ -1697,21 +1681,13 @@ export function Furniture() {
 }
 
 /**
- * The lights themselves, separate from the furniture that carries them.
+ * The lights, separate from the furniture that carries them: a `pointLight`
+ * inside `Piece` would be remounted on every unrelated re-render, and three
+ * re-allocates a shadow map when that happens.
  *
- * A `pointLight` inside `Piece` would be remounted every time the piece
- * re-rendered for an unrelated reason, and three re-allocates a shadow map when
- * that happens. Here they are one flat list keyed by furniture id, and turning
- * one off is a prop change.
- *
- * Every lamp stays in the scene whether it is lit or not, and a lamp that is off
- * is one with no intensity. Unmounting it instead is the obvious thing and it
- * cost half a second of frozen room the first time anybody pulled a switch: the
- * number of lights is baked into every shader program three compiles, so taking
- * one out of the scene invalidates the lot and recompiles the whole cabin
- * mid-frame. Holding the count still costs a few instructions per fragment for a
- * lamp contributing nothing, which is what the room already pays when every lamp
- * in it is on.
+ * A lamp that is off stays in the scene with no intensity. The light count is
+ * baked into every shader three compiles, so unmounting one recompiles the whole
+ * cabin mid-frame.
  */
 export function FurnitureLights() {
   const world = useWorldStore((s) => s.world)
@@ -1729,11 +1705,10 @@ export function FurnitureLights() {
             key={lamp.id}
             // Candela, falling off with the square of distance, so these are
             // larger than they look: at the 2 m from a pendant to the table
-            // under it, 4.5 cd arrives as just over 1. Argued down twice from
-            // hotter values: intensity makes the glare pool by the fitting,
-            // distance is what carries a soft edge into the corners. A string
-            // of bulbs is dimmer than any of them and reaches further, which is
-            // what makes it decoration rather than lighting.
+            // under it, 4.5 cd arrives as just over 1. Intensity pools glare at
+            // the fitting; distance is what carries a soft edge into the
+            // corners. Fairy lights are dimmer and reach further, which makes
+            // them decoration rather than lighting.
             intensity={!lit ? 0 : fire || lamp.kind === 'pendant' ? 4.5 : fairy ? 1.8 : 2.8}
             position={[lamp.x, lamp.y, lamp.z]}
             distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : fairy ? 7 : 5.6}

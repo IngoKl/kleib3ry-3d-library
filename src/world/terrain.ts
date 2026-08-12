@@ -1,7 +1,7 @@
 /**
  * The site the building stands on: ground, water, and where the ground runs out.
  *
- * This exists because the outdoors stopped being scenery. It used to be enough
+ * The outdoors is not scenery: you walk on it. It would be enough
  * for `Outside.tsx` to own the lake, since nothing but the camera could ever
  * reach it and the porch railing was the edge of the world. Now you can walk
  * out of the porch and round the water, which means two things that were one

@@ -216,7 +216,7 @@ function pump() {
  * Queue a book's cover, ahead of the background sweep.
  *
  * Safe to call every frame: the claim is taken when the book is queued rather
- * than when it finishes, which is the bug this used to have — a book in flight
+ * than when it finishes. Releasing on start would let a book in flight
  * was in neither the queue nor the results, so a shelf in view would re-queue
  * the same rasterisation several times a second.
  */

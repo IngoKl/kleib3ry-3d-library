@@ -24,8 +24,8 @@ right. [docs/README.md](docs/README.md) indexes the rest —
 because the world document is a published interface;
 [docs/modes.md](docs/modes.md) and [docs/docker.md](docs/docker.md) for the
 hosted mode; [docs/development.md](docs/development.md) for how the tests are
-arranged and what the frame budget is; [docs/ideas.md](docs/ideas.md) for the
-open roadmap.
+arranged and what the frame budget is; [docs/known-bugs-ideas.md](docs/known-bugs-ideas.md)
+for the open list.
 
 The root [README.md](README.md) is the project's front page and is deliberately
 thin: what it is, the two quick starts, the demo library, and links. Anything
@@ -40,7 +40,10 @@ npm run tauri:dev      # desktop app (native folder picker, real indexer)
 npm run dev            # browser only, placeholder catalogue, no filesystem
 npm run dev:http       # browser against a running kleib3ry-server
 
-npm run verify         # typecheck + build + Playwright + cargo test — the gate before calling work done
+npm run verify         # the gate before calling work done: lint, typecheck, build,
+                       # Playwright, clippy, cargo test
+npm run lint           # oxlint (.oxlintrc.json); lint:fix applies what it can
+npm run lint:rust      # cargo clippy -D warnings, all three crates
 npm run typecheck
 npm test               # Playwright, headless Chromium against the production bundle
 npm run test:rust      # all three crates: core, src-tauri, server
@@ -103,17 +106,17 @@ against them, and books are served by index id rather than by name.
 
 ## How the pieces fit
 
-**Layout is ids, positions are derived.** The persisted layout document is nothing
-but `{ schemaVersion, rows: { "unit:row": [bookId, ...] }, boxes: { boxId: [bookId, ...] } }`.
+**Layout is ids, positions are derived.** The persisted layout document is mostly
+`{ schemaVersion, rows: { "unit:row": [bookId, ...] }, boxes: { boxId: [bookId, ...] } }`.
 Physical placement is recomputed by packing each row left to right in
 [src/scene/shelving.ts](src/scene/shelving.ts) and each box bottom-up in
 [src/world/boxes.ts](src/world/boxes.ts), so a book whose dimensions change pushes
 neighbours along instead of overlapping. Rust stores this document verbatim
 (`get_layout`/`save_layout`) — the schema is owned entirely by the front end.
 
-The exceptions are `loose` — a book put down on a table or dropped on the floor —
-and `pins`, the pages and notes stuck to walls. Both store real positions, because
-"there, where I put it" cannot be derived from an ordering. Keep them the only two.
+The exceptions store real positions, because "there, where I put it" cannot be
+derived from an ordering: `loose` (a book on a table or the floor), `pins` (sheets
+on walls) and `records.loose`. Keep the list short.
 
 **Records are dealt, not arranged.** Every `recordshelf` takes a slice of `music/`
 in folder order, so nothing has to be written down for a few hundred sleeves to
@@ -145,14 +148,12 @@ one book out or puts one back into the box you are looking at.
 
 **Books live in `<library>/books/`.** `index::discover` confines the scan to that
 folder when it exists — `music/`, `artwork/` and `video/` are the reserved names —
-and falls back to reading the whole folder (minus those three) when it does not, so
-libraries predating the convention still index. The other three are read by
-[core/src/media.rs](core/src/media.rs), deliberately *not* through SQLite: a music
-folder is hundreds of files rather than tens of thousands, so walking it on demand
-beats a second cache to keep in sync. Tags are read without a crate — ID3v2 and
-FLAC Vorbis comments only, in [core/src/probe/audio.rs](core/src/probe/audio.rs) —
-to keep the shipped licence surface where it is. A tape is not probed at all: its
-filename is its title and its folder is its series.
+and falls back to the whole folder minus those three when it does not. The other
+three are read by [core/src/media.rs](core/src/media.rs), *not* through SQLite: a
+music folder is hundreds of files, so walking it on demand beats a second cache to
+keep in sync. Tags are read without a crate — ID3v2 and FLAC Vorbis comments only,
+in [core/src/probe/audio.rs](core/src/probe/audio.rs). A tape is not probed at
+all: its filename is its title and its folder is its series.
 
 **Both formats open.** Everything above [src/reader/source.ts](src/reader/source.ts)
 is written against "a thing with pages you can rasterise" rather than against
@@ -165,12 +166,11 @@ units, at open time* — not at the texture's pixel size — so page 200 is page
 on any monitor and a bookmark keeps meaning something.
 
 **Book appearance is a pure function of index data.** [src/data/dimensions.ts](src/data/dimensions.ts)
-derives thickness from page count (an EPUB has none, so the probe measures the
-uncompressed length of the documents inside the archive rather than the size of the
-file around them), and height/depth/colour from a hash of the book id — arbitrary but stable, so
-a book always looks the same on the shelf. Everything is about a quarter over life
-size, and the carcass in `world/shelf.ts` was grown to match: legibility of a printed
-spine is capped by screen pixels, so physical size is the only thing that buys it.
+derives thickness from page count — an EPUB has none, so the probe measures the
+uncompressed length of the documents inside the archive — and height, depth and
+colour from a hash of the book id: arbitrary but stable. Everything is about a
+quarter over life size, and `world/shelf.ts` matches, because the legibility of a
+printed spine is capped by screen pixels.
 
 **A room can be over another room.** `RoomSpec.elevation` puts a floor at a height and
 `holes` cuts a stairwell out of it; `floorAt` in [src/world/derive.ts](src/world/derive.ts)

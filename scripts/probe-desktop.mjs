@@ -63,7 +63,8 @@ class Cdp {
       const entry = this.#pending.get(msg.id)
       if (!entry) return
       this.#pending.delete(msg.id)
-      msg.error ? entry.reject(new Error(msg.error.message)) : entry.resolve(msg.result)
+      if (msg.error) entry.reject(new Error(msg.error.message))
+      else entry.resolve(msg.result)
     })
   }
 

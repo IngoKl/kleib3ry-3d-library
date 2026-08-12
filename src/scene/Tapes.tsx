@@ -105,10 +105,9 @@ export function Tapes() {
     return out
   }, [world, tapes])
 
-  const capacity = useMemo(
-    () => Math.max(16, Math.ceil((filed.length + 4) / 16) * 16),
-    [Math.ceil((filed.length + 4) / 16)],
-  )
+  // Rounded up to a block, so the mesh is not rebuilt for every tape moved.
+  const blocks = Math.ceil((filed.length + 4) / 16)
+  const capacity = useMemo(() => Math.max(16, blocks * 16), [blocks])
 
   /**
    * A crate holds a dozen tapes, so it gets a sixteen-cell atlas rather than the

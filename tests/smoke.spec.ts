@@ -110,6 +110,7 @@ declare global {
       }
       startForTest: () => void
       callCatForTest: () => boolean
+      placeCatForTest: (x: number, z: number, floor?: number) => void
       petCatForTest: () => void
       fetchBookForTest: () => boolean
       furniture: () => { id: string; kind: string; room: string; x: number; y: number; z: number }[]
@@ -619,9 +620,9 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
 
   const stats = await page.evaluate(() => window.__app.stats())
   // The great room, the loft inside it, the reading corner, the bedroom over
-  // that, the kitchen, the office off the kitchen, the porch — and the lake
-  // house and its deck, a trail away across the site.
-  expect(stats.rooms).toBe(9)
+  // that, the kitchen, the bathroom off it, the office, the porch — and the
+  // lake house and its deck, a trail away across the site.
+  expect(stats.rooms).toBe(10)
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 
@@ -950,7 +951,7 @@ test('a box can be browsed, so a buried book can be brought to the top', async (
   // lying in it, and browsing is offered either way.
   await expect(
     page.getByTestId('box-card').or(page.getByTestId('focus-card')),
-  ).toContainText('browse')
+  ).toContainText(/browse/i)
 
   const onTop = await page.evaluate(() => window.__app.visibleInBoxes())
   const contents = await page.evaluate((id) => window.__app.boxContents(id as string), boxId!)
@@ -987,7 +988,7 @@ test('a book goes back into the box you drop it into, and stays there', async ({
   const boxId = await faceABox(page)
   expect(boxId, 'no box was reachable from any pose').not.toBeNull()
   expect(await page.evaluate(() => window.__app.boxTarget())).toBe(boxId)
-  await expect(page.getByTestId('held-card')).toContainText('drop in the box')
+  await expect(page.getByTestId('held-card')).toContainText(/drop in the box/i)
 
   await page.keyboard.press('KeyE')
   await page.waitForTimeout(400)
@@ -1100,6 +1101,8 @@ test('you can kneel down to the bottom shelf and stand back up', async ({ page }
 })
 
 test('you can sit in the armchair, read from it, and get up again', async ({ page }) => {
+  // A pose sweep and two eased settles, both counted in frames.
+  test.slow()
   await boot(page)
 
   // Stand in front of the chair in the reading corner and look down at it — an
@@ -1132,31 +1135,38 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
     if (seen === 'chair') break
   }
   expect(seen, 'the armchair was not reachable from any pose').toBe('chair')
-  await expect(page.getByTestId('seat-card')).toContainText('sit down')
+  await expect(page.getByTestId('seat-card')).toContainText(/sit down/i)
 
   await page.keyboard.press('KeyE')
   await page.waitForTimeout(600)
 
   expect(await page.evaluate(() => window.__app.seat())).toBe('chair')
-  await expect(page.getByTestId('seated-card')).toContainText('stand up')
+  await expect(page.getByTestId('seated-card')).toContainText(/stand up/i)
 
   // Seated: lower than standing, at the chair, and walking does not move you.
   // Sitting down *eases* you into the chair, so the reading is taken once that
   // has finished rather than at a fixed moment part-way through it — otherwise
   // what the walk is measured against is a position still on its way.
   await page.waitForFunction(() => window.__app.player().eye < 1.3, null, { timeout: 20_000 })
-  await page.waitForFunction(
-    () => {
-      const w = window as unknown as { __seat?: string }
-      const p = window.__app.player()
-      const now = `${p.x.toFixed(4)}:${p.z.toFixed(4)}`
-      const still = w.__seat === now
-      w.__seat = now
-      return still
-    },
-    null,
-    { timeout: 20_000, polling: 400 },
-  )
+
+  // Polled from this side rather than with `waitForFunction`, for the reason
+  // `settled` gives: a page timer is starved by the render loop here, and this
+  // one was evaluated once in twenty seconds. The budget is generous because
+  // the ease is counted in frames and a frame here can be most of a second.
+  let previous = ''
+  let stopped = false
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    const at = await page.evaluate(() => window.__app.player())
+    const now = `${at.x.toFixed(3)}:${at.z.toFixed(3)}`
+    if (now === previous) {
+      stopped = true
+      break
+    }
+    previous = now
+    await page.waitForTimeout(400)
+  }
+  expect(stopped, 'the seated ease never came to rest').toBe(true)
 
   const seated = await page.evaluate(() => window.__app.player())
   expect(seated.eye).toBeLessThan(1.3)
@@ -1279,9 +1289,10 @@ test('a bookmark is set, survives a reload, and takes you back to its page', asy
   await reboot(page)
   expect(await page.evaluate(() => window.__app.bookmarksOf('sample-book'))).toEqual([1])
 
-  // Open the book again: it starts at the front, and the ribbon gets you back.
+  // Open the book again: it resumes at the spread you left it on, which is what
+  // `readProgress` is saved on every turn for.
   await page.evaluate(() => window.__app.readForTest('sample-book'))
-  expect(await page.evaluate(() => window.__app.reader().spread)).toBe(0)
+  expect(await page.evaluate(() => window.__app.reader().spread)).toBe(1)
 })
 
 test('spines are printed for the shelf you are at, and only for that shelf', async ({ page }) => {
@@ -1424,16 +1435,24 @@ async function facePiece(page: Page, kind: string, found: () => boolean) {
   )
   expect(pieces.length, `this world has no ${kind}`).toBeGreaterThan(0)
 
+  // The pitch is worked out rather than swept: a tape crate is 22 cm tall, and
+  // no fixed angle steep enough for that is shallow enough for a bookcase. `at`
+  // is how far up the piece to aim, from its own base.
+  const EYE = 1.68
   for (const piece of pieces) {
-    for (const back of [0.7, 1.0, 1.35]) {
-      for (const pitch of [-0.5, -0.75, -0.3, -0.95]) {
-        // A stride to the south of it, looking north and down into it: the loft's
-        // den faces the balustrade, so this is the side you would stand on.
+    for (const back of [0.6, 0.85, 1.15, -0.6, -0.85, -1.15]) {
+      // A person's yaw of 0 looks north (-Z), so standing south of a piece you
+      // face 0 and standing north of it you face PI.
+      const yaw = back > 0 ? 0 : Math.PI
+      for (const at of [0.12, 0.3, 0.55]) {
         await page.evaluate(
-          ([x, z, floor]) => window.__app.teleport(x!, z!, Math.PI, floor!),
-          [piece.x, piece.z + back, piece.y],
+          ([x, z, floor, aim]) => window.__app.teleport(x!, z!, aim!, floor!),
+          [piece.x, piece.z + back, piece.y, yaw],
         )
-        await page.evaluate((p) => window.__app.look(Math.PI, p), pitch)
+        await page.evaluate(
+          ([aim, drop, away]) => window.__app.look(aim!, -Math.atan2(drop!, away!)),
+          [yaw, EYE - at, Math.abs(back)],
+        )
         if (await settled(page, found, 3000)) return true
       }
     }
@@ -1633,6 +1652,9 @@ test('the marker draws on the whiteboard, and the board keeps it', async ({ page
 })
 
 test('a page torn out of a book pins to a wall, and the book keeps its own', async ({ page }) => {
+  // Two full book opens before it gets to the wall, so the page textures are
+  // resident and every frame after that is slower.
+  test.slow()
   await boot(page)
 
   const opened = await page.evaluate(() => window.__app.readForTest('sample-book'))
@@ -1667,11 +1689,11 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
     expect(board.bottom, `${board.id} hangs down behind the desk`).toBeGreaterThan(0.75)
   }
 
-  // Somewhere with plaster on it: the north wall east of the window and clear of
-  // the bookcase, which is the one stretch of the great room that is only wall.
-  await page.evaluate(() => window.__app.teleport(4.0, -3.2, 0, 0))
-  await page.evaluate(() => window.__app.look(0, 0))
-  const aimed = await settled(page, () => window.__app.pinTarget() !== null, 8000)
+  // Somewhere with plaster on it: the south wall between the window and the
+  // porch door, which is solid from the floor to the ceiling.
+  await page.evaluate(() => window.__app.teleport(1.5, 3.2, Math.PI, 0))
+  await page.evaluate(() => window.__app.look(Math.PI, 0))
+  const aimed = await settled(page, () => window.__app.pinTarget() !== null, 20_000)
   expect(aimed, 'a wall a stride away was not offered as somewhere to pin').toBe(true)
   await expect(page.getByTestId('held-sheet-card')).toBeVisible()
 
@@ -1683,8 +1705,8 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
   expect(pinned.kind).toBe('page')
   expect(pinned.bookId).toBe('sample-book')
   // On the wall it was aimed at, not at the origin.
-  expect(pinned.z).toBeLessThan(-3.5)
-  expect(Math.abs(pinned.x - 4.0)).toBeLessThan(0.5)
+  expect(pinned.z).toBeGreaterThan(3.5)
+  expect(Math.abs(pinned.x - 1.5)).toBeLessThan(0.5)
   // Your hands are empty again.
   expect(await page.evaluate(() => window.__app.heldPin())).toBeNull()
 
@@ -1710,8 +1732,8 @@ test('a note is written, stuck up, and is still there after a reload', async ({ 
   expect(written, 'the note never reached your hand').toBe(true)
   expect((await page.evaluate(() => window.__app.heldPin()))!.kind).toBe('note')
 
-  await page.evaluate(() => window.__app.teleport(4.0, -3.2, 0, 0))
-  await page.evaluate(() => window.__app.look(0, 0))
+  await page.evaluate(() => window.__app.teleport(1.5, 3.2, Math.PI, 0))
+  await page.evaluate(() => window.__app.look(Math.PI, 0))
   expect(await settled(page, () => window.__app.pinTarget() !== null, 8000)).toBe(true)
 
   await page.keyboard.press('KeyE')
@@ -1829,6 +1851,19 @@ test('the cat comes when called, and can be asked for a book', async ({ page }) 
   const start = await page.evaluate(() => window.__app.cat())
   expect(start.mood, 'the cat never got put anywhere').toBeTruthy()
 
+  // Stand at the bookcases before any of this. The steering is deliberately
+  // unplanned — see `Cat.tsx` — so an errand across the whole building is a
+  // test of the pathfinding it does not have, and none of that is the point.
+  const nearest = (await page.evaluate(() => window.__app.places())).shelves[0]!
+  await page.evaluate(
+    ([x, z]) => window.__app.teleport(x! + 1.4, z!, Math.PI / 2, 0),
+    [nearest.x, nearest.z],
+  )
+  await page.evaluate(
+    ([x, z]) => window.__app.placeCatForTest(x! + 3.0, z! + 1.2, 0),
+    [nearest.x, nearest.z],
+  )
+
   // Called. It is deliberately allowed to refuse if it was asleep — which is
   // the whole of what makes it read as an animal rather than a button — so this
   // asks until it is on its way rather than asserting on one call.
@@ -1843,6 +1878,11 @@ test('the cat comes when called, and can be asked for a book', async ({ page }) 
   expect(coming, 'the cat ignored every call').toBe(true)
 
   // And it actually crosses the room to you rather than only intending to.
+  //
+  // The budget is wall-clock but the walk is not: the frame delta is clamped at
+  // 1/20 s, so on a software rasteriser running at two frames a second the cat
+  // advances a tenth of a second of simulation per second of test. Ten metres
+  // is minutes, not seconds.
   const before = await page.evaluate(() => window.__app.cat())
   const you = await page.evaluate(() => window.__app.player())
   const away = Math.hypot(before.x - you.x, before.z - you.z)
@@ -1853,7 +1893,7 @@ test('the cat comes when called, and can be asked for a book', async ({ page }) 
       const me = window.__app.player()
       return Math.hypot(cat.x - me.x, cat.z - me.z) < 1.2
     },
-    60_000,
+    180_000,
   )
   expect(nearer, `the cat set off from ${away.toFixed(1)} m away and never arrived`).toBe(true)
 

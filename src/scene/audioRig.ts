@@ -1,22 +1,11 @@
 /**
- * Sound placed in the room rather than in the browser.
+ * Sound placed in the room: quieter from the next room, and off to the side the
+ * thing making it stands on.
  *
- * The record player and the television used to play at one volume from
- * everywhere in the building, which is the sort of thing you stop noticing and
- * never stop being bothered by: the whole argument for a room is that where you
- * are standing matters, and the loudest thing in it was exempt.
- *
- * `state/media.ts` argues — correctly — for a plain `<audio>` element over Web
- * Audio: it streams instead of decoding a gigabyte into memory, it starts on the
- * keypress that asked for it, and it has no AudioContext to be mysteriously
- * suspended. None of that changes here. The element is still what plays; this
- * only routes its output through a panner when a context can be had, and falls
- * back to attenuating `element.volume` when one cannot.
- *
- * That fallback is the load-bearing part. Every failure mode of Web Audio —
- * a blocked context, a `createMediaElementSource` that throws, a stack that does
- * not do HRTF — lands on "sound with distance but no direction", which is most
- * of the effect and is never silence.
+ * The `<audio>` element is still what plays — see `state/media.ts`. This routes
+ * its output through a `PannerNode` when a context can be had, and attenuates
+ * `element.volume` by distance when one cannot. Every Web Audio failure mode
+ * lands on that fallback rather than on silence.
  */
 
 type Rig = {
@@ -89,9 +78,8 @@ function rigFor(element: HTMLMediaElement): Rig | null {
 /**
  * Put one source in the room.
  *
- * `at` is where the thing making the noise is; null means "no position known",
- * which plays it flat at the master volume — the old behaviour, and the right
- * answer for a world that has not loaded yet.
+ * `at` is where the thing making the noise is; null plays it flat at the master
+ * volume, which is the right answer for a world that has not loaded yet.
  */
 export function placeSound(
   element: HTMLMediaElement,

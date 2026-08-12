@@ -89,10 +89,8 @@ type AppState = {
   /** Tape crate under the crosshair while holding a tape — put it back. */
   tapeCrateTarget: string | null
   /**
-   * Bookcase carcass under the crosshair, whether or not a book is.
-   *
-   * Exists for `L`: labelling an *empty* case used to be impossible, because the
-   * only routes to a shelf id went through a held book or a shelved one.
+   * Bookcase carcass under the crosshair, whether or not a book is. This is what
+   * lets `L` label an empty case.
    */
   focusedShelf: string | null
   /** Where a held book would land on a table, in world metres, and on what. */

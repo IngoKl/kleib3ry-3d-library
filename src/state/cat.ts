@@ -48,6 +48,12 @@ export type Cat = {
   fetchingFrom: string | null
   /** How long it has been failing to get anywhere, so it can give up gracefully. */
   stuck: number
+  /**
+   * A doorway to head for before the real target. Set when it walks into a
+   * wall, because it steers straight at where it is going and a room whose door
+   * faces away from the rest of the building is otherwise a trap.
+   */
+  via: [number, number] | null
   /** True once the world has been up long enough to put it somewhere sensible. */
   placed: boolean
 }
@@ -66,6 +72,7 @@ export const cat: Cat = {
   carrying: null,
   fetchingFrom: null,
   stuck: 0,
+  via: null,
   placed: false,
 }
 

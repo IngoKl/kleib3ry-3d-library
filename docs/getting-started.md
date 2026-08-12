@@ -92,11 +92,11 @@ lives if the room is stuttering.
 You start in the great room, looking north at the lake. Click to capture the
 mouse; `Esc` releases it. **`F1`** brings up every key, in the room.
 
-The building is a cabin: a great room with a hearth and a loft up a flight of
-stairs, a reading corner with a bedroom above it, a kitchen, an office off the
-kitchen with a whiteboard, and a porch. Straight out of the porch door and down
-the steps there is grass, a path round the pond, and a trail west to the lake
-house on the far shore.
+The building is a cabin: a great room with a hearth, a clock and a loft up a
+flight of stairs, a reading corner with a bedroom above it, a kitchen, a bathroom
+off the kitchen, an office with a whiteboard, and a porch. Straight out of the
+porch door and down the steps there is grass, a path round the pond, and a trail
+west to the lake house on the far shore.
 
 Things worth trying early:
 
@@ -107,13 +107,15 @@ Things worth trying early:
 | **`ctrl`** | kneel, to read the bottom shelf |
 | **`Z`** (or right mouse) | zoom, to read a spine across the room |
 | **`E`** on a lamp, the deck, the coffee maker | works it |
-| **`E`** on a record, then on the deck | puts music on |
-| **`E`** on a tape, then on the television | plays it |
+| **`E`** on a record, then on a deck | puts music on; **`F`** takes it back off |
+| **`E`** on a tape, then on the television | plays it; **`F`** takes it back out |
+| **`E`** on the marker in the office | picks it up — then hold the left mouse button to draw on the whiteboard |
+| **`E`** on the switch by the porch door | works every light in the house at once |
 | **`L`** at a bookcase | writes on its label |
 | **`P`** while reading | tears out a copy of the page — the book keeps its own |
 | **`T`** | writes a note; **`E`** at a wall pins either one up |
 | **`N`** | night, and back |
-| **`K`** | rain, and back |
+| **`K`** | rain, and back — you can hear it, louder outside |
 | **`E`** at the office terminal | searches the whole library and says where a thing is |
 | **`V`** | calls the cat; **`E`** makes a fuss of it, **`F`** asks it for a book |
 | **`H`** | hides the interface |

@@ -5,14 +5,9 @@ import type { IndexedArtwork, IndexedTrack } from '../services/types'
 /**
  * The two folders that are not books: `music/` and `artwork/`.
  *
- * Playback is a single `HTMLAudioElement` rather than anything in the scene
- * graph, deliberately. Web Audio's `PositionalAudio` would let the record
- * player be quieter from the kitchen, which is a lovely idea and costs an
- * AudioContext that cannot be started without a gesture, a decode of the whole
- * file into memory, and a class of failure — a suspended context — that looks
- * exactly like a bug. An `<audio>` element streams, starts on the keypress that
- * asked for it, and its volume can still be faded with distance by the scene;
- * see `RecordPlayer`.
+ * Playback is one `HTMLAudioElement`. It streams rather than decoding the whole
+ * file, starts on the keypress that asked for it, and has no AudioContext to be
+ * suspended; the scene still places it in the room — see `audioRig.ts`.
  */
 
 type MediaState = {

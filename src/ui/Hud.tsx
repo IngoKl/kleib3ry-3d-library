@@ -443,11 +443,17 @@ export function Hud() {
               <p className="focus-title">{fixtureName}</p>
               <p className="focus-key">
                 <kbd>E</kbd> {fixtureVerb}
-                {/* The one deck with the record on it also offers it back. */}
+                {/* Whatever is loaded also comes back out. */}
                 {fixture?.kind === 'recordplayer' && deck === fixture.id && nowPlaying && (
                   <>
                     {' · '}
                     <kbd>F</kbd> Take the record off
+                  </>
+                )}
+                {fixture?.kind === 'crt' && watching && (
+                  <>
+                    {' · '}
+                    <kbd>F</kbd> Take the tape out
                   </>
                 )}
               </p>

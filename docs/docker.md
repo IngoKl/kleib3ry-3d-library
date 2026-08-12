@@ -42,11 +42,10 @@ Three build stages and one small runtime:
 | `server` | `kleib3ry-server` | rust |
 | runtime | neither | `debian:bookworm-slim` |
 
-Notably absent is anything to do with Tauri. The desktop shell is not built here
-at all, which is the whole reason `core/` was carved out of it — a container that
-had to link GTK and WebKit in order to read a directory would be an order of
-magnitude larger than this one. SQLite is compiled into the binary, so the
-runtime needs nothing but libc.
+Nothing to do with Tauri is built here. That is why `core/` is a separate crate:
+a container that linked GTK and WebKit in order to read a directory would be an
+order of magnitude larger. SQLite is compiled into the binary, so the runtime
+needs nothing but libc.
 
 ## The folder it expects
 

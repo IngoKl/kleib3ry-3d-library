@@ -43,12 +43,7 @@ type LibraryState = {
 
   /**
    * Exactly what is in `books.json`, including rows whose shelf is not in the
-   * world right now.
-   *
-   * Keeping those is what makes an edit reversible: delete a bookcase and its
-   * books go into boxes, put it back and they return to it. If reconciliation
-   * were allowed to prune this, a mistyped edit followed by an undo would leave
-   * the arrangement gone for good.
+   * world right now. Keeping those is what makes deleting a bookcase reversible.
    */
   savedRows: Record<RowKey, string[]>
   /** Which box each book was deliberately put in, as written down. */
@@ -167,12 +162,9 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => Promise<void>) | null = null
 
 /**
- * Write any pending layout save out now instead of at the end of the debounce.
- *
- * The debounce exists to coalesce bursts of shelving; it must not be a window
- * in which closing the app — or re-reading the layout from disk — quietly
- * discards the last thing you did. Callers that are about to read the file
- * (`load`) or lose the page (shutdown) flush first.
+ * Write any pending layout save out now. Callers about to read the file
+ * (`load`) or lose the page (shutdown) flush first, so the debounce is never a
+ * window in which the last edit is lost.
  */
 export async function flushLayoutSave(): Promise<void> {
   if (saveTimer === undefined) return
@@ -437,7 +429,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
         const placements = layout?.furniture ?? {}
         // The world has to know where the boxes were pushed to before the books
-        // are reconciled against it, or a box's pile is drawn where it used to be.
+        // are reconciled against it, or a box's pile is drawn at its old place.
         useWorldStore.getState().setPlacements(placements)
 
         set({
@@ -665,12 +657,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Unpack a box: every book in it onto the shelves, empty ones first.
-     *
-     * The counterpart to a library that arrives boxed. Doing it a book at a
-     * time is the fine-grained way and this is the armful — and because it
-     * goes to empty rows in a shuffled order, unpacking four boxes fills the
-     * room rather than the first bookcase by the door.
+     * Unpack a box: every book in it onto the shelves, empty rows first and in a
+     * shuffled order, so four boxes fill the room rather than the first case.
      */
     emptyBoxOntoShelves: (boxId) => {
       const { rows, boxes, dims, savedBoxes } = get()
@@ -710,13 +698,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Strip the shelves: everything back into the boxes.
-     *
-     * The one destructive command in the app, and the reason it exists is that
-     * rearranging a library by hand is worth being able to start over on. It
-     * goes through the same reconciliation a brand-new library does, so the
-     * result is the state you were in the first time you opened the folder —
-     * boxes spread evenly, shelves bare — rather than a special case.
+     * Strip the shelves: everything back into the boxes. Runs the same
+     * reconciliation a brand-new library does, so the result is the state you
+     * were in the first time you opened the folder.
      */
     packEverything: () => {
       const { books, dims } = get()
@@ -808,12 +792,8 @@ export function packedRow(shelfIndex: number, row: number): PackedBook[] {
   return packRow(shelf, shelfIndex, row, rows[rowKey(shelf.id, row)] ?? [], (id) => dims.get(id))
 }
 
-/**
- * Re-reconcile whenever a new world document is applied.
- *
- * Subscribed at module scope rather than from a component, because the books
- * have to follow the room even if nothing is currently rendering them.
- */
+// Re-reconcile whenever a new world document is applied. At module scope, so
+// the books follow the room even if nothing is rendering them.
 useWorldStore.subscribe((state, previous) => {
   if (state.revision !== previous.revision) useLibraryStore.getState().rebuild()
 })

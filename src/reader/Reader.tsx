@@ -80,11 +80,8 @@ const NO_BOOKMARKS: readonly number[] = Object.freeze([])
 /**
  * Ribbon colours, dealt out in order.
  *
- * Several slips in one book used to be several identical red tabs, which told
- * you how many bookmarks you had and nothing about which was which. Dealing
- * from a fixed palette in bookmark order means the third one is always the same
- * colour as long as the first two are still in — so "the green one, about a
- * third of the way in" becomes a thing you can remember.
+ * From a fixed palette in bookmark order, so the third slip is always the same
+ * colour as long as the first two are still in.
  */
 const RIBBONS = ['#a8384a', '#3f6b8a', '#4b7a4a', '#a87a2e', '#6b4a7a', '#2f6b6b']
 /** The stitched edge of a slip: the same colour, darker. */
@@ -235,10 +232,14 @@ export function Reader() {
 
       readerStatus.spread = s
       readerStatus.showing = [leftPage(s), rightPage(s)]
+      // Republished here rather than only on open: re-opening the book you are
+      // already on does not re-run the load effect, so the count set there
+      // would be whatever the last reset left behind.
+      readerStatus.pages = doc?.pages ?? readerStatus.pages
       readerStatus.rendered = true
       return true
     },
-    [pages, sheets],
+    [pages, sheets, doc],
   )
 
   useEffect(() => {

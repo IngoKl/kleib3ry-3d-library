@@ -88,9 +88,8 @@ function OpenBook({ id, at }: { id: string; at: LoosePlacement }) {
 /**
  * The cover artwork on top of a closed book lying about.
  *
- * The block itself is an instance in one mesh, which cannot carry a texture of
- * its own — and a book put down on a table used to be an anonymous slab of
- * cloth. There are only ever a handful of loose books, so each cover is its own
+ * The block itself is an instance in one mesh and cannot carry a texture of its
+ * own. There are only ever a handful of loose books, so each cover is its own
  * small plane, posed by the same code that writes the instance matrix.
  */
 function LooseCover({
@@ -163,12 +162,10 @@ export function LooseBooks() {
     [loose],
   )
 
-  const capacity = useMemo(
-    () => Math.max(32, Math.ceil((closed.length + 16) / 32) * 32),
-    // Only the bucket matters; growing the mesh for every book put down would
-    // rebuild it constantly.
-    [Math.ceil((closed.length + 16) / 32)],
-  )
+  // Rounded up to a block: growing the mesh for every book put down would
+  // rebuild it constantly.
+  const blocks = Math.ceil((closed.length + 16) / 32)
+  const capacity = useMemo(() => Math.max(32, blocks * 32), [blocks])
 
   /**
    * The live simulation, keyed by book id.

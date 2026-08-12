@@ -128,10 +128,9 @@ export const DEFAULT_WORLD_TEXT = `{
 
         // A picture over the hearth. With no "source" it takes whatever is next
         // in your artwork/ folder, so dropping images in is enough. It is sized
-        // to the band of wall it actually has — above the mantel (1.57) and
-        // below the underside of the loft floor (2.28) — *including the frame*,
-        // which adds 4.5 cm on every side beyond "size". The first cut of this
-        // ignored the frame and the picture stood in the mantel.
+        // to the band of wall it has — above the mantel (1.57) and below the
+        // underside of the loft floor (2.28) — *including the frame*, which adds
+        // 4.5 cm on every side beyond "size".
         { "id": "picture-1", "kind": "picture", "at": [-3.4, -3.96], "facing": 0, "y": 1.96, "size": [0.78, 0.42] },
 
         { "id": "fern", "kind": "plant", "at": [4.4, -3.5], "facing": 0 },
@@ -513,11 +512,8 @@ export const DEFAULT_WORLD_TEXT = `{
       // over on the way out. "outdoor" gives it decking and no room lights;
       // with no north wall of its own, the cabin's is what you step through.
       //
-      // Grown from 6.2 x 3 and its steps moved: the way out used to be at the
-      // *west* end while the way in from the cabin was at the east, so leaving
-      // meant threading between the table and the bench. The steps are now
-      // straight ahead of the cabin's south door — you walk out of one and down
-      // the other — and the seating has the whole west end to itself.
+      // The steps are straight ahead of the cabin's south door, so you walk out
+      // of one and down the other; the seating has the whole west end.
       "origin": [0.8, 5.9],
       "size": [7.2, 3.8],
       "height": 2.7,

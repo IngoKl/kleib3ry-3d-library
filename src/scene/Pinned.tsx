@@ -23,7 +23,7 @@ const STANDOFF = 0.004
 /**
  * How thick the paper is.
  *
- * A sheet used to be a single plane, which is right up until you stand beside
+ * A single plane would be right up until you stand beside
  * one: a note seen from the side was a coloured line, and a board of them at a
  * glancing angle disappeared entirely. Paper has a body. A note is a small pad
  * of them stuck down, so it gets rather more than a page does.
@@ -94,9 +94,7 @@ function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
         <mesh position={[0, 0, STANDOFF + body + 0.0002]} receiveShadow>
           <planeGeometry args={[width, height]} />
           {/* Keyed so the raster arriving mounts a *new* material: swapping a
-              map into a live one reuses its map-less shader and draws black,
-              which is the trap the picture frames and the television both fell
-              into before this. */}
+              map into a live one reuses its map-less shader and draws black. */}
           {art ? (
             <meshStandardMaterial
               key="art"

@@ -392,22 +392,29 @@ export function Player() {
           askCatForBook()
           return
         }
-        // A record on a deck comes back off it. Without this a record carried
-        // to a deck could never be carried away from one: it is hidden while it
-        // plays, so there is nothing in the crate to reach for.
+        // A record comes back off its deck, and a tape back out of the set.
+        // Without this neither could ever be carried away again: both are
+        // hidden while they play, so there is nothing in the crate to reach for.
         const app = useAppStore.getState()
         const music = useMediaStore.getState()
-        if (
-          app.focusedFixture &&
-          app.held === null &&
-          app.heldRecord === null &&
-          music.playing &&
-          music.deck === app.focusedFixture
-        ) {
-          const taken = music.playing
-          music.stop()
-          app.setHeldRecord(taken)
-          return
+        const video = useVideoStore.getState()
+        const handsFree = app.held === null && app.heldRecord === null && app.heldTape === null
+        if (app.focusedFixture && handsFree) {
+          const piece = useWorldStore
+            .getState()
+            .world?.furniture.find((item) => item.id === app.focusedFixture)
+          if (piece?.kind === 'recordplayer' && music.playing && music.deck === app.focusedFixture) {
+            const taken = music.playing
+            music.stop()
+            app.setHeldRecord(taken)
+            return
+          }
+          if (piece?.kind === 'crt' && video.playing) {
+            const taken = video.playing
+            video.stop()
+            app.setHeldTape(taken)
+            return
+          }
         }
         // Draw the book under the crosshair out of the shelf to look at its
         // cover, or push it back. Nothing turns on its own.
@@ -475,9 +482,8 @@ export function Player() {
       } else if (e.code === 'KeyR') {
         e.preventDefault()
         const { held, setReading, setMode } = useAppStore.getState()
-        // Both formats open now: a PDF is rasterised and an EPUB is set in type
-        // — see `reader/source.ts`. The format check that used to live here was
-        // the last thing standing between an EPUB and being a book.
+        // Both formats open: a PDF is rasterised and an EPUB is set in type.
+        // See `reader/source.ts`.
         if (held) {
           setReading(held)
           setMode('read')
@@ -655,11 +661,9 @@ export function Player() {
     // in the set is what the movement below reads.
     if (!roomHasKeyboard()) keys.current.clear()
 
-    // Zoom, and — because the same line does the job — taking the field of view
-    // back from the reader, which narrows it to dock on a page. It used to be
-    // snapped back to exactly 72; now it is eased towards whatever the zoom
-    // asks for, which means closing the book opens the view rather than
-    // cutting to it.
+    // Zoom, and — the same line does both — taking the field of view back from
+    // the reader, which narrows it to dock on a page. Eased towards whatever the
+    // zoom asks for, so closing a book opens the view rather than cutting to it.
     //
     // Read from the keys directly rather than from the movement code below,
     // because zoom is not movement: it works sitting down, and sitting down

@@ -148,6 +148,11 @@ Two decisions in `core/` worth knowing:
 - **The release profile is not `panic = "abort"`.** Third-party format parsers
   panic on malformed files; the indexer catches unwinds per file so one
   unreadable book cannot take a scan down.
+- **A scan skips unchanged files, so probes carry a version.** `is_current`
+  compares size, mtime *and* `probe::PROBE_VERSION`. Without the last one an
+  improved probe would never reach a book already in the index, and no amount of
+  rescanning would help. Bump it whenever a probe learns to extract something
+  new; every older row is then re-probed once.
 
 `server/` has no HTTP framework. The whole surface is a dozen routes, a static
 directory and byte ranges, which is a few hundred lines of `TcpListener` — the
@@ -395,9 +400,8 @@ part with the most tests. The rules:
 ## Read mode
 
 Opening a book docks the camera onto a page mesh; there is no mode to choose and
-no way to be in read mode without a book. The findings that shaped it —
-why the reader is a camera dock, and its DPI budget — are in
-[reading-spike.md](reading-spike.md).
+no way to be in read mode without a book. Docking rather than floating a panel
+is what keeps a page at a readable size without a DPI the GPU cannot carry.
 
 **Both formats open, and read mode does not know which it has.** Everything
 above [src/reader/source.ts](../src/reader/source.ts) is written against "a
@@ -482,14 +486,20 @@ while it plays.
 | the outdoors | `src/world/terrain.ts`, `forest.ts`, `src/scene/Outside.tsx` |
 | walking, stairs, collision | `src/scene/walk.ts`, `collision.ts`, `Player.tsx` |
 | what the crosshair offers | `src/scene/Interaction.tsx` |
-| a new key | `Player.tsx` (E), `Handling.tsx` (the rest), `Reader.tsx` (reading) |
+| a new key | `Player.tsx` (E), `Handling.tsx` (the rest), `Reader.tsx` (reading), `Drawing.tsx` (a held mouse button) |
 | how a book looks on a shelf | `src/scene/spineAtlas.ts`, `bookMaterial.ts`, `Books.tsx` |
 | reading | `src/reader/` |
 | the filesystem | `src/services/`, then `core/`, `src-tauri/`, `server/` |
+| sound | `src/scene/Sound.tsx`, `audioRig.ts`, `rainSound.ts` |
+| what a whiteboard holds | `src/scene/board.ts`, `Drawing.tsx` |
 
 ## Conventions
 
-- Comments explain *why* a decision was made, not what the code does.
+- Comments explain *why* a decision was made, briefly. A line or two, no
+  narrative and no history of what the code used to be.
+- UI labels, headings and buttons are Headline Case; the phrase after a `<kbd>`
+  is sentence case.
+- `npm run lint` (oxlint) and `npm run lint:rust` (clippy) both gate `verify`.
 - TypeScript is strict with `noUncheckedIndexedAccess` and `noUnusedLocals`;
   `tsconfig.json` covers `src`, `tests`, `scripts` and the config files.
 - Assertions are on measurable facts — draw calls, triangles, frames, zero

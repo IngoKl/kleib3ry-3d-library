@@ -23,9 +23,8 @@ import { useWorldStore } from '../state/world'
  * soft fixture, so that a map somebody is halfway through writing is not pitch
  * dark while they write it.
  *
- * Every intensity in here has been argued down once already: the first pass
- * left hot pools under the pendants and sun stripes you could read by, which
- * is a stage set rather than an afternoon.
+ * Intensities are kept low: hot pools under the pendants and sun stripes you can
+ * read by are a stage set rather than an afternoon.
  */
 
 function RoomFill({
@@ -149,9 +148,8 @@ export function Lighting() {
           why night does not go truly dark: the ambient floor stays generous
           and *warm*, so the dark is lamplight fading into shadow rather than
           black corners with hot pools between them. */}
-      {/* The daytime fill is warm and a notch lower than it used to be: even
-          white light at office levels is what made the cabin read as a meeting
-          room. The sun below carries more of the day instead. */}
+      {/* The daytime fill is warm and low — even white light at office levels
+          reads as a meeting room. The sun below carries more of the day. */}
       <ambientLight
         intensity={(night ? 0.34 : rain ? 0.42 : 0.38) + (low ? 0.16 : 0)}
         color={night ? '#a8967e' : rain ? '#e2e6e6' : '#fdf2e0'}

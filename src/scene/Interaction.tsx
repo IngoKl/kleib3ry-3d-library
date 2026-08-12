@@ -220,6 +220,9 @@ export function Interaction() {
       store.setSurfaceTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedPin(null)
+      // You can be holding a note as well as the marker; a stale target left
+      // here would let E pin it somewhere you are no longer looking.
+      store.setPinTarget(null)
 
       const boards = sceneRefs.boards
       const hit = boards ? raycaster.intersectObject(boards, true)[0] : undefined

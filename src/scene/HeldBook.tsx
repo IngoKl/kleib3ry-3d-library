@@ -25,12 +25,10 @@ export function HeldBook() {
   /**
    * Fetch (or render) the cover for whatever is in hand.
    *
-   * Two paths into the same result, deliberately. The first time a PDF is
-   * picked up its cover has to be rasterised, which takes a second or two —
-   * long enough that a book used to be put back down before its artwork ever
-   * arrived. So: take whatever the shared cache already has *synchronously*,
-   * ask for it urgently if it has not, and listen for it landing. Nothing here
-   * waits on a promise that was started for a different reason.
+   * Two paths into the same result: take whatever the shared cache already has
+   * *synchronously*, ask for it urgently if it has not, and listen for it
+   * landing. Rasterising a PDF cover takes a second or two, which is longer than
+   * a book is often held.
    */
   useEffect(() => {
     let cancelled = false

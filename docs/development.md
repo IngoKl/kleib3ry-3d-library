@@ -34,16 +34,18 @@ why the `http` one is chosen at build time rather than probed for.
 ## The gate
 
 ```bash
-npm run verify         # typecheck + build + Playwright + cargo test
+npm run verify         # lint + typecheck + build + Playwright + clippy + cargo test
 ```
 
 That is what "done" means. Individually:
 
 | command | proves |
 | --- | --- |
+| `npm run lint` | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can |
 | `npm run typecheck` | the front end type-checks |
 | `npm run build` | the production bundle builds from the CLI |
 | `npm test` | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
+| `npm run lint:rust` | `cargo clippy -D warnings` over all three crates |
 | `npm run test:rust` | all three crates: core, the desktop shell, the server |
 | `npm run scan -- <folder>` | indexes a library folder's `books/` from the command line, no app needed |
 
@@ -164,8 +166,8 @@ have changed hands.
   run on. Anything that asymptotes should also *arrive* — snap to the target
   inside a millimetre or two, or a thing that has stopped keeps creeping.
 - **Auto-repeat moves you; it does not act for you.** Any key handler that does
-  something once takes `if (e.repeat) return`. Held, `N` used to strobe the room
-  between day and night.
+  something once takes `if (e.repeat) return`, or holding the key repeats the
+  action thirty times a second.
 - TypeScript is strict, with `noUncheckedIndexedAccess`, `noUnusedLocals` and
   `noUnusedParameters`. `tsconfig.json` covers `src`, `tests`, `scripts` and the
   config files, so a test or a script that does not type-check fails the build.
@@ -187,12 +189,12 @@ light, `LAMPS`. Then document it in the table in
 
 **A key.** `E` lives in `Player.tsx` because it is the same reach that takes a
 book off a shelf. Everything else you do with your hands lives in
-`Handling.tsx`. Reading keys live in `Reader.tsx`. Anything that opens a typed
-field has to be added to **`roomHasKeyboard()`** in
-[../src/state/store.ts](../src/state/store.ts) — one predicate, asked by every
-key handler, because `W` has to be a letter while somebody is typing a word and
-three handlers each carrying their own list of exceptions is three lists of
-different lengths. Add it to `ControlsCard.tsx` and to the table in the README.
+`Handling.tsx`. Reading keys live in `Reader.tsx`; a held mouse button lives in
+`Drawing.tsx`. Anything that opens a typed field has to be added to
+**`roomHasKeyboard()`** in [../src/state/store.ts](../src/state/store.ts) — one
+predicate, asked by every key handler, because `W` has to be a letter while
+somebody is typing a word. Add it to `ControlsCard.tsx` and to
+[controls.md](controls.md).
 
 **A setting.** If it is about the *machine* — the renderer, the mouse, the
 volume — it goes in [../src/state/settings.ts](../src/state/settings.ts) and is

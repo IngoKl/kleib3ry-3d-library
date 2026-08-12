@@ -276,7 +276,14 @@ export function windowPanes(room: RoomSpec): Panel[] {
  * For whatever has to know how *open* a room is — the rain you can hear is the
  * obvious one. A door lets in the whole weather; a pane lets in some of it.
  */
-export type OpeningSpot = { x: number; y: number; z: number; glazed: boolean }
+export type OpeningSpot = {
+  x: number
+  y: number
+  z: number
+  glazed: boolean
+  kind: Opening['kind']
+  wall: Wall
+}
 
 export function openingSpots(room: RoomSpec): OpeningSpot[] {
   return openingPanels(room).map(({ panel, opening }) => ({
@@ -284,6 +291,8 @@ export function openingSpots(room: RoomSpec): OpeningSpot[] {
     y: panel.position[1],
     z: panel.position[2],
     glazed: opening.glazed,
+    kind: opening.kind,
+    wall: opening.wall,
   }))
 }
 

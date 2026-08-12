@@ -19,7 +19,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
   {
     title: 'Hands',
     rows: [
-      [['E'], 'Take or place a book, record or tape; pin a sheet to a wall; sit down; work a lamp, the deck, the television, the coffee maker, the catalogue'],
+      [['E'], 'Take or place a book, record or tape; pin a sheet to a wall; sit down; work a lamp, a light switch, the deck, the television, the coffee maker, the catalogue'],
       [['Q'], 'Drop the book in your hand — or put a held record, tape or marker back'],
       [['O'], 'Put a book down open, at the page you were on'],
       [['F'], 'Draw the book under the crosshair out to see its cover'],
@@ -32,11 +32,11 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     ],
   },
   {
-    title: 'Records',
+    title: 'Records and Tapes',
     rows: [
-      [['E'], 'Take one out of a crate; then put it on a deck, file it in any crate, or set it down on a table'],
-      [['F'], 'Take the record back off the deck it is on'],
-      [['Q'], 'Send it back to the crate the music folder deals it into'],
+      [['E'], 'Take one out of a crate; then put it on a deck or in the set, file it in any crate, or set a record down on a table'],
+      [['F'], 'Take the record back off the deck, or the tape back out of the set'],
+      [['Q'], 'Send it back to the crate the folder deals it into'],
     ],
   },
   {

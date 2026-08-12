@@ -5,12 +5,9 @@ import type { PageSource } from './source'
  * Rasterised pages held as textures, so a spread that has already been through
  * the worker appears in the *same frame* it is asked for.
  *
- * This exists to kill a specific artefact: a turn used to read as leaf lands →
- * old spread reappears → new spread pops in, because the static sheets were
- * repainted asynchronously after the turn had already committed. Nothing here
- * rasterises on demand at commit time. The destination spread is rendered while
- * the leaf is still swinging, and the commit reads `peek`, so the swap is
- * atomic or it does not happen yet.
+ * Nothing rasterises on demand at commit time. The destination spread is
+ * rendered while the leaf is still swinging and the commit reads `peek`, so the
+ * swap is atomic or it does not happen yet.
  *
  * Textures are big — a spread at reading DPI is ~13 MB each before mipmaps — so
  * the cache is deliberately tiny: the spread in hand plus one either side, which

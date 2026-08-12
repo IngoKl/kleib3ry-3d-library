@@ -286,9 +286,9 @@ to the one it was last open at. `labels` is what you have written on each
 bookcase — it overrides the `label` in `library.json`. `furniture` is where you
 have shoved things; only the moving boxes can be shoved.
 
-All four of those are here rather than in `library.json` for the same reason:
-**`library.json` is a file you wrote**, comments and all, and pushing a box
-across the room must not reformat it.
+Everything here is in `books.json` rather than in `library.json` for the same
+reason: **`library.json` is a file you wrote**, comments and all, and pushing a
+box across the room must not reformat it.
 
 A bookmark, a label or a placement referring to something the library no longer
 has is dropped on load, the same way a shelf entry is.

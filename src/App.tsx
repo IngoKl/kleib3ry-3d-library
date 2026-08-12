@@ -290,6 +290,17 @@ export default function App() {
        * The same argument `emptyBoxForTest` makes about a box.
        */
       callCatForTest: () => callCat(),
+      /**
+       * Put the cat somewhere. The steering is deliberately unplanned, so a
+       * journey across the building is a test of pathfinding it does not have.
+       */
+      placeCatForTest: (x: number, z: number, floor = 0) => {
+        cat.x = x
+        cat.z = z
+        cat.floor = floor
+        cat.via = null
+        cat.stuck = 0
+      },
       petCatForTest: () => petCat(),
       fetchBookForTest: () => askCatForBook(),
       /** Go in, as pressing the button on the main menu does. */
@@ -302,6 +313,7 @@ export default function App() {
         playing: useVideoStore.getState().playing,
         error: useVideoStore.getState().error,
       }),
+      focusedTape: () => useAppStore.getState().focusedTape,
       heldTape: () => useAppStore.getState().heldTape,
       /**
        * The whiteboard marker, and what has been drawn with it.
@@ -382,10 +394,10 @@ export default function App() {
       setModeForTest: (mode: string) => useAppStore.getState().setMode(mode as 'walk' | 'read'),
       /** Open a book and wait until a page has actually rasterised. */
       readForTest: async (id: string) => {
-        // The reader resets the status in an effect, after React commits; a
-        // second read in one session would otherwise see the previous book's
-        // `rendered` still standing and return its numbers.
-        resetReaderStatus(id)
+        // Clear the previous book's numbers, but only when it *is* a different
+        // book: re-opening the one already loaded re-runs nothing in the reader,
+        // so a reset there would blank a status nothing is going to refill.
+        if (readerStatus.bookId !== id) resetReaderStatus(id)
         useAppStore.getState().setReading(id)
         useAppStore.getState().setMode('read')
         for (let i = 0; i < 100; i++) {

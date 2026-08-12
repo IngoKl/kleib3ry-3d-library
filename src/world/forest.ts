@@ -5,7 +5,7 @@ import { GROUND_Y, LAKE, PATH, TRAIL_WIDTH, lakeRadius, onTrail } from './terrai
 /**
  * The forest, as data.
  *
- * It used to be generated inside `Outside.tsx`, which was right for as long as
+ * Here rather than in `Outside.tsx`, which was enough for as long as
  * it was scenery — "nothing here is collidable either: you cannot get out of
  * the cabin except onto the porch". You can now, so a tree has to be something
  * you walk into rather than through, and a collider derived from a different
