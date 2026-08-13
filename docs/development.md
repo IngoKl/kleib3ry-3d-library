@@ -91,8 +91,9 @@ cargo test --manifest-path core/Cargo.toml index::
 `scripts/make-test-library.mjs` generates a folder of throwaway PDFs and EPUBs to
 point the desktop probe at. For working _by hand_ against something that looks
 like a real collection, `demo-data/demo-library/` is a small freely-licensed one
-in the repository — ten EPUBs, two records, two pictures and a tape — and it is
-what to mount into the container when you are changing the hosted mode.
+in the repository — ten EPUBs, two records, two pictures, a tape and a Pong ROM
+— and it is what to mount into the container when you are changing the hosted
+mode.
 
 `npm run icon` regenerates the app icon, which is generated rather than committed
 as an opaque binary: `scripts/make-icon.mjs` writes `assets/icon-source.png` and
@@ -102,11 +103,14 @@ as an opaque binary: `scripts/make-icon.mjs` writes `assets/icon-source.png` and
 
 Three files, three jobs:
 
-- **`tests/collision.spec.ts`** and **`tests/world.spec.ts`** unit-test pure
-  modules _through the Playwright runner_ — no browser, no page. They are there
-  because Playwright already transpiles the TypeScript, so this costs no second
-  toolchain. They cover collision, shelving, the world document, reconciliation,
-  the roof and the terrain.
+- **`tests/collision.spec.ts`**, **`tests/world.spec.ts`** and
+  **`tests/chip8.spec.ts`** unit-test pure modules _through the Playwright
+  runner_ — no browser, no page. They are there because Playwright already
+  transpiles the TypeScript, so this costs no second toolchain. They cover
+  collision, shelving, the world document, reconciliation, the roof, the
+  terrain, and the CHIP-8 interpreter — which also runs the bundled Pong ROM
+  for real, so the assembler in `scripts/lib/make-chip8.mjs` and the CPU in
+  `src/arcade/chip8.ts` are held to agree.
 - **`tests/smoke.spec.ts`** drives the real production bundle in headless
   Chromium.
 - `npm run test:desktop` is not part of `verify` because it needs a built
@@ -115,7 +119,7 @@ Three files, three jobs:
 
 The browser tests reach the app through `window.__app` in
 [../src/App.tsx](../src/App.tsx) — teleport, look, stats, `readForTest`, the
-pins, the tapes, the cat. It is a deliberate verification surface and it exists
+pins, the tapes, the arcade, the cat. It is a deliberate verification surface and it exists
 because pointer lock is unavailable headlessly. **Extend it when a new behaviour
 needs covering**; do not reach into the stores from a test.
 

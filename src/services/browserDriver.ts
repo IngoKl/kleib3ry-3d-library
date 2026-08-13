@@ -4,6 +4,7 @@ import {
   type AnnotationsDocument,
   type IndexedArtwork,
   type IndexedBook,
+  type IndexedRom,
   type IndexedTape,
   type IndexedTrack,
   type LayoutDocument,
@@ -171,6 +172,26 @@ const PLACEHOLDER_TAPES: IndexedTape[] = TAPE_TITLES.map(([title, series], i) =>
 }))
 
 /**
+ * One ROM, and it is real — the Pong `npm run assets` writes into `public/`,
+ * the same arrangement as the sample book. Real rather than a placeholder
+ * because the whole arcade path — take the cartridge, slot it, the emulator
+ * boots it, the screen lights — can then run under the headless smoke tests.
+ */
+export const SAMPLE_ROM_ID = 'sample-rom'
+const SAMPLE_ROM_FILE = 'roms/pong.ch8'
+
+const SAMPLE_ROMS: IndexedRom[] = [
+  {
+    id: SAMPLE_ROM_ID,
+    path: SAMPLE_ROM_FILE,
+    title: 'Pong',
+    series: 'ch8',
+    format: 'ch8',
+    sizeBytes: 400,
+  },
+]
+
+/**
  * Stand in for someone editing `library.json` and saving it.
  *
  * The browser build has no file to watch, so the world lives in localStorage and
@@ -281,6 +302,17 @@ export const browserDriver: LibraryService = {
 
   async listTapes() {
     return PLACEHOLDER_TAPES
+  },
+
+  async listRoms() {
+    return SAMPLE_ROMS
+  },
+
+  async readRom(id) {
+    if (id !== SAMPLE_ROM_ID) throw new UnsupportedOperation(`reading ${id}`, 'browser')
+    const response = await fetch(SAMPLE_ROM_FILE)
+    if (!response.ok) throw new Error(`${SAMPLE_ROM_FILE} is missing — run \`npm run assets\``)
+    return new Uint8Array(await response.arrayBuffer())
   },
 
   async loadAmbience() {

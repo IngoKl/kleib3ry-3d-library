@@ -1,9 +1,9 @@
 //! The part of kleib3ry that has nothing to do with a window.
 //!
 //! Indexing a folder of books, keeping the index in SQLite, probing PDFs and
-//! EPUBs for their metadata and cover art, and walking the `music/`, `artwork/`
-//! and `video/` folders. No Tauri, no WebView, no GUI toolkit — which is the
-//! whole point of it being its own crate.
+//! EPUBs for their metadata and cover art, and walking the `music/`, `artwork/`,
+//! `video/` and `roms/` folders. No Tauri, no WebView, no GUI toolkit — which is
+//! the whole point of it being its own crate.
 //!
 //! It was carved out of the desktop app when the container arrived. The desktop
 //! shell and the HTTP server both want exactly these four modules and nothing

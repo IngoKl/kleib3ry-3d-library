@@ -21,7 +21,7 @@
     "tauri:build:exe": "tauri build --no-bundle",
     "icon": "node scripts/make-icon.mjs && tauri icon assets/icon-source.png",
     "test:desktop": "node scripts/probe-desktop.mjs",
-    "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/make-sample-book.mjs",
+    "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/make-sample-book.mjs && node scripts/make-pong-rom.mjs",
     "build:http": "tsc --noEmit && vite build --mode http",
     "dev:http": "vite --mode http",
     "serve": "cargo run --release --manifest-path server/Cargo.toml --bin kleib3ry-server --",

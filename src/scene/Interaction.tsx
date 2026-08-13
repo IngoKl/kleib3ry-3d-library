@@ -39,6 +39,13 @@ function pinIdOf(hit: THREE.Intersection | undefined): string | null {
   return (node?.userData.pinId as string | undefined) ?? null
 }
 
+/** And for a small prop — a hit on the handle resolves to the cup. */
+function propIdOf(hit: THREE.Intersection | undefined): string | null {
+  let node: THREE.Object3D | null = hit?.object ?? null
+  while (node && node.userData.propId === undefined) node = node.parent
+  return (node?.userData.propId as string | undefined) ?? null
+}
+
 /** How square-on a surface has to be for a sheet to go on it. */
 const UPRIGHT = 0.55
 
@@ -97,6 +104,7 @@ export function Interaction() {
       store.setPinTarget(null)
       store.setFocusedPin(null)
       store.setBoardTarget(null)
+      store.setFocusedProp(null)
       store.setFocusedCat(false)
       return
     }
@@ -119,6 +127,7 @@ export function Interaction() {
       store.setPinTarget(null)
       store.setFocusedPin(null)
       store.setBoardTarget(null)
+      store.setFocusedProp(null)
       store.setFocusedCat(false)
       return
     }
@@ -149,6 +158,7 @@ export function Interaction() {
       store.setFocusedTape(null)
       store.setTapeCrateTarget(null)
       store.setFocusedShelf(null)
+      store.setFocusedProp(null)
 
       const kindOf = (id: string | null) =>
         id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
@@ -220,6 +230,7 @@ export function Interaction() {
       store.setSurfaceTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedPin(null)
+      store.setFocusedProp(null)
       // You can be holding a note as well as the marker; a stale target left
       // here would let E pin it somewhere you are no longer looking.
       store.setPinTarget(null)
@@ -246,6 +257,7 @@ export function Interaction() {
       store.setFocusedTape(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
+      store.setFocusedProp(null)
 
       const kindOf = (id: string | null) =>
         id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
@@ -283,6 +295,105 @@ export function Interaction() {
     store.setTapeCrateTarget(null)
 
     /**
+     * Holding a cartridge: the arcade machine takes it, the ROM box takes it
+     * back or swaps it for the next one. Both are fixtures, so one hit answers
+     * for either and E asks the kind.
+     */
+    if (store.heldRom !== null) {
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedSeat(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedRecord(null)
+      store.setFocusedTape(null)
+      store.setFocusedShelf(null)
+      store.setSurfaceTarget(null)
+      store.setFocusedProp(null)
+      store.setPinTarget(null)
+      store.setFocusedPin(null)
+
+      const kindOf = (id: string | null) =>
+        id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
+
+      const operable = sceneRefs.fixtures
+      const hit = operable ? raycaster.intersectObject(operable, true)[0] : undefined
+      const id = furnitureIdOf(hit)
+      const kind = kindOf(id)
+      store.setFocusedFixture(id && (kind === 'arcade' || kind === 'rombox') ? id : null)
+      return
+    }
+
+    /**
+     * Holding a cup, a can or a takeaway box: somewhere to set it down, the
+     * bin, and — with the empty cup — the machine that refills it. A chair
+     * still takes you: sitting down with the coffee is what the coffee is for.
+     */
+    if (store.heldProp !== null) {
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedRecord(null)
+      store.setFocusedTape(null)
+      store.setFocusedShelf(null)
+      store.setFocusedPin(null)
+      store.setPinTarget(null)
+      store.setFocusedProp(null)
+
+      const kindOf = (id: string | null) =>
+        id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
+
+      let fixture: { distance: number; id: string } | null = null
+      const operable = sceneRefs.fixtures
+      if (operable) {
+        const hit = raycaster.intersectObject(operable, true)[0]
+        const id = furnitureIdOf(hit)
+        const kind = kindOf(id)
+        // Only the *empty* cup wants the machine: aiming a full one at it
+        // falls through to the counter, which is where a full cup goes.
+        const wants =
+          kind === 'bin' ||
+          (kind === 'coffeemaker' && store.heldProp.kind === 'cup' && !store.heldProp.full)
+        if (hit && id && wants) fixture = { distance: hit.distance, id }
+      }
+
+      let seat: { distance: number; id: string } | null = null
+      const seats = sceneRefs.seats
+      if (seats && store.seat === null) {
+        const hit = raycaster.intersectObject(seats, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id) seat = { distance: hit.distance, id }
+      }
+
+      let top: { distance: number; hit: THREE.Intersection; id: string } | null = null
+      const tops = sceneRefs.surfaces
+      if (tops) {
+        const hit = raycaster.intersectObject(tops, true)[0]
+        const id = furnitureIdOf(hit)
+        if (hit && id && hit.normal !== undefined && hit.normal.y > 0.5) {
+          top = { distance: hit.distance, hit, id }
+        }
+      }
+
+      const wins = (
+        candidate: { distance: number } | null,
+        others: ({ distance: number } | null)[],
+      ) =>
+        candidate !== null &&
+        others.every((other) => other === null || candidate.distance <= other.distance)
+
+      store.setFocusedFixture(wins(fixture, [seat, top]) ? fixture!.id : null)
+      store.setFocusedSeat(wins(seat, [fixture, top]) ? seat!.id : null)
+      store.setSurfaceTarget(
+        wins(top, [fixture, seat])
+          ? { furnitureId: top!.id, x: top!.hit.point.x, y: top!.hit.point.y, z: top!.hit.point.z }
+          : null,
+      )
+      return
+    }
+
+    /**
      * Holding a sheet: somewhere to put it, and nothing else.
      *
      * Walls, whiteboards, *and* the sheets already up — pointing at a page on the
@@ -292,6 +403,7 @@ export function Interaction() {
      */
     if (store.heldPin !== null) {
       store.setFocusedPin(null)
+      store.setFocusedProp(null)
 
       const candidates: THREE.Intersection[] = []
       const boards = sceneRefs.boards
@@ -445,13 +557,34 @@ export function Interaction() {
         if (hit && id) fixture = { distance: hit.distance, id }
       }
 
+      // A cup, can or box standing about the room, to pick back up.
+      let prop: { distance: number; id: string } | null = null
+      const smalls = sceneRefs.props
+      if (smalls) {
+        const hit = raycaster.intersectObject(smalls, true)[0]
+        const id = propIdOf(hit)
+        if (hit && id) prop = { distance: hit.distance, id }
+      }
+
+      // Wearing the headlamp, a bare tabletop offers to take it off your head
+      // — the one empty-handed use the crosshair has for a surface.
+      let rest: { distance: number; hit: THREE.Intersection; id: string } | null = null
+      if (store.wornLamp !== null) {
+        const tops = sceneRefs.surfaces
+        const hit = tops ? raycaster.intersectObject(tops, true)[0] : undefined
+        const id = furnitureIdOf(hit)
+        if (hit && id && hit.normal !== undefined && hit.normal.y > 0.5) {
+          rest = { distance: hit.distance, hit, id }
+        }
+      }
+
       // The cat, if it is genuinely the thing in front of you. It goes first
       // because it is the only candidate that moves on its own, and reaching
       // past a cat for the book behind it is a thing you can do by waiting.
       const catAt = animal?.distance ?? Infinity
       if (
         Number.isFinite(catAt) &&
-        [best, seat, box, fixture, record, tape, sheet].every(
+        [best, seat, box, fixture, record, tape, sheet, prop].every(
           (other) => other === null || catAt < other.distance,
         )
       ) {
@@ -463,6 +596,7 @@ export function Interaction() {
         store.setFocusedRecord(null)
         store.setFocusedTape(null)
         store.setFocusedPin(null)
+        store.setFocusedProp(null)
         return
       }
 
@@ -476,6 +610,7 @@ export function Interaction() {
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
         store.setFocusedTape(null)
+        store.setFocusedProp(null)
         return
       }
       store.setFocusedPin(null)
@@ -489,6 +624,7 @@ export function Interaction() {
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
         store.setFocusedTape(null)
+        store.setFocusedProp(null)
       } else {
         store.setFocusedBook(best?.id ?? null)
         store.setFocusedSeat(null)
@@ -497,19 +633,36 @@ export function Interaction() {
         const cardboard = box && (!best || box.distance < best.distance) ? box.id : null
         store.setFocusedBox(best?.inBox ?? cardboard)
 
-        // A record, a tape and a lamp are only offered when nothing readable is
-        // nearer, so reaching past a crate for a book cannot start the music.
-        // They exclude each other symmetrically: guarding only one hands E to
-        // whatever is behind it.
+        // A record, a tape, a lamp and a prop are only offered when nothing
+        // readable is nearer, so reaching past a crate for a book cannot start
+        // the music. They exclude each other symmetrically: guarding only one
+        // hands E to whatever is behind it.
         const nearer = (candidate: { distance: number } | null) =>
           candidate !== null && (!best || candidate.distance < best.distance)
         const closest = (candidate: { distance: number } | null, others: ({ distance: number } | null)[]) =>
           nearer(candidate) &&
           others.every((other) => other === null || candidate!.distance < other.distance)
 
-        store.setFocusedRecord(closest(record, [fixture, tape]) ? record!.id : null)
-        store.setFocusedTape(closest(tape, [fixture, record]) ? tape!.id : null)
-        store.setFocusedFixture(closest(fixture, [record, tape]) ? fixture!.id : null)
+        store.setFocusedRecord(closest(record, [fixture, tape, prop]) ? record!.id : null)
+        store.setFocusedTape(closest(tape, [fixture, record, prop]) ? tape!.id : null)
+        store.setFocusedFixture(closest(fixture, [record, tape, prop]) ? fixture!.id : null)
+        store.setFocusedProp(closest(prop, [fixture, record, tape]) ? prop!.id : null)
+
+        // The tabletop takes the headlamp only when nothing else is nearer —
+        // everything on the table beats the table.
+        store.setSurfaceTarget(
+          rest &&
+            [best, box, fixture, record, tape, prop].every(
+              (other) => other === null || rest!.distance <= other.distance,
+            )
+            ? {
+                furnitureId: rest.id,
+                x: rest.hit.point.x,
+                y: rest.hit.point.y,
+                z: rest.hit.point.z,
+              }
+            : null,
+        )
       }
       return
     }
@@ -522,6 +675,7 @@ export function Interaction() {
     store.setFocusedRecord(null)
     store.setFocusedTape(null)
     store.setFocusedPin(null)
+    store.setFocusedProp(null)
 
     // A chair still takes you with your hands full: sitting down with the book
     // you mean to read is what the chair is for.

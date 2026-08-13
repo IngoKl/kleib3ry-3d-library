@@ -71,6 +71,31 @@ export type LayoutDocument = {
   drawings?: Record<string, BoardStroke[]>
   /** Records you have filed or put down by hand. Everything else is dealt. */
   records?: RecordLayout
+  /** The small things — the cup, the cans, the takeaway boxes — and where each one stands. */
+  props?: Record<string, PlacedProp>
+}
+
+/**
+ * A small carryable thing: the coffee cup, a can from the fridge, a takeaway
+ * box the delivery left. `full` is the one bit of state any of them has — a
+ * drunk can and a cold one are the same cylinder.
+ *
+ * A real position, like a loose book, because "there, where I put it" is the
+ * whole point of being able to put one down. There is exactly one cup (its id
+ * is `cup`) and one headlamp (`headlamp` — worn rather than carried, and a
+ * placed prop only while it is off your head); cans and boxes are minted as
+ * they arrive and destroyed by the bin.
+ */
+export type PropKind = 'cup' | 'can' | 'takeaway' | 'headlamp'
+
+export type PlacedProp = {
+  kind: PropKind
+  full: boolean
+  x: number
+  y: number
+  z: number
+  /** Radians about Y. */
+  yaw: number
 }
 
 /**
@@ -235,6 +260,23 @@ export type IndexedTape = {
 }
 
 /**
+ * A game in the library's `roms/` folder, for the arcade machine.
+ *
+ * Not probed at all: a CHIP-8 image is a bare byte array with no header, so
+ * the filename is all the label there is.
+ */
+export type IndexedRom = {
+  id: string
+  path: string
+  title: string
+  /** The folder it sits in — `ch8`, a collection, a year. */
+  series: string | null
+  /** `ch8`. */
+  format: string
+  sizeBytes: number
+}
+
+/**
  * How the room is right now: the lamps, the hour and the weather.
  *
  * Kept in its own small file rather than in the book layout, because it is
@@ -310,13 +352,17 @@ export interface LibraryService {
 
   /**
    * The rest of the library folder: records for the player, pictures for the
-   * walls, tapes for the television. All three resolve to an empty list on a
-   * host that cannot read files, so the scene simply has no records rather than
-   * failing to build.
+   * walls, tapes for the television, ROMs for the arcade machine. All four
+   * resolve to an empty list on a host that cannot read files, so the scene
+   * simply has no records rather than failing to build.
    */
   listTracks(): Promise<IndexedTrack[]>
   listArtwork(): Promise<IndexedArtwork[]>
   listTapes(): Promise<IndexedTape[]>
+  listRoms(): Promise<IndexedRom[]>
+
+  /** Raw bytes of one ROM, for the emulator. Read whole — never streamed. */
+  readRom(id: string): Promise<Uint8Array>
 
   /**
    * The lamps and the weather, from `.library/ambience.json`. Null if never

@@ -5,6 +5,7 @@ import type {
   AnnotationsDocument,
   IndexedArtwork,
   IndexedBook,
+  IndexedRom,
   IndexedTape,
   IndexedTrack,
   LayoutDocument,
@@ -115,6 +116,17 @@ export const tauriDriver: LibraryService = {
 
   async listTapes() {
     return invoke<IndexedTape[]>('list_videos')
+  },
+
+  async listRoms() {
+    return invoke<IndexedRom[]>('list_roms')
+  },
+
+  async readRom(id) {
+    // The same raw binary channel `readBook` uses, and the same transport
+    // wrinkle: an ArrayBuffer on the real IPC bridge, a number array elsewhere.
+    const bytes = await invoke<ArrayBuffer | number[]>('read_rom_file', { id })
+    return bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : Uint8Array.from(bytes)
   },
 
   async loadAmbience() {

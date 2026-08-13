@@ -5,6 +5,7 @@ import { useLibraryStore } from '../state/library'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
+import { useArcadeStore } from '../state/arcade'
 import { useWorldStore } from '../state/world'
 import { warmCovers } from '../state/covers'
 import { teleport } from '../state/player'
@@ -68,6 +69,7 @@ export function MainMenu() {
         useAmbienceStore.getState().load(),
         useMediaStore.getState().load(),
         useVideoStore.getState().load(),
+        useArcadeStore.getState().load(),
       ])
       // And stand where the new document says to, rather than at the coordinates
       // of a room that is no longer there.

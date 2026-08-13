@@ -21,6 +21,9 @@ My Library/                   ← the folder you choose in the app
   video/                      ← one tape per file, for the television
     Tarkovsky/
       Stalker.mp4
+  roms/                       ← one cartridge per file, for the arcade machine
+    ch8/
+      pong.ch8
   .library/                   ← everything the app owns, in one place
     library.json               ← the rooms. You edit this. The app never does.
     books.json                 ← which book is where, and what you wrote on the
@@ -35,15 +38,16 @@ Everything the app owns lives in `.library/`, so the rest of the folder stays
 yours. A scan never looks inside `.library/` — it is skipped by name, like
 `node_modules` — so nothing in there can be mistaken for a book.
 
-**Books live in `books/`.** A library folder holds more than books, and three
+**Books live in `books/`.** A library folder holds more than books, and four
 names are reserved for the rest of it: `music/` (records for the player),
-`artwork/` (what hangs on the walls) and `video/` (tapes for the television). As
-soon as a `books/` folder exists, indexing reads that and nothing else — so sleeve
-notes filed with an album never turn up on a shelf. A folder from before this
-convention, with books lying loose at the top level, is still read whole, minus
-those three; the scan says which of the two it is doing.
+`artwork/` (what hangs on the walls), `video/` (tapes for the television) and
+`roms/` (games for the arcade machine). As soon as a `books/` folder exists,
+indexing reads that and nothing else — so sleeve notes filed with an album never
+turn up on a shelf. A folder from before this convention, with books lying loose
+at the top level, is still read whole, minus those four; the scan says which of
+the two it is doing.
 
-**Only `books/` is indexed.** The other three are walked on demand, every time the
+**Only `books/` is indexed.** The other four are walked on demand, every time the
 app asks. A book index is worth caching — probing a PDF is slow and a collection
 is tens of thousands of files — while a music folder is hundreds and a video
 folder is dozens, so a second cache to keep in sync would buy nothing and a record
@@ -230,7 +234,9 @@ far a staircase climbs), and `on` (whether a lamp starts lit).
 | `bathtub` `basin` `toilet`                       | solid; the first two take a book on their rim                                                                                                                          |
 | `floorlamp` `pendant` `fireplace` `fairylights`  | light. `E` switches it; the state goes to `ambience.json`, with the night and the weather                                                                              |
 | `lightswitch`                                    | hung like a picture; `E` works every light in the library at once                                                                                                      |
-| `recordplayer` `coffeemaker`                     | `E` works it. Give it a `y` so it stands on something                                                                                                                  |
+| `recordplayer` `coffeemaker`                     | `E` works it. Give it a `y` so it stands on something. The coffee maker brews a pot, hands you its one cup, and the coffee makes you quicker for a while               |
+| `phone` `fridge` `bin`                          | the kitchen's verbs: `E` orders food — a courier walks it to the nearest `step` — takes a cold can, and swallows the empties; `F` drinks or eats what you hold          |
+| `headlamp`                                      | lying on the porch table; `E` wears it — hands free, the beam follows your eyes — and a bare tabletop takes it off again                                                |
 | `crt` `tapecrate`                                | a television and a crate that fills itself from your `video/` folder                                                                                                   |
 | `computer`                                       | the catalogue terminal: `E` searches the whole library and says where a thing is                                                                                       |
 | `postits`                                        | a pad of notes; `E` peels one off to write on                                                                                                                          |
@@ -283,7 +289,10 @@ list of book ids, and a map from box id to the books in that box:
   "spawnedBoxes": {
     "box-5": { "room": "main", "at": [1.2, -0.4], "facing": 90 }
   },
-  "removedBoxes": ["box-3"]
+  "removedBoxes": ["box-3"],
+  "props": {
+    "cup": { "kind": "cup", "full": false, "x": 6.7, "y": 0.92, "z": 0.9, "yaw": 0.4 }
+  }
 }
 ```
 
@@ -312,6 +321,11 @@ which room's frame its position is written in — and `removedBoxes` are the
 document's boxes you have broken down. Both are the app's own edits to the box
 population, which is why they live here and never touch `library.json`.
 
+`props` are the small things — the coffee cup, the cans from the fridge, the
+takeaway boxes the deliveries leave — each with a real position, for the same
+reason `loose` has one. There is exactly one cup and its id is `cup`; cans and
+takeaway boxes are minted as they arrive and vanish into the kitchen bin.
+
 Everything here is in `books.json` rather than in `library.json` for the same
 reason: **`library.json` is a file you wrote**, comments and all, and pushing a
 box across the room must not reformat it.
@@ -324,7 +338,8 @@ Version 2 rekeyed `rows` from shelf index to shelf id; version 3 added
 for you; version 5 added `loose`, `progress`, `labels` and `furniture`; version
 6 added `drawings` and `records`; version 7 added `spawnedBoxes` and
 `removedBoxes`; version 8 moved bookmarks out to `annotations.json` (an old
-file's are carried over on the first launch that has none). Older documents
+file's are carried over on the first launch that has none); version 9 added
+`props`. Older documents
 still load, because every field added since has been optional. The one break is
 the rekey itself: a pre-version-2 file keyed its rows by shelf _position_, and
 those keys name no bookcase any more.

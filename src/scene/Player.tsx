@@ -11,6 +11,7 @@ import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
+import { useArcadeStore } from '../state/arcade'
 import { useWorldStore } from '../state/world'
 import { useSettings } from '../state/settings'
 import { approach } from '../lib/ease'
@@ -28,6 +29,8 @@ const WALK = 1.6
 const RUN = 3.0
 /** Kneeling is a shuffle, not a walk. */
 const KNEEL_SPEED = 0.7
+/** What the coffee does: a quarter quicker, until `player.boostUntil` passes. */
+const COFFEE_BOOST = 1.25
 /** How fast you go down and come back up, in units of crouch per second. */
 const CROUCH_RATE = 4.5
 
@@ -231,11 +234,82 @@ export function Player() {
         return
       }
 
+      // Holding a cartridge: the machine takes it and boots it; the box takes
+      // it back — or, held over the box, E swaps it for the next one, which is
+      // how you flick through a crate with one hand.
+      if (state.heldRom !== null) {
+        if (focusedFixture) {
+          const piece = useWorldStore
+            .getState()
+            .world?.furniture.find((item) => item.id === focusedFixture)
+          if (piece?.kind === 'arcade') {
+            void useArcadeStore.getState().insert(state.heldRom)
+            state.setHeldRom(null)
+            return
+          }
+          if (piece?.kind === 'rombox') {
+            const roms = useArcadeStore.getState().roms
+            const at = roms.findIndex((rom) => rom.id === state.heldRom)
+            const next = roms[(at + 1) % Math.max(1, roms.length)]
+            // The only cartridge there is goes back in rather than round again.
+            state.setHeldRom(next && next.id !== state.heldRom ? next.id : null)
+          }
+        }
+        return
+      }
+
+      // Holding a cup, a can or a takeaway box: a table takes it standing, the
+      // bin takes the rubbish, and the coffee maker refills its own cup.
+      if (state.heldProp !== null) {
+        const prop = state.heldProp
+        if (focusedFixture) {
+          const piece = useWorldStore
+            .getState()
+            .world?.furniture.find((item) => item.id === focusedFixture)
+          if (piece?.kind === 'bin') {
+            // Cans and cartons, full or not. Not the crockery — the cup's
+            // place is by its machine, and the HUD says so.
+            if (prop.kind !== 'cup') state.setHeldProp(null)
+            return
+          }
+          if (piece?.kind === 'coffeemaker' && prop.kind === 'cup' && !prop.full) {
+            if (state.readyPots[piece.id]) {
+              state.drainPot(piece.id)
+              state.setHeldProp({ kind: 'cup', full: true })
+            }
+            return
+          }
+          return
+        }
+        if (surfaceTarget) {
+          useLibraryStore.getState().placeProp({
+            kind: prop.kind,
+            full: prop.full,
+            x: surfaceTarget.x,
+            y: surfaceTarget.y + 0.002,
+            z: surfaceTarget.z,
+            yaw: player.yaw,
+          })
+          state.setHeldProp(null)
+        }
+        return
+      }
+
       if (held === null) {
         // A fuss. Before everything else in this branch because the crosshair
         // only ever offers the cat when it is offering nothing else.
         if (state.focusedCat) {
           petCat()
+          return
+        }
+        // A cup, can or box standing in the room, back into your hand — and
+        // the headlamp straight onto your head, because it is worn, not carried.
+        if (state.focusedProp) {
+          const taken = useLibraryStore.getState().removeProp(state.focusedProp)
+          if (taken) {
+            if (taken.kind === 'headlamp') state.setWornLamp('headlamp')
+            else state.setHeldProp({ kind: taken.kind, full: taken.full })
+          }
           return
         }
         // Taking a record out of the crate is the same gesture as taking a book
@@ -250,6 +324,20 @@ export function Player() {
         }
         if (focusedFixture) {
           operate(focusedFixture)
+          return
+        }
+        // Wearing the headlamp, E on a bare tabletop sets it down there — the
+        // crosshair only offers a surface, empty-handed, for exactly this.
+        if (state.wornLamp !== null && surfaceTarget) {
+          useLibraryStore.getState().placeProp({
+            kind: 'headlamp',
+            full: false,
+            x: surfaceTarget.x,
+            y: surfaceTarget.y + 0.002,
+            z: surfaceTarget.z,
+            yaw: player.yaw,
+          })
+          state.setWornLamp(null)
           return
         }
         if (!focusedBook) return
@@ -344,8 +432,51 @@ export function Player() {
         if (video.playing) video.play(video.playing)
         return
       }
+      // The cabinet: with a game in it, E steps you up to the controls and the
+      // keyboard becomes the keypad — Esc steps you back. An empty machine
+      // deliberately does not help itself to a cartridge, the television's rule.
+      if (item.kind === 'arcade') {
+        if (useArcadeStore.getState().inserted) useAppStore.getState().setMode('play')
+        return
+      }
+      // The ROM box: the first cartridge into your hand. E on the box again,
+      // cartridge in hand, swaps it for the next — see `takeOrPlace`.
+      if (item.kind === 'rombox') {
+        const first = useArcadeStore.getState().roms[0]
+        if (first) useAppStore.getState().setHeldRom(first.id)
+        return
+      }
       if (item.kind === 'coffeemaker') {
-        useAppStore.getState().brew(id)
+        const app = useAppStore.getState()
+        // A full pot pours: E hands you the cup, coffee in it — as long as the
+        // cup is home by the machine. With the cup somewhere in the room the
+        // pot just stands ready, and the HUD says what to go and find.
+        if (app.readyPots[id]) {
+          if (!('cup' in useLibraryStore.getState().props)) {
+            app.drainPot(id)
+            app.setHeldProp({ kind: 'cup', full: true })
+          }
+          return
+        }
+        app.brew(id)
+        return
+      }
+      // Ring for food. The box turns up at the porch steps a while later.
+      if (item.kind === 'phone') {
+        useAppStore.getState().order()
+        return
+      }
+      // The fridge never runs out of cans, the way the box stack never runs
+      // out of cardboard: cold drinks are not the scarce thing here.
+      if (item.kind === 'fridge') {
+        useAppStore.getState().setHeldProp({ kind: 'can', full: true })
+        return
+      }
+      // The headlamp goes on your head, or back on its hook. Worn, not held:
+      // the whole point is both hands free for books in the dark.
+      if (item.kind === 'headlamp') {
+        const app = useAppStore.getState()
+        app.setWornLamp(app.wornLamp === id ? null : id)
         return
       }
       // The catalogue terminal. A search is typed, so it takes the keyboard the
@@ -386,8 +517,15 @@ export function Player() {
         // Aimed at the cat, F asks it for a book — there is no book under the
         // crosshair to draw out when a cat is standing in front of it, so the
         // two never compete.
-        const { focusedBook, focusedCat, drawn, setDrawn, heldMarker, cycleInk } =
+        const { focusedBook, focusedCat, drawn, setDrawn, heldMarker, cycleInk, heldProp } =
           useAppStore.getState()
+        // Drink or eat what is in your hand. The coffee is the one with an
+        // effect: a quarter quicker on your feet until it wears off. An empty
+        // has nothing left in it but a trip to the bin.
+        if (heldProp !== null) {
+          useAppStore.getState().consume()
+          return
+        }
         // With the marker in hand, F is the next pen in the tray. It cannot
         // collide with drawing a book out: the crosshair offers nothing but
         // whiteboards while you are holding it.
@@ -405,7 +543,11 @@ export function Player() {
         const app = useAppStore.getState()
         const music = useMediaStore.getState()
         const video = useVideoStore.getState()
-        const handsFree = app.held === null && app.heldRecord === null && app.heldTape === null
+        const handsFree =
+          app.held === null &&
+          app.heldRecord === null &&
+          app.heldTape === null &&
+          app.heldRom === null
         if (app.focusedFixture && handsFree) {
           const piece = useWorldStore
             .getState()
@@ -421,6 +563,16 @@ export function Player() {
             video.stop()
             app.setHeldTape(taken)
             return
+          }
+          // The cartridge comes back out of the machine, screen going dark.
+          if (piece?.kind === 'arcade') {
+            const arcade = useArcadeStore.getState()
+            if (arcade.inserted) {
+              const taken = arcade.inserted
+              arcade.eject()
+              app.setHeldRom(taken)
+              return
+            }
           }
         }
         // Draw the book under the crosshair out of the shelf to look at its
@@ -755,7 +907,9 @@ export function Player() {
       delta * CROUCH_RATE,
     )
     const running = !kneeling && (pressed.has('ShiftLeft') || pressed.has('ShiftRight'))
-    const top = kneeling ? KNEEL_SPEED : running ? RUN : WALK
+    // The coffee, while it lasts. It does not make kneeling any less a shuffle.
+    const brisk = !kneeling && performance.now() < player.boostUntil ? COFFEE_BOOST : 1
+    const top = (kneeling ? KNEEL_SPEED : running ? RUN : WALK) * brisk
 
     // Normalise so diagonals are not faster than straight lines.
     const magnitude = Math.hypot(forward, strafe)

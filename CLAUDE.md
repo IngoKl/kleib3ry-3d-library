@@ -116,7 +116,10 @@ neighbours along instead of overlapping. Rust stores this document verbatim
 
 The exceptions store real positions, because "there, where I put it" cannot be
 derived from an ordering: `loose` (a book on a table or the floor), `pins` (sheets
-on walls) and `records.loose`. Keep the list short.
+on walls), `records.loose` and `props` (the coffee cup — there is exactly one, id
+`cup` — the fridge's cans and the takeaway boxes; `F` drinks or eats, the coffee
+writes `player.boostUntil`, the kitchen `bin` destroys empties, and the `phone`'s
+delivery lands at `deliverySpot` in `world/derive.ts`). Keep the list short.
 
 **Records are dealt, not arranged.** Every `recordshelf` takes a slice of `music/`
 in folder order, so nothing has to be written down for a few hundred sleeves to
@@ -152,13 +155,14 @@ down, and `E` on the kitchen's `boxstack` makes a new one up — spawned and
 removed boxes are layout state (`books.json`, schema 7), never `library.json`.
 
 **Books live in `<library>/books/`.** `index::discover` confines the scan to that
-folder when it exists — `music/`, `artwork/` and `video/` are the reserved names —
-and falls back to the whole folder minus those three when it does not. The other
-three are read by [core/src/media.rs](core/src/media.rs), _not_ through SQLite: a
-music folder is hundreds of files, so walking it on demand beats a second cache to
-keep in sync. Tags are read without a crate — ID3v2 and FLAC Vorbis comments only,
-in [core/src/probe/audio.rs](core/src/probe/audio.rs). A tape is not probed at
-all: its filename is its title and its folder is its series.
+folder when it exists — `music/`, `artwork/`, `video/` and `roms/` are the
+reserved names — and falls back to the whole folder minus those four when it does
+not. The other four are read by [core/src/media.rs](core/src/media.rs), _not_
+through SQLite: a music folder is hundreds of files, so walking it on demand
+beats a second cache to keep in sync. Tags are read without a crate — ID3v2 and
+FLAC Vorbis comments only, in [core/src/probe/audio.rs](core/src/probe/audio.rs).
+A tape is not probed at all: its filename is its title and its folder is its
+series. Neither is a ROM: a `.ch8` is a bare byte array with no header.
 
 **Both formats open.** Everything above [src/reader/source.ts](src/reader/source.ts)
 is written against "a thing with pages you can rasterise" rather than against
@@ -223,8 +227,10 @@ page notes and page ink (`D` picks the pen up in the reader; strokes are
 whiteboard-shaped, in page space, painted onto the rasterised page canvas),
 saved to `.library/annotations.json` — its own file, page-numbered and
 title-carrying, so the marginalia read without the app.
-`state/ambience.ts`, `state/media.ts` and `state/video.ts` own the smaller save files,
-the record player and the television. `state/player.ts`, `state/cat.ts` and
+`state/ambience.ts`, `state/media.ts`, `state/video.ts` and `state/arcade.ts` own
+the smaller save files, the record player, the television and the arcade machine
+— the _running_ CHIP-8 in the arcade is a plain mutable object beside its store,
+stepped per frame by `scene/Arcade.tsx`. `state/player.ts`, `state/cat.ts` and
 `state/metrics.ts` are plain mutable objects deliberately outside zustand — they
 change every frame and must not trigger React renders.
 
@@ -275,7 +281,18 @@ a library finishes rather than resolving as you approach it. Book bytes come bac
 through the `read_book_file` command, _not_ the asset protocol. The asset scope starts
 empty and is granted at runtime for exactly four directories — `covers`, `music`,
 `artwork`, `video` — each only when something asks; audio and video are the reason a
-folder rather than a command, since a track or a tape is streamed while it plays.
+folder rather than a command, since a track or a tape is streamed while it plays. A
+ROM is read once and never streamed, so `read_rom_file` is a command like a book's
+and `roms/` never widens the scope (nor the server's `is_allowed` list).
+
+**The arcade machine is a CHIP-8 interpreter in the front end.**
+[src/arcade/chip8.ts](src/arcade/chip8.ts) is the whole machine, dependency-free;
+`scene/Arcade.tsx` steps it and maps the keyboard while `mode === 'play'`; the
+cabinet in `Furniture.tsx` paints its 64×32 screen onto a `CanvasTexture` cheap
+enough to repaint every frame. Games come from `roms/` — listed like media,
+fetched by id like a book — and the demo Pong is assembled from scratch by
+[scripts/lib/make-chip8.mjs](scripts/lib/make-chip8.mjs), which
+`tests/chip8.spec.ts` runs on the interpreter for real.
 
 **A torn-out page is a copy.** `P` in the reader records which book and which page
 number; the book keeps its own page and the sheet is rasterised from the same file next

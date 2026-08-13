@@ -2,6 +2,7 @@ import type {
   AnnotationsDocument,
   IndexedArtwork,
   IndexedBook,
+  IndexedRom,
   IndexedTape,
   IndexedTrack,
   LayoutDocument,
@@ -205,6 +206,16 @@ export const httpDriver: LibraryService = {
 
   async listTapes() {
     return ask<IndexedTape[]>('/video')
+  },
+
+  async listRoms() {
+    return ask<IndexedRom[]>('/roms')
+  },
+
+  async readRom(id) {
+    const response = await fetch(`${API}/rom/${encodeURIComponent(id)}`)
+    if (!response.ok) throw new Error(`cannot read ${id}: ${response.status}`)
+    return new Uint8Array(await response.arrayBuffer())
   },
 
   async loadAmbience() {

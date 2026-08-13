@@ -11,22 +11,28 @@ import { ShelfLabels } from './scene/ShelfLabels'
 import { Books } from './scene/Books'
 import { BoxedBooks } from './scene/BoxedBooks'
 import { LooseBooks } from './scene/LooseBooks'
+import { Props } from './scene/Props'
 import { Records } from './scene/Records'
 import { Interaction } from './scene/Interaction'
 import { Handling } from './scene/Handling'
 import { Drawing } from './scene/Drawing'
+import { ArcadeSystem } from './scene/Arcade'
 import { PlacementGhost } from './scene/PlacementGhost'
 import { Player } from './scene/Player'
 import { HeldBook } from './scene/HeldBook'
+import { HeldProp } from './scene/HeldProp'
 import { HeldRecord } from './scene/HeldRecord'
 import { HeldTape } from './scene/HeldTape'
+import { HeldRom } from './scene/HeldRom'
 import { HeldSheet } from './scene/HeldSheet'
+import { Headlamp } from './scene/Headlamp'
 import { Pinned } from './scene/Pinned'
 import { Tapes } from './scene/Tapes'
 import { Weather } from './scene/Weather'
 import { ChimneySmoke } from './scene/ChimneySmoke'
 import { DustMotes } from './scene/DustMotes'
 import { Cat } from './scene/Cat'
+import { Courier } from './scene/Courier'
 import { Body } from './scene/Body'
 import { Sound } from './scene/Sound'
 import { Probe } from './scene/Probe'
@@ -43,15 +49,17 @@ import { useAnnotationsStore } from './state/annotations'
 import { useAmbienceStore } from './state/ambience'
 import { useMediaStore } from './state/media'
 import { useVideoStore } from './state/video'
+import { arcadeMachine, useArcadeStore } from './state/arcade'
 import { useWorldStore } from './state/world'
 import { useSettings } from './state/settings'
 import { cat } from './state/cat'
 import { askCatForBook, callCat, petCat } from './scene/Cat'
 import { warmCovers } from './state/covers'
 import { library } from './services'
-import type { LoosePlacement } from './services/types'
+import type { LoosePlacement, PlacedProp } from './services/types'
 import { setWorldText } from './services/browserDriver'
-import { roomAt } from './world/derive'
+import { deliverySpot, roomAt } from './world/derive'
+import { courier } from './state/courier'
 import { boxesIn } from './world/boxes'
 import { sceneRefs } from './scene/refs'
 import { ASSIGNABLE_SLOTS } from './scene/spineAtlas'
@@ -70,6 +78,7 @@ export default function App() {
   const loadAmbience = useAmbienceStore((s) => s.load)
   const loadMedia = useMediaStore((s) => s.load)
   const loadVideo = useVideoStore((s) => s.load)
+  const loadArcade = useArcadeStore((s) => s.load)
 
   // The world has to be up before the library, or there are no shelves to
   // reconcile against and every book would look like it had nowhere to go.
@@ -81,7 +90,7 @@ export default function App() {
       await loadRoot()
       await loadLibrary()
       // After the library: migrating old bookmarks needs the index for titles.
-      await Promise.all([loadAnnotations(), loadAmbience(), loadMedia(), loadVideo()])
+      await Promise.all([loadAnnotations(), loadAmbience(), loadMedia(), loadVideo(), loadArcade()])
       // Start the cover sweep only once everything else is up: it is a long,
       // low-priority walk through the whole catalogue, and it must never be
       // what the first frame is waiting on.
@@ -94,7 +103,7 @@ export default function App() {
         error: e instanceof Error ? e.message : String(e),
       })
     })
-  }, [loadWorld, loadRoot, loadLibrary, loadAnnotations, loadAmbience, loadMedia, loadVideo])
+  }, [loadWorld, loadRoot, loadLibrary, loadAnnotations, loadAmbience, loadMedia, loadVideo, loadArcade])
 
   useEffect(() => watchWorld(), [watchWorld])
 
@@ -325,6 +334,26 @@ export default function App() {
       focusedTape: () => useAppStore.getState().focusedTape,
       heldTape: () => useAppStore.getState().heldTape,
       /**
+       * The arcade: the ROM listing, the machine's state, and the cartridge in
+       * hand. `insertRomForTest` is the same call `E` on the machine makes after
+       * carrying a cartridge over — aiming at a slot from a headless driver is
+       * a pose hunt, and what these tests are about is whether the machine then
+       * boots and draws.
+       */
+      roms: () => useArcadeStore.getState().roms.map((rom) => rom.id),
+      arcade: () => {
+        const machine = arcadeMachine()
+        return {
+          inserted: useArcadeStore.getState().inserted,
+          error: useArcadeStore.getState().error,
+          running: machine !== null && !machine.halted,
+          litPixels: machine ? machine.screen.reduce((sum, px) => sum + px, 0) : 0,
+        }
+      },
+      heldRom: () => useAppStore.getState().heldRom,
+      insertRomForTest: (id: string) => useArcadeStore.getState().insert(id),
+      ejectRomForTest: () => useArcadeStore.getState().eject(),
+      /**
        * The whiteboard marker, and what has been drawn with it.
        *
        * `takeMarkerForTest` is the same one line `E` on the marker runs. Aiming
@@ -353,6 +382,36 @@ export default function App() {
         Object.fromEntries(
           sceneRefs.recordIds.map((id, i) => [id, sceneRefs.recordCrates[i] ?? null]),
         ),
+
+      /**
+       * The small props — the cup, the cans, the takeaway boxes — where each
+       * stands, and the one in your hand. The `ForTest` gestures exist for the
+       * usual reason: aiming at a 6 cm can on a counter from a headless driver
+       * is a pose hunt, and what the tests are about is what the can then does.
+       */
+      props: () => ({ ...useLibraryStore.getState().props }),
+      heldProp: () => useAppStore.getState().heldProp,
+      placePropForTest: (prop: PlacedProp) => useLibraryStore.getState().placeProp(prop),
+      takePropForTest: (id: string) => {
+        const taken = useLibraryStore.getState().removeProp(id)
+        if (taken) {
+          // The same fork E takes: the headlamp goes on your head, not in hand.
+          if (taken.kind === 'headlamp') useAppStore.getState().setWornLamp('headlamp')
+          else useAppStore.getState().setHeldProp({ kind: taken.kind, full: taken.full })
+        }
+        return taken ?? null
+      },
+      /** Drink or eat what is in hand, as `F` does. The boost lands in `player().boostUntil`. */
+      consumeForTest: () => useAppStore.getState().consume(),
+      /** The headlamp: whose head it is on, and the switch `E` throws. */
+      wornLamp: () => useAppStore.getState().wornLamp,
+      wearLampForTest: (id: string | null) => useAppStore.getState().setWornLamp(id),
+      /** Where a delivery would be left, and the courier if one is out there. */
+      deliverySpotForTest: () => {
+        const world = useWorldStore.getState().world
+        return world ? deliverySpot(world) : null
+      },
+      courier: () => ({ ...courier, about: useAppStore.getState().courierAbout }),
 
       /** Sheets pinned up round the house, and the one in your hand. */
       pins: () => useLibraryStore.getState().pins.map((sheet) => ({ ...sheet })),
@@ -499,10 +558,12 @@ export default function App() {
         <Books />
         <BoxedBooks />
         <LooseBooks />
+        <Props />
         <Records />
         <Tapes />
         <Pinned />
         <Cat />
+        <Courier />
         <Weather />
         <ChimneySmoke />
         <DustMotes />
@@ -510,13 +571,17 @@ export default function App() {
         <Interaction />
         <Handling />
         <Drawing />
+        <ArcadeSystem />
         <Player />
         <Body />
         <Sound />
         <HeldBook />
+        <HeldProp />
         <HeldRecord />
         <HeldTape />
+        <HeldRom />
         <HeldSheet />
+        <Headlamp />
         <Reader />
       </Canvas>
       <Hud />

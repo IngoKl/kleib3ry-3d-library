@@ -72,11 +72,34 @@ export function Handling() {
           app.setHeldTape(null)
           return
         }
+        // Nor a cartridge: it lives in the ROM box, and goes back there.
+        if (app.heldRom) {
+          app.setHeldRom(null)
+          return
+        }
         // A sheet you have decided against is screwed up and thrown away. Only
         // when your hands are otherwise empty, because with a book in one hand
         // Q plainly means the book.
         if (app.heldPin && !app.held) {
           app.setHeldPin(null)
+          return
+        }
+        // A cup, can or box goes down at your feet — on the floor, or on
+        // whatever tabletop happens to be there. Nothing bounces: none of it
+        // is worth a physics body.
+        if (app.heldProp && live) {
+          const x = player.x - Math.sin(player.yaw) * 0.5
+          const z = player.z - Math.cos(player.yaw) * 0.5
+          const y = supportAt(live, x, z, player.floor + 0.4)
+          shelf.placeProp({
+            kind: app.heldProp.kind,
+            full: app.heldProp.full,
+            x,
+            y: y + 0.002,
+            z,
+            yaw: player.yaw,
+          })
+          app.setHeldProp(null)
           return
         }
         // Drop it. Somewhere in front of you, and then wherever it rolls to —

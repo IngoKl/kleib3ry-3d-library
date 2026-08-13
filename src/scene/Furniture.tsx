@@ -15,6 +15,9 @@ import { useAppStore } from '../state/store'
 import { APPLIANCES, LAMPS, SITTABLE, WALL_MOUNTED, type DerivedFurniture } from '../world/derive'
 import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
 import { useVideoStore, videoElement } from '../state/video'
+import { arcadeMachine, useArcadeStore } from '../state/arcade'
+import { makeArcadeScreen } from './arcadeScreen'
+import { PropModel } from './Props'
 
 /**
  * Furniture, built from boxes and cylinders rather than shipped as models: the
@@ -716,7 +719,15 @@ function Marker({ width, colour }: { width: number; colour: string }) {
   )
 }
 
-function CoffeeMaker({ brewing }: { brewing: boolean }) {
+function CoffeeMaker({
+  brewing,
+  potFull,
+  cupHome,
+}: {
+  brewing: boolean
+  potFull: boolean
+  cupHome: boolean
+}) {
   return (
     <group>
       <mesh position={[0, 0.05, -0.04]} castShadow receiveShadow>
@@ -727,26 +738,120 @@ function CoffeeMaker({ brewing }: { brewing: boolean }) {
         <boxGeometry args={[0.2, 0.28, 0.14]} />
         <meshStandardMaterial color="#2e2b28" roughness={0.5} />
       </mesh>
-      {/* The carafe. Fills up while it brews, which is the whole animation. */}
+      {/* The carafe. Fills while it brews and stands full until the cup takes it. */}
       <mesh position={[0, 0.16, 0.04]} castShadow>
         <cylinderGeometry args={[0.065, 0.058, 0.14, 12]} />
         <meshStandardMaterial color="#d8d4cc" roughness={0.25} transparent opacity={0.45} />
       </mesh>
       <mesh position={[0, 0.13, 0.04]}>
-        <cylinderGeometry args={[0.058, 0.052, brewing ? 0.09 : 0.02, 12]} />
+        <cylinderGeometry args={[0.058, 0.052, brewing ? 0.09 : potFull ? 0.1 : 0.02, 12]} />
         <meshStandardMaterial color="#40251a" roughness={0.4} />
       </mesh>
       <mesh position={[0.07, 0.11, -0.02]}>
         <boxGeometry args={[0.02, 0.012, 0.012]} />
         <meshStandardMaterial
-          color={brewing ? '#ff5a3a' : '#503c34'}
-          emissive={brewing ? '#ff5a3a' : '#000000'}
-          emissiveIntensity={brewing ? 2 : 0}
+          color={brewing ? '#ff5a3a' : potFull ? '#ffb24a' : '#503c34'}
+          emissive={brewing ? '#ff5a3a' : potFull ? '#ffb24a' : '#000000'}
+          emissiveIntensity={brewing ? 2 : potFull ? 1.2 : 0}
         />
+      </mesh>
+      {/* The cup, waiting beside the machine whenever it is not out in the
+          room or in your hand. There is exactly one — see `PlacedProp`. */}
+      {cupHome && (
+        <group position={[0.17, 0, 0.05]} rotation-y={0.6}>
+          <PropModel kind="cup" full={false} />
+        </group>
+      )}
+    </group>
+  )
+}
+
+/** A rotary telephone: bakelite body, a dial on the slope, the handset across the top. */
+function Phone({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const BAKELITE = '#33302c'
+  return (
+    <group>
+      <mesh position={[0, height * 0.3, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width * 0.82, height * 0.52, depth * 0.85]} />
+        <meshStandardMaterial color={BAKELITE} roughness={0.35} />
+      </mesh>
+      {/* The dial, tipped up the slope of the face. */}
+      <mesh position={[0, height * 0.42, depth * 0.24]} rotation-x={-0.6}>
+        <cylinderGeometry args={[width * 0.2, width * 0.2, 0.01, 16]} />
+        <meshStandardMaterial color="#e8e3d8" roughness={0.5} />
+      </mesh>
+      <mesh position={[0, height * 0.44, depth * 0.26]} rotation-x={-0.6}>
+        <cylinderGeometry args={[width * 0.07, width * 0.07, 0.012, 10]} />
+        <meshStandardMaterial color={BAKELITE} roughness={0.4} />
+      </mesh>
+      {/* The handset: a bar with an ear at each end, in its cradle. */}
+      <mesh position={[0, height * 0.68, -depth * 0.08]} castShadow>
+        <boxGeometry args={[width * 0.72, height * 0.14, depth * 0.3]} />
+        <meshStandardMaterial color={BAKELITE} roughness={0.35} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh
+          key={side}
+          position={[side * width * 0.36, height * 0.62, -depth * 0.08]}
+          castShadow
+        >
+          <cylinderGeometry args={[width * 0.13, width * 0.15, height * 0.3, 10]} />
+          <meshStandardMaterial color={BAKELITE} roughness={0.35} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** A larder fridge: enamel box, freezer seam, a long handle, a dark plinth. */
+function Fridge({ width, depth, height }: { width: number; depth: number; height: number }) {
+  return (
+    <group>
+      <mesh position={[0, height / 2 + 0.03, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, height - 0.06, depth]} />
+        <meshStandardMaterial color="#ddd7ca" roughness={0.5} />
+      </mesh>
+      {/* The door seam under the freezer flap. */}
+      <mesh position={[0, height * 0.74, depth / 2 + 0.002]}>
+        <boxGeometry args={[width * 0.94, 0.01, 0.006]} />
+        <meshStandardMaterial color="#9a9486" roughness={0.8} />
+      </mesh>
+      <mesh position={[width * 0.32, height * 0.44, depth / 2 + 0.028]} castShadow>
+        <cylinderGeometry args={[0.012, 0.012, height * 0.36, 8]} />
+        <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.7} />
+      </mesh>
+      <mesh position={[0, 0.03, 0]}>
+        <boxGeometry args={[width * 0.9, 0.06, depth * 0.9]} />
+        <meshStandardMaterial color="#3a352e" roughness={1} />
       </mesh>
     </group>
   )
 }
+
+/** A pedal bin without the pedal: brushed steel, a lid, a knob to imagine lifting. */
+function Bin({ width, height }: { width: number; height: number }) {
+  const r = width / 2
+  return (
+    <group>
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[r * 0.92, r * 0.8, height, 14]} />
+        <meshStandardMaterial color={STEEL} roughness={0.35} metalness={0.6} />
+      </mesh>
+      <mesh position={[0, height + 0.012, 0]} castShadow>
+        <cylinderGeometry args={[r * 0.96, r * 0.9, 0.024, 14]} />
+        <meshStandardMaterial color="#6e7168" roughness={0.4} metalness={0.6} />
+      </mesh>
+      <mesh position={[0, height + 0.035, 0]}>
+        <cylinderGeometry args={[0.016, 0.024, 0.022, 8]} />
+        <meshStandardMaterial color="#3a3d38" roughness={0.5} />
+      </mesh>
+    </group>
+  )
+}
+
+// The headlamp's home spot renders the same lying lamp a placed prop does —
+// see `HeadlampAtRest` in Props.tsx. There is one lamp: on your head, standing
+// somewhere as a prop, or here, and the home only draws it in the third case.
 
 /** A crate for records, open at the front, with a top you can put things on. */
 function RecordShelf({ width, depth, height }: { width: number; depth: number; height: number }) {
@@ -1395,6 +1500,201 @@ function Crt({
 }
 
 /**
+ * The arcade cabinet: an upright box of painted chipboard with a tube in it.
+ *
+ * The screen is a `CanvasTexture` exactly one texel per CHIP-8 pixel — see
+ * `arcadeScreen.ts` — painted here per frame while a cartridge is in, because
+ * the machine itself is stepped elsewhere (`Arcade.tsx`) and this component
+ * only shows it. Painting an 8 KB texture per frame is nothing; the keyed
+ * material is the same trap-avoidance the television's glass does.
+ *
+ * No point light, deliberately: the marquee and the glass glow with emissive
+ * materials instead, because a light is a standing charge on every lit
+ * fragment in the room — the rule `CrtGlow` follows.
+ */
+function ArcadeCabinet({
+  width,
+  depth,
+  height,
+  running,
+}: {
+  width: number
+  depth: number
+  height: number
+  running: boolean
+}) {
+  const screen = useMemo(makeArcadeScreen, [])
+  useEffect(() => () => screen.dispose(), [screen])
+
+  // Repainted only while something is running; a dead machine was painted dark
+  // once by `makeArcadeScreen` and stays that way without another upload.
+  useFrame(() => {
+    if (running) screen.paint(arcadeMachine())
+  })
+
+  // A friendly machine, not a monolith: warm terracotta over cream, with the
+  // painted stripes a cabinet of that era wore round its middle.
+  const body = '#a35d40'
+  const trim = '#4a3226'
+  const cream = '#d8cdb4'
+  const deckY = height * 0.58
+  // The head unit sits back a little on the base; everything mounted on its
+  // face — marquee, bezel, glass — must stand *proud* of this or it is
+  // swallowed by the box, which is how the screen's top half went missing.
+  const headFront = depth * 0.26
+
+  return (
+    <group>
+      {/* The lower cabinet, full depth, and the head unit set back on top. */}
+      <mesh position={[0, deckY / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, deckY, depth]} />
+        <meshStandardMaterial color={body} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, (deckY + height) / 2, -depth * 0.12]} castShadow receiveShadow>
+        <boxGeometry args={[width, height - deckY, depth * 0.76]} />
+        <meshStandardMaterial color={body} roughness={0.8} />
+      </mesh>
+
+      {/* The painted stripes, wrapped round the lower cabinet. */}
+      {[
+        { y: deckY * 0.36, colour: '#d8a03c', band: 0.07 },
+        { y: deckY * 0.25, colour: '#5f8a80', band: 0.028 },
+      ].map(({ y, colour, band }) => (
+        <mesh key={colour} position={[0, y, 0]}>
+          <boxGeometry args={[width + 0.006, band, depth + 0.006]} />
+          <meshStandardMaterial color={colour} roughness={0.85} />
+        </mesh>
+      ))}
+
+      {/* The marquee across the top, on the head unit's face, lit while the
+          machine is on and a cheerful cream when it is not. */}
+      <mesh position={[0, height - 0.085, headFront + 0.018]}>
+        <boxGeometry args={[width * 0.94, 0.15, 0.03]} />
+        {running ? (
+          <meshStandardMaterial
+            key="lit"
+            color="#f4d9a0"
+            emissive="#e8b45c"
+            emissiveIntensity={0.9}
+            roughness={0.4}
+          />
+        ) : (
+          <meshStandardMaterial key="dark" color={cream} roughness={0.6} />
+        )}
+      </mesh>
+
+      {/* The bezel and the glass, tipped back only slightly — tip it further
+          and the top of the tube leans back inside the cabinet. */}
+      <group position={[0, height * 0.755, headFront + 0.024]} rotation-x={-0.1}>
+        <mesh>
+          <boxGeometry args={[width * 0.88, height * 0.28, 0.03]} />
+          <meshStandardMaterial color={trim} roughness={0.85} />
+        </mesh>
+        <mesh position={[0, 0, 0.017]}>
+          <planeGeometry args={[width * 0.72, width * 0.36]} />
+          {/* Keyed, so power-on mounts a new material: swapping a map into a
+              live one reuses its map-less shader program and draws black. */}
+          {running ? (
+            <meshBasicMaterial key="on" map={screen.texture} toneMapped={false} />
+          ) : (
+            <meshStandardMaterial key="off" color={TUBE_OFF} roughness={0.16} metalness={0.3} />
+          )}
+        </mesh>
+      </group>
+
+      {/* The control deck, with a stick and two buttons. */}
+      <mesh position={[0, deckY + 0.02, depth * 0.32]} rotation-x={0.12} castShadow>
+        <boxGeometry args={[width, 0.06, depth * 0.36]} />
+        <meshStandardMaterial color={cream} roughness={0.7} />
+      </mesh>
+      <mesh position={[-width * 0.2, deckY + 0.1, depth * 0.32]}>
+        <cylinderGeometry args={[0.008, 0.008, 0.09, 8]} />
+        <meshStandardMaterial color={STEEL} roughness={0.35} metalness={0.7} />
+      </mesh>
+      <mesh position={[-width * 0.2, deckY + 0.15, depth * 0.32]}>
+        <sphereGeometry args={[0.021, 10, 8]} />
+        <meshStandardMaterial color="#b8433a" roughness={0.35} />
+      </mesh>
+      {[
+        { at: 0.1, colour: '#b8433a' },
+        { at: 0.24, colour: '#3f6b8a' },
+      ].map(({ at, colour }) => (
+        <mesh key={colour} position={[width * at, deckY + 0.055, depth * 0.34]}>
+          <cylinderGeometry args={[0.018, 0.018, 0.02, 12]} />
+          <meshStandardMaterial color={colour} roughness={0.5} />
+        </mesh>
+      ))}
+
+      {/* The cartridge slot, under the deck, where the game goes in. */}
+      <mesh position={[0, deckY - 0.09, depth / 2 + 0.002]}>
+        <boxGeometry args={[0.15, 0.028, 0.012]} />
+        <meshStandardMaterial color={trim} roughness={0.9} />
+      </mesh>
+    </group>
+  )
+}
+
+/** The cartridge everywhere it appears: in the crate, and in your hand. */
+export const ROM_CARTRIDGE = { width: 0.09, height: 0.12, depth: 0.017 }
+
+/** Where up to six shells lean in the crate: offset across it, and a tilt. */
+const SHELL_SLOTS: [number, number][] = [
+  [-0.34, 0.12],
+  [-0.21, 0.03],
+  [-0.08, -0.06],
+  [0.05, 0.1],
+  [0.18, 0.0],
+  [0.31, -0.08],
+]
+
+/**
+ * The crate of cartridges beside the cabinet. One shell per ROM the folder
+ * actually holds — minus the one in your hand or in the machine — but they are
+ * anonymous: a crate of a handful of games does not earn a third atlas, so the
+ * HUD names what you took. Same argument the tape crate's own small grid
+ * makes, taken one step further down.
+ */
+function RomBox({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const inCrate = useArcadeStore((s) => s.roms.length - (s.inserted !== null ? 1 : 0))
+  const heldRom = useAppStore((s) => s.heldRom)
+  const shells = Math.min(SHELL_SLOTS.length, Math.max(0, inCrate - (heldRom !== null ? 1 : 0)))
+
+  const wall = 0.016
+  return (
+    <group>
+      {/* An open crate: bottom and four sides. */}
+      <mesh position={[0, wall / 2, 0]} receiveShadow>
+        <boxGeometry args={[width, wall, depth]} />
+        <meshStandardMaterial color={CARD_DARK} roughness={1} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh key={`w${side}`} position={[(side * (width - wall)) / 2, height / 2, 0]} castShadow>
+          <boxGeometry args={[wall, height, depth]} />
+          <meshStandardMaterial color={CARD} roughness={1} />
+        </mesh>
+      ))}
+      {[-1, 1].map((side) => (
+        <mesh key={`d${side}`} position={[0, height / 2, (side * (depth - wall)) / 2]} castShadow>
+          <boxGeometry args={[width - wall * 2, height, wall]} />
+          <meshStandardMaterial color={CARD} roughness={1} />
+        </mesh>
+      ))}
+      {SHELL_SLOTS.slice(0, shells).map(([at, lean], i) => (
+        <mesh
+          key={at}
+          position={[width * at, height * 0.52, 0]}
+          rotation-z={lean}
+          castShadow
+        >
+          <boxGeometry args={[ROM_CARTRIDGE.depth, ROM_CARTRIDGE.height, ROM_CARTRIDGE.width]} />
+          <meshStandardMaterial color={i % 2 === 1 ? '#4a4038' : '#33383c'} roughness={0.6} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/**
  * The catalogue terminal: a monitor on a box, with a keyboard in front of it.
  *
  * What it does lives in the HUD: a search you type has to be readable, and a
@@ -1514,7 +1814,23 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
   const playing = useMediaStore((s) => (s.deck === item.id ? s.playing : null))
   const paused = useMediaStore((s) => s.paused)
   const tape = useVideoStore((s) => (item.kind === 'crt' ? s.playing : null))
+  const romIn = useArcadeStore((s) => (item.kind === 'arcade' ? s.inserted : null))
   const brewing = useAppStore((s) => s.brewing === item.id)
+  const potFull = useAppStore((s) =>
+    item.kind === 'coffeemaker' ? (s.readyPots[item.id] ?? false) : false,
+  )
+  // Whether the one cup is at home by the machine: not standing somewhere in
+  // the room, and not in your hand.
+  const cupOut = useLibraryStore((s) => (item.kind === 'coffeemaker' ? 'cup' in s.props : false))
+  const cupInHand = useAppStore((s) =>
+    item.kind === 'coffeemaker' ? s.heldProp?.kind === 'cup' : false,
+  )
+  // The lamp is away from home while it is on anybody's head *or* standing
+  // somewhere as a prop — either way this spot has nothing to draw.
+  const lampAway = useAppStore((s) => (item.kind === 'headlamp' ? s.wornLamp !== null : false))
+  const lampOut = useLibraryStore((s) =>
+    item.kind === 'headlamp' ? 'headlamp' in s.props : false,
+  )
   const heldMarker = useAppStore((s) => (item.kind === 'marker' ? s.heldMarker === item.id : false))
   const ink = useAppStore((s) => (item.kind === 'marker' ? s.markerInk : 0))
   const allOn = useAnyLightOn(item.kind === 'lightswitch')
@@ -1570,7 +1886,15 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         // Hidden while it is in your hand, the way a record leaves its crate.
         return heldMarker ? null : <Marker width={item.width} colour={inkAt(ink)} />
       case 'coffeemaker':
-        return <CoffeeMaker brewing={brewing} />
+        return <CoffeeMaker brewing={brewing} potFull={potFull} cupHome={!cupOut && !cupInHand} />
+      case 'phone':
+        return <Phone width={item.width} depth={item.depth} height={item.height} />
+      case 'fridge':
+        return <Fridge width={item.width} depth={item.depth} height={item.height} />
+      case 'bin':
+        return <Bin width={item.width} height={item.height} />
+      case 'headlamp':
+        return lampAway || lampOut ? null : <PropModel kind="headlamp" full={false} />
       case 'computer':
         return (
           <Computer width={item.width} depth={item.depth} height={item.height} awake={searching} />
@@ -1587,6 +1911,17 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return (
           <Crt width={item.width} depth={item.depth} height={item.height} playing={tape} />
         )
+      case 'arcade':
+        return (
+          <ArcadeCabinet
+            width={item.width}
+            depth={item.depth}
+            height={item.height}
+            running={romIn !== null}
+          />
+        )
+      case 'rombox':
+        return <RomBox width={item.width} depth={item.depth} height={item.height} />
       case 'picture':
         return <Picture item={item} source={source} />
       case 'whiteboard':

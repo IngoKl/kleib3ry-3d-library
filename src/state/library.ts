@@ -6,6 +6,7 @@ import type {
   LayoutDocument,
   LoosePlacement,
   PinnedSheet,
+  PlacedProp,
   RecordPlacement,
   ScanProgress,
   ScanSummary,
@@ -43,6 +44,7 @@ import { useSettings } from './settings'
 import { useWorldStore } from './world'
 import { useMediaStore } from './media'
 import { useVideoStore } from './video'
+import { useArcadeStore } from './arcade'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -97,6 +99,12 @@ type LibraryState = {
    */
   filedRecords: Record<string, string>
   looseRecords: Record<string, RecordPlacement>
+  /**
+   * The small props standing about the room — the cup, the cans, the takeaway
+   * boxes. The same argument as `loose`: a position is stored because "there"
+   * is the point of putting one down.
+   */
+  props: Record<string, PlacedProp>
   /** Furniture that has been shoved somewhere else. Boxes, in practice. */
   placements: Record<string, FurnitureOverride>
   /** Boxes made up off the stack in the kitchen, by the id given to each. */
@@ -159,6 +167,13 @@ type LibraryState = {
   putRecordDown: (trackId: string, placement: RecordPlacement) => void
   /** Forget where a record was put, so it goes back to its dealt place. */
   freeRecord: (trackId: string) => void
+  /**
+   * Stand a prop somewhere. The cup always lands under its one id; anything
+   * else gets a fresh one. Returns the id it stands under.
+   */
+  placeProp: (prop: PlacedProp) => string
+  /** Take a prop off whatever it stands on. Returns it, so it can go into your hand. */
+  removeProp: (id: string) => PlacedProp | undefined
   /** Shove a piece of furniture. Only the moving boxes accept this. */
   moveFurniture: (id: string, at: [number, number], facing: number, elevation?: number) => void
   /**
@@ -185,6 +200,9 @@ export const NEW_BOX = '#new-box'
 
 /** Bumped per sheet pinned up, so two in the same millisecond differ. */
 let pinCounter = 0
+
+/** The same, for cans and takeaway boxes as they arrive. */
+let propCounter = 0
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => Promise<void>) | null = null
@@ -264,6 +282,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       pins: state.pins,
       drawings: state.drawings,
       records: { filed: state.filedRecords, loose: state.looseRecords },
+      props: state.props,
     }
     await library.saveLayout(document).catch((e) => set({ error: String(e) }))
   }
@@ -324,6 +343,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     drawings: {},
     filedRecords: {},
     looseRecords: {},
+    props: {},
     placements: {},
     spawnedBoxes: {},
     removedBoxes: [],
@@ -409,6 +429,28 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       scheduleSave()
     },
 
+    placeProp: (prop) => {
+      // There is one cup and one headlamp, so each stands under its one id;
+      // everything else is minted as it arrives, counter plus time so ids
+      // never collide.
+      propCounter += 1
+      const id =
+        prop.kind === 'cup' || prop.kind === 'headlamp'
+          ? prop.kind
+          : `prop-${Date.now().toString(36)}-${propCounter}`
+      set({ props: { ...get().props, [id]: prop } })
+      scheduleSave()
+      return id
+    },
+
+    removeProp: (id) => {
+      const found = get().props[id]
+      if (!found) return undefined
+      set({ props: omit(get().props, id) })
+      scheduleSave()
+      return found
+    },
+
     load: async () => {
       try {
         // A shelving made moments ago may still be sitting in the debounce;
@@ -478,6 +520,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           // and an entry for a track nobody has is inert.
           filedRecords: layout?.records?.filed ?? {},
           looseRecords: layout?.records?.loose ?? {},
+          props: layout?.props ?? {},
           placements,
           spawnedBoxes,
           removedBoxes,
@@ -638,6 +681,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           get().load(),
           useMediaStore.getState().load(),
           useVideoStore.getState().load(),
+          useArcadeStore.getState().load(),
         ])
       } catch (e) {
         set({ error: e instanceof Error ? e.message : String(e) })

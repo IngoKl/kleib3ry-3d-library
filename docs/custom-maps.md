@@ -278,7 +278,13 @@ Common fields: `id`, `kind`, `at`, `facing`. Then, all optional:
 | `boxstack`       | yes   | take a box (`E`)                                        | flattened spares. `E` puts one in your arms; `X` stands it up as a real box, remembered in `books.json`                                                 |
 | `recordplayer`   | no    | play (`E`)                                              | put it on a `y` so it stands on something. An empty one does nothing: bring it a record                                                                 |
 | `crt`            | yes   | play a tape (`E`)                                       | a television. `E` with a tape in hand puts it in; `E` empty-handed pauses                                                                               |
-| `coffeemaker`    | no    | brew (`E`)                                              | ditto                                                                                                                                                   |
+| `coffeemaker`    | no    | brew, then take the coffee (`E`)                        | ditto. `E` puts a brew on; when the pot is full, `E` hands you its one cup, coffee in it — drinking it (`F`) makes you quicker for a while              |
+| `phone`          | no    | order food (`E`)                                        | a telephone. `E` rings for a delivery; a courier walks it out of the trees and leaves it at the foot of the nearest `step` (the spawn, with none)       |
+| `fridge`         | yes   | take a cold can (`E`)                                   | never runs out, the way the box stack never runs out of cardboard. Drink the can with `F`; the empty goes in the `bin`                                  |
+| `bin`            | yes   | throw empties in (`E`)                                  | takes cans and takeaway boxes, full or not. It refuses the coffee cup — the crockery lives by its machine                                               |
+| `headlamp`       | no    | wear it (`E`)                                           | a headlamp, lying where `y` puts it — the porch table, by default. Worn, not held: hands free, beam follows your eyes; a bare tabletop takes it off     |
+| `arcade`         | yes   | slot a cartridge, play (`E`)                            | a CHIP-8 cabinet. `E` with a cartridge slots and boots it; `E` at a running one steps up to the controls, `Esc` steps away, `F` ejects                  |
+| `rombox`         | yes   | take a cartridge (`E`)                                  | the crate the games live in, filled from `roms/`. `E` takes a cartridge; `E` again over the box swaps it for the next                                   |
 | `computer`       | no    | search (`E`)                                            | the catalogue terminal. Searches every book, record, tape and picture the library knows about and says where each one is. Stand it on a desk with a `y` |
 | `postits`        | no    | take one (`E`)                                          | a pad of notes. `E` peels one off and opens the field you write on it — the same note `T` writes                                                        |
 | `marker`         | no    | take it (`E`)                                           | a whiteboard marker. With it in hand, hold the left mouse button to draw on any `whiteboard`; `F` changes pen, `G` wipes the board                      |
@@ -366,7 +372,7 @@ Two things to watch:
 
 ---
 
-## The Other Three Folders
+## The Other Four Folders
 
 A library folder holds more than books:
 
@@ -376,6 +382,7 @@ My Library/
   music/       ← one record per mp3/wav/flac/ogg/m4a
   artwork/     ← one picture per jpg/png/webp/gif
   video/       ← one tape per mp4/webm/m4v/mov/mkv/ogv
+  roms/        ← one cartridge per ch8
   .library/    ← everything the app owns
 ```
 
@@ -405,6 +412,12 @@ decodes what Chromium decodes: roughly H.264 in MP4, VP8 or VP9 in WebM. A
 container it cannot read is still a tape in the crate — it goes in the machine,
 fails to start, and the panel says why, which is a better answer than pretending
 the file is not there.
+
+`roms/` fills the `rombox` beside the `arcade` cabinet. Only `.ch8` files count
+— CHIP-8 images, which is the machine the cabinet's emulator implements — and a
+ROM's filename is its title, since a CHIP-8 image is a bare byte array with no
+header to ask. The demo library ships a Pong in `roms/ch8/`, assembled by this
+repository's own `scripts/lib/make-chip8.mjs`.
 
 ---
 

@@ -26,11 +26,22 @@ type Stats = {
   focusedFixture: string | null
   focusedTape: string | null
   heldTape: string | null
+  focusedProp: string | null
 }
 
 type ShelfTarget = { shelf: number; shelfId: string; row: number; index: number }
 
 type Book = { id: string; title: string; author: string | null; format: string }
+
+/** A small prop — the cup, a can, a takeaway box — where it stands and what is in it. */
+type Prop = {
+  kind: 'cup' | 'can' | 'takeaway'
+  full: boolean
+  x: number
+  y: number
+  z: number
+  yaw: number
+}
 
 type ReaderStatus = {
   bookId: string | null
@@ -62,6 +73,8 @@ declare global {
         /** 0 standing, 1 fully zoomed, and the field of view that produces. */
         zoom: number
         fov: number
+        /** `performance.now()` before which the coffee is still working. */
+        boostUntil: number
       }
       focusedBook: () => Book | null
       heldBook: () => Book | null
@@ -128,6 +141,16 @@ declare global {
       focusedTape: () => string | null
       heldTape: () => string | null
       nowWatching: () => { playing: string | null; error: string | null }
+      roms: () => string[]
+      arcade: () => {
+        inserted: string | null
+        error: string | null
+        running: boolean
+        litPixels: number
+      }
+      heldRom: () => string | null
+      insertRomForTest: (id: string) => Promise<void>
+      ejectRomForTest: () => void
       pins: () => {
         id: string
         kind: 'page' | 'note'
@@ -174,6 +197,14 @@ declare global {
       wipePageForTest: (id: string, page: number) => number
       inkPixelsOnPage: (page: number) => number
       spines: () => { printed: number; slots: number; reprinted: number }
+      props: () => Record<string, Prop>
+      heldProp: () => { kind: Prop['kind']; full: boolean } | null
+      placePropForTest: (prop: Prop) => string
+      takePropForTest: (id: string) => Prop | null
+      consumeForTest: () => void
+      wornLamp: () => string | null
+      wearLampForTest: (id: string | null) => void
+      deliverySpotForTest: () => { x: number; y: number; z: number; yaw: number } | null
     }
   }
 }
@@ -1666,6 +1697,62 @@ test('a tape comes out of the crate and goes into the television', async ({ page
   expect(reported, `neither playing nor complaining: ${JSON.stringify(watching)}`).toBe(true)
 })
 
+test('a cartridge boots the arcade machine and the game draws on its screen', async ({ page }) => {
+  await boot(page)
+
+  const roms = await page.evaluate(() => window.__app.roms())
+  expect(roms.length, 'nothing in roms/').toBeGreaterThan(0)
+
+  // E on the box puts a cartridge in your hand. The crosshair check asks for
+  // the *kind*, because the machine beside the box is a fixture too.
+  const atBox = await facePiece(page, 'rombox', () =>
+    window.__app
+      .furniture()
+      .some((f) => f.kind === 'rombox' && f.id === window.__app.stats().focusedFixture),
+  )
+  expect(atBox, 'never found the ROM box').toBe(true)
+  await page.keyboard.press('KeyE')
+  const held = await settled(page, () => window.__app.heldRom() !== null, 5000)
+  expect(held, 'E did not take a cartridge').toBe(true)
+  await expect(page.getByTestId('held-rom-card')).toBeVisible()
+
+  const atMachine = await facePiece(page, 'arcade', () =>
+    window.__app
+      .furniture()
+      .some((f) => f.kind === 'arcade' && f.id === window.__app.stats().focusedFixture),
+  )
+  expect(atMachine, 'never found the arcade machine').toBe(true)
+  await page.keyboard.press('KeyE')
+
+  // The browser driver's Pong is a real file, so the machine genuinely boots:
+  // the emulator runs the ROM and pixels light on the tube. Patiently — the
+  // boot is a fetch and the pixels need frames, and SwiftShader's are slow.
+  const running = await settled(
+    page,
+    () => window.__app.arcade().running && window.__app.arcade().litPixels > 0,
+    30_000,
+  )
+  const state = await page.evaluate(() => window.__app.arcade())
+  expect(running, `the machine never lit: ${JSON.stringify(state)}`).toBe(true)
+
+  // E again steps up to the controls; Esc steps away.
+  await page.keyboard.press('KeyE')
+  const playing = await settled(page, () => window.__app.stats().mode === 'play', 10_000)
+  expect(playing, 'E at a running machine did not enter play mode').toBe(true)
+  await page.keyboard.press('Escape')
+  const walked = await settled(page, () => window.__app.stats().mode === 'walk', 10_000)
+  expect(walked, 'Esc did not step away from the machine').toBe(true)
+
+  // F takes the cartridge back out, and the screen goes dark with it.
+  await page.keyboard.press('KeyF')
+  const ejected = await settled(
+    page,
+    () => window.__app.heldRom() !== null && !window.__app.arcade().running,
+    10_000,
+  )
+  expect(ejected, 'F did not eject the cartridge').toBe(true)
+})
+
 test('a record filed by hand stays in the crate you put it in', async ({ page }) => {
   await boot(page)
 
@@ -2110,6 +2197,129 @@ test('the main menu holds the room until you go in', async ({ page }) => {
   await page.getByTestId('enter-library').click()
   await expect(page.getByTestId('main-menu')).toHaveCount(0)
   await expect(page.getByTestId('status')).toBeVisible()
+})
+
+test('a can lives a whole life: set down, picked up, drunk, and still an empty', async ({ page }) => {
+  await boot(page)
+
+  // The kitchen the cans come from is furnished: fridge, bin, telephone.
+  const kinds = await page.evaluate(() => window.__app.furniture().map((item) => item.kind))
+  for (const kind of ['fridge', 'bin', 'phone', 'headlamp']) {
+    expect(kinds, `the default map has no ${kind}`).toContain(kind)
+  }
+
+  // A cold can standing on the kitchen table, as taking one from the fridge
+  // and setting it down leaves it.
+  const id = await page.evaluate(() => {
+    const table = window.__app.furniture().find((item) => item.kind === 'table')!
+    return window.__app.placePropForTest({
+      kind: 'can',
+      full: true,
+      x: table.x,
+      y: table.y + 0.76,
+      z: table.z,
+      yaw: 0,
+    })
+  })
+  expect(Object.keys(await page.evaluate(() => window.__app.props()))).toEqual([id])
+
+  // Picked back up and drunk. An empty can is still a can — the bin is where
+  // it stops being one — and only the coffee makes you quicker.
+  await page.evaluate((id) => window.__app.takePropForTest(id), id)
+  expect(await page.evaluate(() => window.__app.heldProp())).toEqual({ kind: 'can', full: true })
+  await page.evaluate(() => window.__app.consumeForTest())
+  expect(await page.evaluate(() => window.__app.heldProp())).toEqual({ kind: 'can', full: false })
+  expect((await page.evaluate(() => window.__app.player())).boostUntil).toBe(0)
+
+  // Drinking an empty does nothing further.
+  await page.evaluate(() => window.__app.consumeForTest())
+  expect(await page.evaluate(() => window.__app.heldProp())).toEqual({ kind: 'can', full: false })
+})
+
+test('the coffee works, and there is exactly one cup', async ({ page }) => {
+  await boot(page)
+
+  // The cup always lands under its one id: two cups is not a thing that happens.
+  const id = await page.evaluate(() =>
+    window.__app.placePropForTest({ kind: 'cup', full: true, x: 0, y: 0.8, z: 0, yaw: 0 }),
+  )
+  expect(id).toBe('cup')
+
+  await page.evaluate(() => window.__app.takePropForTest('cup'))
+  await page.evaluate(() => window.__app.consumeForTest())
+
+  // Drunk: the cup is empty and the clock says you are quicker for a while yet.
+  expect(await page.evaluate(() => window.__app.heldProp())).toEqual({ kind: 'cup', full: false })
+  const left = await page.evaluate(() => window.__app.player().boostUntil - performance.now())
+  expect(left).toBeGreaterThan(60_000)
+})
+
+test('a prop set down survives a reload', async ({ page }) => {
+  await boot(page)
+  await page.evaluate(() =>
+    window.__app.placePropForTest({ kind: 'takeaway', full: false, x: 1.2, y: 0, z: 2.4, yaw: 0.5 }),
+  )
+  // Past the layout save debounce, so the write has landed before the reload.
+  await page.waitForTimeout(900)
+  await reboot(page)
+
+  const kept = Object.values(await page.evaluate(() => window.__app.props()))
+  expect(kept).toHaveLength(1)
+  expect(kept[0]).toMatchObject({ kind: 'takeaway', full: false, x: 1.2, z: 2.4 })
+})
+
+test('the takeaway at the porch steps is really under the crosshair', async ({ page }) => {
+  await boot(page)
+
+  // A box exactly where the courier leaves one.
+  const spot = await page.evaluate(() => window.__app.deliverySpotForTest())
+  expect(spot).not.toBeNull()
+  await page.evaluate(
+    (at) => window.__app.placePropForTest({ kind: 'takeaway', full: true, ...at }),
+    spot!,
+  )
+
+  // Stand a step north of it — on the deck's edge — and look down at it,
+  // sweeping the pitch the way the shelf tests sweep a bookcase.
+  let found = false
+  for (const pitch of [-1.0, -0.8, -1.2, -0.6]) {
+    await page.evaluate(
+      ([at, pitch]) => {
+        const spot = at as { x: number; y: number; z: number }
+        window.__app.teleport(spot.x, spot.z - 1.1, Math.PI, spot.y)
+        window.__app.look(Math.PI, pitch as number)
+      },
+      [spot, pitch] as const,
+    )
+    found = await settled(page, () => window.__app.stats().focusedProp !== null)
+    if (found) break
+  }
+  expect(found, 'the crosshair never found the box on the grass').toBe(true)
+
+  // E takes it — the real key, through the real raycast.
+  await page.keyboard.press('KeyE')
+  const took = await settled(page, () => window.__app.heldProp()?.kind === 'takeaway')
+  expect(took, 'E did not pick the box up').toBe(true)
+  expect(Object.keys(await page.evaluate(() => window.__app.props()))).toHaveLength(0)
+})
+
+test('the headlamp is worn, not held, and comes off again', async ({ page }) => {
+  await boot(page)
+
+  const hook = await page.evaluate(
+    () => window.__app.furniture().find((item) => item.kind === 'headlamp') ?? null,
+  )
+  expect(hook, 'the default map keeps a headlamp on the porch table').not.toBeNull()
+
+  await page.evaluate((id) => window.__app.wearLampForTest(id), hook!.id)
+  expect(await page.evaluate(() => window.__app.wornLamp())).toBe(hook!.id)
+  await expect(page.getByTestId('worn-lamp-card')).toBeVisible()
+  // Worn is not held: both hands stay free for books.
+  expect(await page.evaluate(() => window.__app.heldProp())).toBeNull()
+
+  await page.evaluate(() => window.__app.wearLampForTest(null))
+  expect(await page.evaluate(() => window.__app.wornLamp())).toBeNull()
+  await expect(page.getByTestId('worn-lamp-card')).toHaveCount(0)
 })
 
 test('low performance mode is a switch, and the room survives it', async ({ page }) => {

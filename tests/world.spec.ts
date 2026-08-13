@@ -6,6 +6,7 @@ import {
   FLOOR_SLAB,
   STEP_UP,
   WALL_MOUNTED,
+  deliverySpot,
   deriveWorld,
   floorAt,
   roomBounds,
@@ -897,5 +898,27 @@ test.describe('boxes you make up and break down', () => {
     const result = reconcile(world, saved, ids, lookup)
     expect(result.boxes['box-1']).toBeUndefined()
     expect([...result.boxed].sort()).toEqual([...ids].sort())
+  })
+})
+
+test.describe('the food delivery', () => {
+  test('is left at the foot of the porch steps, on the ground', () => {
+    const spot = deliverySpot(WORLD)
+    const step = WORLD.furniture.find((item) => item.kind === 'step')!
+    // Just past the treads, walking away from the deck…
+    expect(Math.hypot(spot.x - step.x, spot.z - step.z)).toBeLessThan(1.0)
+    // …and on the grass the steps walk down to, not floating in the decking.
+    expect(spot.y).toBeLessThan(step.y)
+    expect(spot.y).toBe(terrainAt(spot.x, spot.z))
+  })
+
+  test('a map with no steps gets it at the spawn instead', () => {
+    const world = worldWith((doc) => {
+      for (const room of doc.rooms) {
+        room.furniture = room.furniture.filter((item) => item.kind !== 'step')
+      }
+    })
+    const spot = deliverySpot(world)
+    expect(Math.hypot(spot.x - world.spawn.x, spot.z - world.spawn.z)).toBeLessThan(1.0)
   })
 })

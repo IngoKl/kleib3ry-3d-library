@@ -467,6 +467,35 @@ fn list_videos(app: AppHandle) -> Result<Vec<media::Tape>> {
     Ok(media::list_videos(dir.parent().unwrap_or(&dir)))
 }
 
+/// Every ROM in `<library>/roms`, for the arcade machine.
+///
+/// A listing only — no asset-scope grant, unlike the three folders above,
+/// because nothing streams a ROM from a URL: the bytes go through
+/// `read_rom_file` the way a book's do.
+#[tauri::command(async)]
+fn list_roms(app: AppHandle) -> Result<Vec<media::Rom>> {
+    match root_of(&app) {
+        Ok(root) => Ok(media::list_roms(&root)),
+        Err(e) if is_no_root(&e) => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Raw bytes of one ROM, for the emulator.
+///
+/// A command rather than a directory in the asset scope, for the reason
+/// `read_book_file` is one and `music/` is not: a ROM is a few kilobytes read
+/// once at power-on, not a stream played while it runs. The id must be one
+/// `list_roms` handed out, so the WebView can only ever name a file the
+/// listing already told it about.
+#[tauri::command]
+fn read_rom_file(app: AppHandle, id: String) -> Result<tauri::ipc::Response> {
+    let root = root_of(&app)?;
+    let path = media::rom_path(&root, &id)
+        .ok_or_else(|| Error::Core(kleib3ry_core::Error::UnknownBook(id)))?;
+    Ok(tauri::ipc::Response::new(fs::read(path)?))
+}
+
 /// Which lamps are on and what the weather is doing. A missing file means "as
 /// `library.json` says", which is also what you get by deleting it.
 #[tauri::command]
@@ -541,6 +570,8 @@ pub fn run() {
             list_music,
             list_artwork,
             list_videos,
+            list_roms,
+            read_rom_file,
             get_ambience,
             save_ambience,
             get_annotations,

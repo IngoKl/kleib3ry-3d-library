@@ -34,9 +34,9 @@ const SKIP_DIRS: [&str; 7] = [
 const BOOKS_DIR: &str = "books";
 
 /// The other things a library folder holds, by the same convention: records for
-/// the player, pictures for the walls, tapes for the television. None of them is
-/// ever a book.
-const RESERVED_DIRS: [&str; 3] = ["music", "artwork", "video"];
+/// the player, pictures for the walls, tapes for the television, ROMs for the
+/// arcade machine. None of them is ever a book.
+const RESERVED_DIRS: [&str; 4] = ["music", "artwork", "video", "roms"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -381,9 +381,11 @@ mod tests {
         let dir = temp_dir("no-books-folder");
         fs::create_dir_all(dir.join("essays")).unwrap();
         fs::create_dir_all(dir.join("music")).unwrap();
+        fs::create_dir_all(dir.join("roms")).unwrap();
         fs::write(dir.join("one.pdf"), b"x").unwrap();
         fs::write(dir.join("essays/two.epub"), b"x").unwrap();
         fs::write(dir.join("music/sleeve-notes.pdf"), b"x").unwrap();
+        fs::write(dir.join("roms/manual.pdf"), b"x").unwrap();
 
         let mut found: Vec<String> = discover(&dir)
             .into_iter()

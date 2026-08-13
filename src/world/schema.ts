@@ -94,6 +94,12 @@ export type FurnitureKind =
   | 'computer'
   | 'postits'
   | 'marker'
+  | 'phone'
+  | 'fridge'
+  | 'bin'
+  | 'headlamp'
+  | 'arcade'
+  | 'rombox'
   // light
   | 'floorlamp'
   | 'pendant'
@@ -366,6 +372,12 @@ export const FURNITURE_KINDS = [
   'computer',
   'postits',
   'marker',
+  'phone',
+  'fridge',
+  'bin',
+  'headlamp',
+  'arcade',
+  'rombox',
   'floorlamp',
   'pendant',
   'fairylights',

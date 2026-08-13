@@ -27,6 +27,7 @@ Thumbs.db
 public/standard_fonts/
 public/cmaps/
 public/sample-book.pdf
+public/roms/
 
 # Docker build context leftovers
 .docker-build/

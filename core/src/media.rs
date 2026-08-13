@@ -1,5 +1,6 @@
 //! The rest of the library folder: `music/` for the record player, `artwork/`
-//! for the walls, and `video/` for the tapes that go in the television.
+//! for the walls, `video/` for the tapes that go in the television, and `roms/`
+//! for the arcade machine.
 //!
 //! Deliberately *not* in SQLite. The book index is there because probing a PDF
 //! is slow enough to be worth caching and a large collection is tens of
@@ -19,6 +20,7 @@ use crate::probe::{audio, title_from_filename};
 pub const MUSIC_DIR: &str = "music";
 pub const ARTWORK_DIR: &str = "artwork";
 pub const VIDEO_DIR: &str = "video";
+pub const ROMS_DIR: &str = "roms";
 
 const AUDIO_EXTENSIONS: [&str; 5] = ["mp3", "wav", "flac", "ogg", "m4a"];
 const IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "gif"];
@@ -30,6 +32,9 @@ const IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "gif"];
 /// in the machine, fails to start, and says so in the panel, which is a better
 /// answer than pretending the file is not there.
 const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "webm", "m4v", "mov", "mkv", "ogv"];
+/// Only CHIP-8 for now: the machine in the cabinet is the one the emulator in
+/// the front end implements. A wider list waits for a second machine.
+const ROM_EXTENSIONS: [&str; 1] = ["ch8"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +74,22 @@ pub struct Tape {
     pub size_bytes: u64,
 }
 
+/// A game for the arcade machine, from `<root>/roms`.
+///
+/// Not probed at all: a CHIP-8 image is a bare byte array with no header, so
+/// its filename is all the label there is, and the folder it sits in — `ch8`,
+/// a collection, a year — stands in for a series, exactly as a tape's does.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rom {
+    pub id: String,
+    pub path: String,
+    pub title: String,
+    pub series: Option<String>,
+    pub format: String,
+    pub size_bytes: u64,
+}
+
 /// `<root>/music`, if it exists. Absent, the library simply has no records —
 /// which is not an error, it is a library nobody has put music in.
 pub fn music_root(root: &Path) -> Option<PathBuf> {
@@ -83,6 +104,11 @@ pub fn artwork_root(root: &Path) -> Option<PathBuf> {
 
 pub fn video_root(root: &Path) -> Option<PathBuf> {
     let dir = root.join(VIDEO_DIR);
+    dir.is_dir().then_some(dir)
+}
+
+pub fn roms_root(root: &Path) -> Option<PathBuf> {
+    let dir = root.join(ROMS_DIR);
     dir.is_dir().then_some(dir)
 }
 
@@ -206,6 +232,38 @@ pub fn list_videos(root: &Path) -> Vec<Tape> {
         .collect()
 }
 
+/// Every ROM under `<root>/roms`, in folder order.
+pub fn list_roms(root: &Path) -> Vec<Rom> {
+    let Some(dir) = roms_root(root) else { return Vec::new() };
+
+    files_under(&dir, &ROM_EXTENSIONS)
+        .into_iter()
+        .filter_map(|(path, format)| {
+            let id = book_id(&path).ok()?;
+            let size_bytes = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let (outer, inner) = folder_names(&path, &dir);
+
+            Some(Rom {
+                id,
+                path: path.to_string_lossy().to_string(),
+                title: title_from_filename(&path),
+                series: inner.or(outer),
+                format,
+                size_bytes,
+            })
+        })
+        .collect()
+}
+
+/// The path of one ROM, by the id `list_roms` handed out.
+///
+/// There is no SQLite row to look this up in, so the folder is walked again —
+/// it is a few dozen files, and it means a caller can only ever name a ROM the
+/// listing already told it about, the same property `db::path_of` gives books.
+pub fn rom_path(root: &Path, id: &str) -> Option<PathBuf> {
+    list_roms(root).into_iter().find(|rom| rom.id == id).map(|rom| PathBuf::from(rom.path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,6 +338,26 @@ mod tests {
         // The nearest folder wins: "1998" is more specific than "Holidays".
         assert_eq!(tapes[0].series.as_deref(), Some("1998"));
         assert_eq!(tapes[0].format, "mp4");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn roms_take_the_folder_as_their_series_and_only_ch8_counts() {
+        let dir = temp_dir("roms");
+        fs::create_dir_all(dir.join("roms/ch8")).unwrap();
+        fs::write(dir.join("roms/ch8/pong.ch8"), b"\x00\xe0").unwrap();
+        fs::write(dir.join("roms/ch8/readme.txt"), b"x").unwrap();
+
+        let roms = list_roms(&dir);
+        assert_eq!(roms.len(), 1);
+        assert_eq!(roms[0].title, "Pong");
+        assert_eq!(roms[0].series.as_deref(), Some("ch8"));
+        assert_eq!(roms[0].format, "ch8");
+
+        let path = rom_path(&dir, &roms[0].id).expect("the listing's id resolves");
+        assert!(path.ends_with("pong.ch8"));
+        assert_eq!(rom_path(&dir, "not-an-id"), None);
+        assert!(list_roms(&temp_dir("no-roms")).is_empty());
         let _ = fs::remove_dir_all(&dir);
     }
 

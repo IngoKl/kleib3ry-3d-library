@@ -41,6 +41,27 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     ],
   },
   {
+    title: 'The Arcade Machine',
+    rows: [
+      [['E'], 'Take a cartridge from the ROM box; again on the box swaps it for the next'],
+      [['E'], 'Slot the cartridge in — it boots at once; at a running machine, step up to the controls'],
+      [['Esc'], 'Step away — the game plays on'],
+      [['F'], 'Take the cartridge back out'],
+      [['Q'], 'Put the one in your hand back in the box'],
+    ],
+  },
+  {
+    title: 'Food, Drink and the Dark',
+    rows: [
+      [['E'], 'Take the coffee when the pot is full; a cold can from the fridge; the headlamp off the porch table'],
+      [['E'], 'On the telephone, order a food delivery — a courier walks it to the foot of the porch steps'],
+      [['F'], 'Drink or eat what is in your hand — the coffee makes you quicker for a while'],
+      [['E'], 'Set what you are holding down on any table; wearing the headlamp, an empty tabletop takes it off'],
+      [['E'], 'Throw empties in the kitchen bin'],
+      [['Q'], 'Put what you are holding down at your feet'],
+    ],
+  },
+  {
     title: 'The Whiteboard',
     rows: [
       [['E'], 'Pick the marker up off the office desk, and put it back'],

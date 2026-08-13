@@ -13,6 +13,7 @@ import { deflateSync } from 'node:zlib'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { PROSE, makePdf } from './lib/make-pdf.mjs'
+import { buildPongRom } from './lib/make-chip8.mjs'
 
 const OUT = resolve(process.argv[2] ?? 'C:/tmp/kleib3ry-test-library')
 
@@ -209,4 +210,10 @@ writeFileSync(join(BOOKS, 'node_modules', 'ignored.pdf'), makePdf({ ...PDFS[0], 
 mkdirSync(join(OUT, 'music'), { recursive: true })
 writeFileSync(join(OUT, 'music', 'sleeve_notes.pdf'), makePdf({ ...PDFS[0], body: PROSE }))
 
-console.log(`wrote ${PDFS.length} PDFs and ${EPUBS.length} EPUBs to ${BOOKS}`)
+// Something for the arcade machine — and a decoy beside it, because `roms/` is
+// a reserved name the book walker must leave alone.
+mkdirSync(join(OUT, 'roms', 'ch8'), { recursive: true })
+writeFileSync(join(OUT, 'roms', 'ch8', 'pong.ch8'), buildPongRom())
+writeFileSync(join(OUT, 'roms', 'manual.pdf'), makePdf({ ...PDFS[0], body: PROSE }))
+
+console.log(`wrote ${PDFS.length} PDFs, ${EPUBS.length} EPUBs and 1 ROM to ${OUT}`)

@@ -59,6 +59,8 @@ export const sceneRefs: {
   /** Books lying about the room, on tables and on the floor. */
   looseBooks: THREE.InstancedMesh | null
   looseIds: string[]
+  /** The small props — cup, cans, takeaway boxes. Each group carries its propId. */
+  props: THREE.Object3D | null
   /** Books left open. Real meshes rather than instances, so their own group. */
   openBooks: THREE.Object3D | null
   /** Everything you can sit on. Each mesh carries its furniture id in userData. */
@@ -106,6 +108,7 @@ export const sceneRefs: {
   pinned: null,
   looseBooks: null,
   looseIds: [],
+  props: null,
   openBooks: null,
   seats: null,
   cat: null,

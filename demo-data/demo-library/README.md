@@ -25,3 +25,7 @@ Attribution license. <https://dig.ccmixter.org/files/airtone/55887>
 Finding Footage Clouds Time Lapse by Finding Footage (c) copyright 2015.
 Licensed under a Creative Commons Zero Universal (1.0) license.
 <https://archive.org/details/FindingFootageCloudsTimeLapse>
+
+## Roms
+
+The `pong.ch8` rom has been created as demo game for this project.

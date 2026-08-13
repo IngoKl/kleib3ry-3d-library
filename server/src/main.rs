@@ -328,6 +328,9 @@ fn route(request: &Request, state: &State) -> Handler {
         ("GET", "/api/video") => Ok(Response::json(
             &serde_json::to_value(media::list_videos(&state.config.root)).map_err(oops)?,
         )),
+        ("GET", "/api/roms") => Ok(Response::json(
+            &serde_json::to_value(media::list_roms(&state.config.root)).map_err(oops)?,
+        )),
 
         _ => route_by_prefix(request, state),
     }
@@ -348,6 +351,16 @@ fn route_by_prefix(request: &Request, state: &State) -> Handler {
                 return Ok(Response::text(404, "no such book"))
             };
             let bytes = fs::read(&book).map_err(oops)?;
+            return Ok(Response::new(200, "application/octet-stream", bytes));
+        }
+
+        // A ROM's bytes, for the arcade machine's emulator — by listing id, not
+        // by name, so `roms/` never needs to join the `/media/` allow-list.
+        if let Some(id) = path.strip_prefix("/api/rom/") {
+            let Some(rom) = media::rom_path(&state.config.root, id) else {
+                return Ok(Response::text(404, "no such rom"))
+            };
+            let bytes = fs::read(&rom).map_err(oops)?;
             return Ok(Response::new(200, "application/octet-stream", bytes));
         }
     }
@@ -763,6 +776,27 @@ mod tests {
         assert!(tapes[0]["sizeBytes"].is_number());
     }
 
+    #[test]
+    fn a_rom_is_listed_and_fetched_by_id_and_an_unknown_one_is_a_404() {
+        let h = Harness::new("roms");
+        assert_eq!(h.json("GET", "/api/roms").as_array().unwrap().len(), 0);
+
+        fs::create_dir_all(h.root.join("roms/ch8")).unwrap();
+        fs::write(h.root.join("roms/ch8/pong.ch8"), b"\x12\x00").unwrap();
+
+        let roms = h.json("GET", "/api/roms");
+        assert_eq!(roms.as_array().unwrap().len(), 1);
+        assert_eq!(roms[0]["title"], "Pong");
+        assert_eq!(roms[0]["series"], "ch8");
+        let id = roms[0]["id"].as_str().unwrap().to_string();
+
+        let bytes = h.call("GET", &format!("/api/rom/{id}"), b"");
+        assert_eq!(bytes.status, 200);
+        assert_eq!(bytes.body, b"\x12\x00".to_vec());
+
+        assert_eq!(h.call("GET", "/api/rom/nothing-like-that", b"").status, 404);
+    }
+
     /// A scan, end to end, through the route the container actually uses.
     #[test]
     fn a_scan_indexes_the_books_folder_and_nothing_else() {
@@ -930,6 +964,12 @@ mod tests {
         assert!(is_allowed(&root.join("music/track.mp3"), &root));
         // A book is served by id, through the index, and never by name.
         assert!(!is_allowed(&root.join("books/private.pdf"), &root));
+        // A ROM likewise: `/api/rom/<id>`, never `/media/roms/...`.
+        {
+            fs::create_dir_all(root.join("roms")).unwrap();
+            fs::write(root.join("roms/game.ch8"), b"rom").unwrap();
+            assert!(!is_allowed(&root.join("roms/game.ch8"), &root));
+        }
         assert!(!is_allowed(&root.join("secret.txt"), &root));
         assert!(!is_allowed(&save_files(&root).layout, &root));
         // Traversal out of an allowed folder resolves away before the check.

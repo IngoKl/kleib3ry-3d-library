@@ -29,6 +29,13 @@ export const player = {
    */
   zoom: 0,
   fov: 72,
+  /**
+   * `performance.now()` before which the coffee is still working: the walk
+   * controller reads it every frame and steps a quarter quicker until it
+   * passes. Here rather than in the store because nothing should re-render
+   * when a stimulant wears off.
+   */
+  boostUntil: 0,
 }
 
 export const EYE_HEIGHT = 1.68

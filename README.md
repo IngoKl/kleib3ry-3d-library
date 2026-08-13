@@ -63,6 +63,7 @@ My Library/
   music/        one record per file
   artwork/      one picture per file
   video/        one tape per file
+  roms/         one game cartridge per .ch8 file
   .library/     everything the app writes — created for you
 ```
 

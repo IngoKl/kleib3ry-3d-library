@@ -88,6 +88,19 @@ export const FURNITURE_SIZE: Record<
   // A whiteboard marker, lying wherever it was left. Its footprint is only ever
   // used to work out whether the crosshair is on it.
   marker: { width: 0.14, depth: 0.06, height: 0.05, solid: false, surface: false },
+  // The telephone. Not solid — it stands on a counter, like the coffee maker.
+  phone: { width: 0.24, depth: 0.17, height: 0.16, solid: false, surface: false },
+  fridge: { width: 0.62, depth: 0.62, height: 1.58, solid: true, surface: false },
+  bin: { width: 0.34, depth: 0.34, height: 0.42, solid: true, surface: false },
+  // The headlamp, lying wherever `y` puts it — on the porch table, by default.
+  headlamp: { width: 0.16, depth: 0.14, height: 0.08, solid: false, surface: false },
+  // An upright cabinet: person-height, deep enough to house a tube, and solid
+  // because it stands on the floor and you walk up to its front.
+  arcade: { width: 0.72, depth: 0.78, height: 1.75, solid: true, surface: false },
+  // The crate of game cartridges beside it. Low, so it never hides the wall
+  // behind it. Not a surface: it is open-topped, and it is an appliance — a
+  // piece in both the fixtures and the surfaces group would be drawn twice.
+  rombox: { width: 0.5, depth: 0.34, height: 0.46, solid: true, surface: false },
   fireplace: { width: 1.2, depth: 0.5, height: 1.5, solid: true, surface: false },
   floorlamp: { width: 0.36, depth: 0.36, height: 1.66, solid: true, surface: false },
   pendant: { width: 0.3, depth: 0.3, height: 0.3, solid: false, surface: false },
@@ -144,6 +157,12 @@ export const APPLIANCES = new Set<FurnitureKind>([
   'marker',
   'lightswitch',
   'boxstack',
+  'phone',
+  'fridge',
+  'bin',
+  'headlamp',
+  'arcade',
+  'rombox',
 ])
 
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -1000,6 +1019,22 @@ export function floorAt(world: DerivedWorld, x: number, z: number, from = 0): nu
 
 /** How big a step up you can take without stairs: a threshold, not a wall. */
 export const STEP_UP = 0.42
+
+/**
+ * Where a food delivery is left: at the foot of the porch steps, on the ground
+ * the treads walk down to. A map with no `step` gets it at the spawn instead —
+ * wherever that is, it is somewhere the person who wrote the map stands.
+ */
+export function deliverySpot(world: DerivedWorld): { x: number; y: number; z: number; yaw: number } {
+  const step = world.furniture.find((item) => item.kind === 'step')
+  if (step) {
+    const x = step.x + Math.sin(step.rotationY) * (step.depth / 2 + 0.45)
+    const z = step.z + Math.cos(step.rotationY) * (step.depth / 2 + 0.45)
+    return { x, y: floorAt(world, x, z, step.y) ?? step.y, z, yaw: step.rotationY + Math.PI }
+  }
+  const { x, z, y } = world.spawn
+  return { x: x + 0.6, y: floorAt(world, x + 0.6, z, y) ?? y, z, yaw: 0 }
+}
 
 /**
  * The height of whatever a dropped book would land on: the floor, or the top of

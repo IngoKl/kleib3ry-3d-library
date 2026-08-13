@@ -110,7 +110,9 @@ Four directories are reachable over HTTP — `covers`, `music`, `artwork`, `vide
 opened, so a `..` in a URL or a symlink planted in `music/` resolves away before
 the comparison. `books/` is **not** reachable: a book is served by its index id
 through `/api/book/<id>`, which means the only files a browser can name directly
-are the ones the index already told it about.
+are the ones the index already told it about. `roms/` follows the book's rule
+rather than the media rule — a ROM is a few kilobytes read once, not a stream —
+so it is served by listing id through `/api/rom/<id>` and never by name.
 
 The desktop app gets the same property from Tauri's asset scope, which starts
 empty and is granted those directories at runtime. There is no such scope here,
@@ -134,7 +136,9 @@ read side by side.
 | `GET /api/world/stamp`                         | cheap changed-ness, for live reload                    |
 | `GET /api/paths`                               | which files this library is saved into                 |
 | `GET`/`PUT` `/api/layout`                      | which book is where                                    |
-| `GET /api/music`, `/api/artwork`, `/api/video` | the other three folders                                |
+| `GET /api/music`, `/api/artwork`, `/api/video` | the media folders                                      |
+| `GET /api/roms`                                | the games for the arcade machine                       |
+| `GET /api/rom/<id>`                            | one ROM's bytes, by listing id — like a book's         |
 | `GET`/`PUT` `/api/ambience`                    | which lamps are on, and whether it is night or raining |
 | `GET /media/<path>`                            | a media file, with byte ranges                         |
 | anything else                                  | the built front end, falling back to `index.html`      |

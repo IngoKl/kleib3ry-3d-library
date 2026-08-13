@@ -55,6 +55,7 @@ My Library/
   music/        one record per file, for the record player
   artwork/      one picture per file, for the frames on the wall
   video/        one tape per file, for the television
+  roms/         one game cartridge per .ch8 file, for the arcade machine
 ```
 
 The app then creates `.library/` beside them for everything it writes — the
@@ -110,6 +111,7 @@ Things worth trying early:
 | **`E`** on a lamp, the deck, the coffee maker | works it                                                                |
 | **`E`** on a record, then on a deck           | puts music on; **`F`** takes it back off                                |
 | **`E`** on a tape, then on the television     | plays it; **`F`** takes it back out                                     |
+| **`E`** on the ROM box, then on the arcade    | boots the game; **`E`** again steps up to play, **`Esc`** steps away    |
 | **`E`** on the marker in the office           | picks it up — then hold the left mouse button to draw on the whiteboard |
 | **`E`** on the switch by the porch door       | works every light in the library at once                                |
 | **`L`** at a bookcase                         | writes on its label                                                     |

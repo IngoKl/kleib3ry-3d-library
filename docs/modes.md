@@ -29,7 +29,8 @@ desktop app, [docker.md](docker.md) for the container.
 ## What Is the Same
 
 **The library folder is the library.** Both modes read the same folder shape —
-`books/`, `music/`, `artwork/`, `video/`, and a `.library/` the app writes into —
+`books/`, `music/`, `artwork/`, `video/`, `roms/`, and a `.library/` the app
+writes into —
 and everything either one decides goes back into it. Point them both at the same
 folder and they see the same shelves, the same boxes, the same bookmarks, the
 same lamps. Move that folder to another machine, or mount it into a container
@@ -65,7 +66,8 @@ it from Tauri's asset scope, which starts empty and is granted four directories
 at runtime. The container has no such thing, so it is the server's own job:
 `is_allowed` in [server/src/main.rs](../server/src/main.rs) canonicalises every
 path and checks it against `covers`, `music`, `artwork` and `video`. `books/` is
-not reachable by name in either — a book is fetched by its index id.
+not reachable by name in either — a book is fetched by its index id — and
+`roms/` follows the same rule: a ROM is fetched by the id its listing handed out.
 
 **Covers are rendered by whoever is looking.** Page one is rasterised by pdf.js
 in the WebView or the browser and posted back to be cached in `.library/covers/`.

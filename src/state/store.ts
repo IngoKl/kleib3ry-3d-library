@@ -1,13 +1,18 @@
 import { create } from 'zustand'
 import { library } from '../services'
 import { MARKER_INKS } from '../data/inks'
-import type { DriverKind } from '../services/types'
+import type { DriverKind, PropKind } from '../services/types'
+import { startDelivery } from './courier'
+import { useWorldStore } from './world'
+import { arcadeMachine } from './arcade'
+import { player } from './player'
 
 /**
- * Where you are: on your feet in the room, or docked to an open book. Not a
- * setting — you walk, and opening a book puts you in it until you close it.
+ * Where you are: on your feet in the room, docked to an open book, or stood at
+ * the arcade machine with your hands on its controls. Not a setting — you walk,
+ * and opening a book or stepping up to the game puts you in it until you leave.
  */
-export type Mode = 'walk' | 'read'
+export type Mode = 'walk' | 'read' | 'play'
 
 /**
  * Where a held book would go if you placed it now.
@@ -88,6 +93,8 @@ type AppState = {
   heldTape: string | null
   /** Tape crate under the crosshair while holding a tape — put it back. */
   tapeCrateTarget: string | null
+  /** ROM cartridge in hand, by rom id. Its own slot: a cartridge is not a book. */
+  heldRom: string | null
   /**
    * Bookcase carcass under the crosshair, whether or not a book is. This is what
    * lets `L` label an empty case.
@@ -141,6 +148,28 @@ type AppState = {
   focusedCat: boolean
   /** Coffee maker that is currently brewing. It stops on its own. */
   brewing: string | null
+  /** Coffee makers whose pot is full and waiting. Drained a cup at a time. */
+  readyPots: Record<string, boolean>
+  /**
+   * The small thing in your hand: the cup, a can, a takeaway box.
+   *
+   * Its own slot for the record's reason — a can is not a book, and the
+   * crosshair offers a different set of places while you carry one. Which one
+   * it is and whether it is full is all there is to know; where it came from
+   * has already been taken out of the placed props.
+   */
+  heldProp: { kind: PropKind; full: boolean } | null
+  /** Placed prop under the crosshair while empty-handed, by prop id. */
+  focusedProp: string | null
+  /**
+   * The headlamp on your head, by furniture id. Worn, not held: the whole
+   * point is walking out into the dark with both hands free for books.
+   */
+  wornLamp: string | null
+  /** True between ordering on the telephone and the food turning up. */
+  ordering: boolean
+  /** True while the courier is somewhere on the grass. Mounts his meshes. */
+  courierAbout: boolean
   /**
    * A page the reader has been asked to jump to, as a spread index.
    *
@@ -195,6 +224,7 @@ type AppState = {
   setFocusedTape: (id: string | null) => void
   setHeldTape: (id: string | null) => void
   setTapeCrateTarget: (id: string | null) => void
+  setHeldRom: (id: string | null) => void
   setFocusedShelf: (id: string | null) => void
   toggleHud: () => void
   setControlsOpen: (open: boolean) => void
@@ -218,8 +248,21 @@ type AppState = {
   start: () => void
   /** Ask the reader to open at `spread`. Cleared by the reader once it has. */
   requestJump: (spread: number | null) => void
-  /** Start a brew. It runs for a while and then stops itself. */
+  /** Start a brew. It runs for a while and then stops itself, pot full. */
   brew: (id: string) => void
+  /** Pour the pot into the cup: the maker goes back to wanting a brew. */
+  drainPot: (id: string) => void
+  setHeldProp: (prop: { kind: PropKind; full: boolean } | null) => void
+  setFocusedProp: (id: string | null) => void
+  setWornLamp: (id: string | null) => void
+  /** Ring for a delivery. A courier walks it to the porch steps a while later. */
+  order: () => void
+  setCourierAbout: (about: boolean) => void
+  /**
+   * Drink or eat what is in your hand. The coffee is the one with an effect —
+   * see `player.boostUntil`. An empty stays an empty.
+   */
+  consume: () => void
 
   loadRoot: () => Promise<void>
   pickRoot: () => Promise<void>
@@ -285,6 +328,12 @@ const sameSurface = (a: SurfaceTarget | null, b: SurfaceTarget | null) =>
 /** How long a pot takes. Long enough to walk away from and come back to. */
 const BREW_MS = 12_000
 
+/** How long the kitchen takes before the courier sets off with it. */
+const PREP_MS = 12_000
+
+/** What the coffee is for: quicker on your feet until it wears off. */
+const COFFEE_MS = 75_000
+
 const sameTarget = (a: ShelfTarget | null, b: ShelfTarget | null) =>
   a === b ||
   (a !== null &&
@@ -319,6 +368,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusedTape: null,
   heldTape: null,
   tapeCrateTarget: null,
+  heldRom: null,
   focusedShelf: null,
   hudHidden: false,
   controlsOpen: false,
@@ -337,16 +387,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   boardTarget: null,
   noting: false,
   brewing: null,
+  readyPots: {},
+  heldProp: null,
+  focusedProp: null,
+  wornLamp: null,
+  ordering: false,
+  courierAbout: false,
   jumpTo: null,
   jumping: false,
   annotating: false,
 
   /**
    * Read mode without a book is a dead end — nothing renders, the walk
-   * controller stops, and the only way out is the mode buttons. Refuse it.
+   * controller stops, and the only way out is the mode buttons. Refuse it, and
+   * refuse play mode at a machine with nothing in it for the same reason.
    */
   setMode: (mode) => {
     if (mode === 'read' && get().reading === null) return
+    if (mode === 'play' && arcadeMachine() === null) return
     set({ mode })
   },
 
@@ -383,6 +441,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().focusedTape !== focusedTape) set({ focusedTape })
   },
   setHeldTape: (heldTape) => set({ heldTape }),
+  setHeldRom: (heldRom) => set({ heldRom }),
   setTapeCrateTarget: (tapeCrateTarget) => {
     if (get().tapeCrateTarget !== tapeCrateTarget) set({ tapeCrateTarget })
   },
@@ -431,8 +490,48 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().brewing !== null) return
     set({ brewing: id })
     setTimeout(() => {
-      if (get().brewing === id) set({ brewing: null })
+      if (get().brewing === id) {
+        set({ brewing: null, readyPots: { ...get().readyPots, [id]: true } })
+      }
     }, BREW_MS)
+  },
+
+  drainPot: (id) => set({ readyPots: { ...get().readyPots, [id]: false } }),
+
+  setHeldProp: (heldProp) => set({ heldProp }),
+  // Written off the per-frame raycast, so it guards against no-op writes.
+  setFocusedProp: (focusedProp) => {
+    if (get().focusedProp !== focusedProp) set({ focusedProp })
+  },
+  setWornLamp: (wornLamp) => set({ wornLamp }),
+
+  order: () => {
+    if (get().ordering) return
+    set({ ordering: true })
+    // The kitchen takes its time; then somebody walks it over. The box lands
+    // when the courier reaches the steps — see `Courier.tsx` — not on a timer,
+    // so `ordering` stays true until he has actually put it down.
+    setTimeout(() => {
+      if (!get().ordering) return
+      const world = useWorldStore.getState().world
+      if (!world) {
+        // Nowhere to walk through: the order quietly fails rather than
+        // conjuring a box into a world that is not there.
+        set({ ordering: false })
+        return
+      }
+      startDelivery(world)
+      set({ courierAbout: true })
+    }, PREP_MS)
+  },
+
+  setCourierAbout: (courierAbout) => set({ courierAbout }),
+
+  consume: () => {
+    const prop = get().heldProp
+    if (!prop || !prop.full) return
+    if (prop.kind === 'cup') player.boostUntil = performance.now() + COFFEE_MS
+    set({ heldProp: { kind: prop.kind, full: false } })
   },
 
   setBoxViews: (boxViews) => {

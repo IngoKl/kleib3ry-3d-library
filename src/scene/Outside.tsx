@@ -290,6 +290,148 @@ const SKY_STOPS = [
 const MOON_DIRECTION = new THREE.Vector3(-0.38, 0.42, -0.78).normalize()
 
 /**
+ * The stars, as a point cloud on the inside of the dome rather than pixels in
+ * the sky canvas. The canvas is 256 px stretched over the whole horizon, so a
+ * star painted into it smeared into a dash; a point stays a couple of pixels
+ * wherever on the dome it sits, and each one twinkles on its own phase. Faded
+ * in with the dark and back out under cloud, because what a rainy night takes
+ * off a clear one is the stars, not more brightness — and the whole cloud is
+ * hidden by day, so it costs nothing while the sun is up.
+ */
+const STAR_COUNT = 750
+
+const STAR_VERTEX = /* glsl */ `
+  attribute float aSize;
+  attribute float aPhase;
+  attribute float aSpeed;
+  attribute vec3 aTint;
+  uniform float uPixel;
+  varying float vPhase;
+  varying float vSpeed;
+  varying vec3 vTint;
+  void main() {
+    vPhase = aPhase;
+    vSpeed = aSpeed;
+    vTint = aTint;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * uPixel;
+  }
+`
+
+const STAR_FRAGMENT = /* glsl */ `
+  uniform float uTime;
+  uniform float uAlpha;
+  varying float vPhase;
+  varying float vSpeed;
+  varying vec3 vTint;
+  void main() {
+    // A soft round dot, not the square a bare point is.
+    float d = length(gl_PointCoord - 0.5);
+    float disc = smoothstep(0.5, 0.12, d);
+    // The sparkle: each star breathes on its own phase and rate.
+    float twinkle = 0.68 + 0.32 * sin(uTime * vSpeed + vPhase);
+    gl_FragColor = vec4(vTint, uAlpha * disc * twinkle);
+  }
+`
+
+function Stars() {
+  const points = useRef<THREE.Points>(null)
+
+  const { geometry, material } = useMemo(() => {
+    const random = mulberry32(0x57a2)
+    const positions = new Float32Array(STAR_COUNT * 3)
+    const sizes = new Float32Array(STAR_COUNT)
+    const phases = new Float32Array(STAR_COUNT)
+    const speeds = new Float32Array(STAR_COUNT)
+    const tints = new Float32Array(STAR_COUNT * 3)
+
+    // Between the moon (radius + 28) and the dome (+ 40), so the disc draws
+    // over the stars behind it and the dome never clips them.
+    const radius = GROUND_RADIUS + 36
+    const cool = new THREE.Color('#e8eeff')
+    const warm = new THREE.Color('#ffe7c4')
+    const blue = new THREE.Color('#cfe0ff')
+    const tint = new THREE.Color()
+
+    for (let i = 0; i < STAR_COUNT; i++) {
+      // Uniform over the dome above the treeline: a uniform y on a sphere is a
+      // uniform area, so the zenith is no denser than the horizon.
+      const y = 0.05 + random() * 0.95
+      const azimuth = random() * Math.PI * 2
+      const flat = Math.sqrt(1 - y * y)
+      positions[i * 3] = Math.cos(azimuth) * flat * radius
+      positions[i * 3 + 1] = y * radius
+      positions[i * 3 + 2] = Math.sin(azimuth) * flat * radius
+
+      // Tiny, with a scatter of brighter ones — the handful you notice first.
+      const bright = random()
+      sizes[i] = bright > 0.94 ? between(random, 2.6, 3.4) : between(random, 1.1, 2.2)
+      phases[i] = random() * Math.PI * 2
+      speeds[i] = between(random, 0.5, 2.2)
+
+      const pick = random()
+      tint.copy(pick < 0.72 ? cool : pick < 0.88 ? blue : warm)
+      // Fainter stars are fainter, not smaller: brightness carries the depth.
+      tint.multiplyScalar(0.45 + 0.55 * bright)
+      tints[i * 3] = tint.r
+      tints[i * 3 + 1] = tint.g
+      tints[i * 3 + 2] = tint.b
+    }
+
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1))
+    geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1))
+    geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1))
+    geometry.setAttribute('aTint', new THREE.BufferAttribute(tints, 3))
+
+    const material = new THREE.ShaderMaterial({
+      vertexShader: STAR_VERTEX,
+      fragmentShader: STAR_FRAGMENT,
+      uniforms: {
+        uTime: { value: 0 },
+        uAlpha: { value: 0 },
+        uPixel: { value: 1 },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    })
+    return { geometry, material }
+  }, [])
+
+  useEffect(
+    () => () => {
+      geometry.dispose()
+      material.dispose()
+    },
+    [geometry, material],
+  )
+
+  useFrame(({ clock, gl }) => {
+    const node = points.current
+    if (!node) return
+    const alpha = ambienceBlend.night * (1 - ambienceBlend.rain)
+    node.visible = alpha > 0.02
+    if (!node.visible) return
+    material.uniforms.uTime!.value = clock.elapsedTime
+    material.uniforms.uAlpha!.value = alpha
+    material.uniforms.uPixel!.value = gl.getPixelRatio()
+  })
+
+  return (
+    <points
+      ref={points}
+      geometry={geometry}
+      material={material}
+      visible={false}
+      frustumCulled={false}
+    />
+  )
+}
+
+/**
  * A sky dome rather than a flat clear colour, so there is a horizon to see the
  * hills against. Drawn on the inside of a sphere with a gradient baked into a
  * small canvas — cheaper than a shader and easier to argue with. The canvas is
@@ -304,7 +446,7 @@ function Sky() {
 
   const sky = useMemo(() => {
     const canvas = document.createElement('canvas')
-    // Wide enough to scatter stars into at night; the day gradient does not care.
+    // Only a vertical gradient lives here; the stars are a point cloud now.
     canvas.width = 256
     canvas.height = 128
     const texture = new THREE.CanvasTexture(canvas)
@@ -340,23 +482,6 @@ function Sky() {
     ctx.globalAlpha = 1
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // A seeded scatter of stars in the upper half, brighter towards the top —
-    // fading in with the dark and back out under cloud, because what a rainy
-    // night takes off a clear one is the stars, not more brightness.
-    const alpha = ambienceBlend.night * (1 - ambienceBlend.rain)
-    if (alpha > 0.02) {
-      ctx.globalAlpha = alpha
-      const random = mulberry32(0x57a2)
-      for (let i = 0; i < 220; i++) {
-        const x = random() * canvas.width
-        const y = random() * canvas.height * 0.6
-        const bright = 0.35 + random() * 0.65 * (1 - y / (canvas.height * 0.6))
-        ctx.fillStyle = `rgba(232, 238, 255, ${bright.toFixed(2)})`
-        ctx.fillRect(x, y, random() > 0.85 ? 1.5 : 1, 1)
-      }
-      ctx.globalAlpha = 1
-    }
     texture.needsUpdate = true
   }
 
@@ -423,6 +548,7 @@ function Sky() {
           fog={false}
         />
       </mesh>
+      <Stars />
     </group>
   )
 }

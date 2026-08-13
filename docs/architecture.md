@@ -166,7 +166,9 @@ The one piece of security in the program is `is_allowed` in
 — `covers`, `music`, `artwork`, `video` — and every path is canonicalised and
 checked against them before a byte is opened. Books are served by index id, never
 by name, so the only files a browser can name are the ones the index already told
-it about.
+it about. ROMs follow the book's rule, not the media rule: a `.ch8` is a few
+kilobytes read once into the emulator, so `/api/rom/<id>` resolves an id against
+what `/api/roms` listed and `roms/` never joins the readable directories.
 
 ---
 
@@ -345,6 +347,7 @@ platter.
 | `state/settings.ts`    | what is about _this machine_, not this library                                      | zustand + `localStorage`                  |
 | `state/media.ts`       | `music/` and `artwork/`, and which record is on which deck                          | zustand                                   |
 | `state/video.ts`       | `video/`, and the tape in the machine                                               | zustand                                   |
+| `state/arcade.ts`      | `roms/`, and the cartridge in the arcade machine                                    | zustand                                   |
 | `state/covers.ts`      | cover images, two queues, one rate limit                                            | plain module                              |
 | `state/pages.ts`       | page images for books left open in the _room_, not in the reader                    | plain module                              |
 | `state/player.ts`      | position, yaw, pitch, crouch, zoom                                                  | **plain mutable object**                  |
@@ -399,11 +402,45 @@ finishes rather than resolving as you approach it.
 scope starts empty and is granted at runtime for exactly four directories —
 covers, music, artwork, video — each only when something asks. Audio and video
 are the reason those are directories rather than commands: a track or a tape is
-streamed while it plays.
+streamed while it plays. A ROM is neither — a few kilobytes read once at
+power-on — so `read_rom_file` is a command like `read_book_file`, and `roms/`
+never widens the scope.
+
+**The arcade machine is a CHIP-8 interpreter in the front end.**
+[src/arcade/chip8.ts](../src/arcade/chip8.ts) is the whole machine in one
+dependency-free file, stepped per frame by `scene/Arcade.tsx` and painted onto a
+64×32 `CanvasTexture` — an eight-kilobyte upload, the one dynamic texture cheap
+enough to repaint every frame. Games come from the library's `roms/` folder,
+listed like media (walked on demand, no SQLite) and read like a book (by listing
+id). The bundled Pong is assembled from scratch by
+[scripts/lib/make-chip8.mjs](../scripts/lib/make-chip8.mjs), and the tests run
+that exact ROM on the interpreter, so the assembler, the ROM and the CPU are
+held to agree.
 
 **A dropped book gets gravity and friction** from
 [src/scene/drop.ts](../src/scene/drop.ts), which is forty lines and not a solver.
 It runs per frame in `LooseBooks` and tells the store _once_, when the book stops.
+
+**The small props are a fourth home for things that are not books.** The coffee
+cup, the cans from the fridge and the takeaway boxes the deliveries leave are
+`props` in `books.json` (schema 9): kind, one `full` bit, and a real position,
+for the same reason `loose` stores one. There is exactly one cup (its id is
+`cup`, and it waits by the coffee maker whenever it is not out in the room);
+cans and takeaway boxes are minted as they arrive and destroyed by the kitchen
+bin, which refuses the crockery. `E` takes and places, `F` drinks or eats —
+drinking the coffee writes `player.boostUntil`, which the walk controller reads
+per frame for a quarter more speed, outside React like everything per-frame.
+The telephone's delivery is walked in by a courier
+([src/state/courier.ts](../src/state/courier.ts), a per-frame mutable like the
+cat): he comes out of the trees along the clearest straight lane, and the box
+becomes a placed prop only when he reaches `deliverySpot` in
+[src/world/derive.ts](../src/world/derive.ts) — the foot of the nearest `step`,
+or the spawn in a map with none. His meshes mount only while a delivery is out.
+The headlamp starts on the porch table, is _worn_, not held — session state,
+both hands free — comes off onto any bare tabletop as a placed prop, and its
+beam ([src/scene/Headlamp.tsx](../src/scene/Headlamp.tsx)) is a camera-riding
+spot light mounted only while worn, for the same shader-count reason as the
+television's glow.
 
 ---
 

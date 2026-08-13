@@ -3,8 +3,9 @@
 Every key, in one place. `F1` shows the same keys inside the room, grouped the
 same way, which is where you will actually look them up.
 
-There are no modes to choose. You are walking, or you are reading a book you
-opened — and `Esc` gets you out of the second.
+There are no modes to choose. You are walking, you are reading a book you
+opened, or you are standing at the arcade machine — and `Esc` gets you out of
+the last two.
 
 ## Moving
 
@@ -51,6 +52,18 @@ your hand.
 - **`F`** — take the record back off the deck, or the tape back out of the
   television.
 - **`Q`** — send it back to the crate the folder deals it into.
+
+## The Arcade Machine
+
+- **`E`** — take a cartridge from the ROM box; `E` on the box again swaps it
+  for the next one.
+- **`E`** — with the cartridge in hand, slot it into the machine. It boots at
+  once and keeps running while you walk about.
+- **`E`** — at a running machine, step up to the controls. The keyboard becomes
+  the CHIP-8 keypad — `1`–`4`, `Q`–`R`, `A`–`F`, `Z`–`V` — and the bundled Pong
+  steers with `W` and `S`. **`Esc`** steps away; the game plays on.
+- **`F`** — take the cartridge back out. **`Q`** puts the one in your hand back
+  in the box.
 
 ## The Whiteboard
 

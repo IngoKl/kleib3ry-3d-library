@@ -115,12 +115,17 @@ export const DEFAULT_WORLD_TEXT = `{
         // The hearth end of the room. The sofa keeps a fireside rug's width of
         // floor between itself and the hearth — close enough to warm your
         // feet, far enough that nothing reads as pushed against the fire.
+        // The seating is an island in the middle of the hearth end, not a
+        // lining of the walls: the sofa's west end stops at x = -3.26, which
+        // leaves an open corridor along the whole west shelf run — room to
+        // stand at a case and browse, not sidle past upholstery. The lamp
+        // stands on the seating's east side, out of every shelf lane.
         { "id": "hearth", "kind": "fireplace", "at": [-3.4, -3.75], "facing": 0 },
-        { "id": "hearth-rug", "kind": "rug", "at": [-3.0, -1.9], "facing": 0, "size": [3.6, 2.8] },
-        { "id": "sofa", "kind": "sofa", "at": [-3.0, -2.0], "facing": 180 },
-        { "id": "reading-chair", "kind": "armchair", "at": [-1.2, -2.5], "facing": 250 },
-        { "id": "hearth-table", "kind": "sidetable", "at": [-1.3, -1.5], "facing": 0 },
-        { "id": "hearth-lamp", "kind": "floorlamp", "at": [-4.3, -1.4], "facing": 0 },
+        { "id": "hearth-rug", "kind": "rug", "at": [-2.3, -1.7], "facing": 0, "size": [3.0, 2.6] },
+        { "id": "sofa", "kind": "sofa", "at": [-2.3, -1.15], "facing": 180 },
+        { "id": "reading-chair", "kind": "armchair", "at": [-0.85, -2.35], "facing": 250 },
+        { "id": "hearth-table", "kind": "sidetable", "at": [-0.85, -1.3], "facing": 0 },
+        { "id": "hearth-lamp", "kind": "floorlamp", "at": [-0.15, -3.05], "facing": 0 },
 
         // Records live under the window, with the deck on top of the crate.
         { "id": "records", "kind": "recordshelf", "at": [1.6, -3.8], "facing": 0 },
@@ -237,7 +242,15 @@ export const DEFAULT_WORLD_TEXT = `{
         // from your video/ folder in folder order, the way the record crates
         // fill themselves from music/ — so there is nothing to arrange.
         { "id": "telly", "kind": "crt", "at": [-1.6, 2.15], "facing": 195 },
-        { "id": "tapes", "kind": "tapecrate", "at": [-0.8, 2.25], "facing": 195 }
+        { "id": "tapes", "kind": "tapecrate", "at": [-0.8, 2.25], "facing": 195 },
+
+        // The games corner, up here in the north-east nook past the stairwell:
+        // the cabinet against the east wall facing west into the loft, the
+        // crate of cartridges round the corner on the north wall. The cabinet
+        // plays whatever is in roms/. The stairwell hole ends at local z -0.8,
+        // so everything here stands on solid boards.
+        { "id": "arcade", "kind": "arcade", "at": [4.61, -1.9], "facing": 270 },
+        { "id": "roms", "kind": "rombox", "at": [3.85, -2.53], "facing": 180 }
       ]
     },
 
@@ -379,15 +392,27 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "counter-south", "kind": "kitchencounter", "at": [-0.6, 1.39], "facing": 180 },
         { "id": "counter-east", "kind": "kitchencounter", "at": [1.69, -0.4], "facing": 270 },
         { "id": "coffee", "kind": "coffeemaker", "at": [-1.15, 1.35], "facing": 180, "y": 0.92 },
+        // The telephone, on the counter east of the coffee maker. E orders a
+        // food delivery; it is left at the foot of the porch steps a while
+        // later, and the empty box goes in the bin.
+        { "id": "phone", "kind": "phone", "at": [0.0, 1.38], "facing": 180, "y": 0.92 },
+        // A slim larder fridge, full of cold cans, on the north wall west of
+        // the bathroom door's lane (which runs x -1.5 to -0.6). E takes a can;
+        // the empties go in the bin. Slimmed to fit the strip of wall it has.
+        { "id": "fridge", "kind": "fridge", "at": [-1.74, -1.38], "facing": 0, "size": [0.5, 0.56] },
+        // The bin, in the corner west of the counter run, south of the west
+        // door's lane (which ends at z 1.25). Cans and takeaway boxes go in;
+        // it refuses the crockery.
+        { "id": "bin", "kind": "bin", "at": [-1.78, 1.45], "facing": 0 },
         // Chairs at the ends rather than at the sides: the north side of the
         // table is now the way through to the bathroom.
         { "id": "kitchen-table", "kind": "table", "at": [0.0, -0.6], "facing": 0, "size": [1.1, 0.72] },
         { "id": "kitchen-chair-1", "kind": "diningchair", "at": [0.0, 0.15], "facing": 180 },
         { "id": "kitchen-chair-2", "kind": "diningchair", "at": [0.9, -0.6], "facing": 270 },
-        // North-west corner. It stands clear of all three doorways: the great
-        // room's at z = 0.15 to 1.25, the office's on the south wall, and the
-        // bathroom's lane at x = -1.5 to -0.6.
-        { "id": "kitchen-plant", "kind": "plant", "at": [-1.75, -1.4], "facing": 0, "height": 0.55 },
+        // On the east counter's north end, up out of the walkway — the floor
+        // spot it used to hold is the lane between the table and the fridge.
+        // The sink sits at the counter's other end, at about z = 0.14.
+        { "id": "kitchen-plant", "kind": "plant", "at": [1.72, -1.0], "facing": 0, "y": 0.92, "height": 0.4 },
         { "id": "kitchen-pendant", "kind": "pendant", "at": [0.0, -0.6], "facing": 0 },
         // Flattened spares leaning on the east wall, south of the counter run.
         // E takes one; an empty box in the room breaks down with Backspace.
@@ -567,7 +592,14 @@ export const DEFAULT_WORLD_TEXT = `{
         // 24 cm, which is inside the step the walk controller will take
         // unaided, so the steps are what makes it look like somewhere to walk
         // down rather than somewhere to fall off.
-        { "id": "porch-step", "kind": "step", "at": [1.8, 2.21], "facing": 0 }
+        { "id": "porch-step", "kind": "step", "at": [1.8, 2.21], "facing": 0 },
+
+        // A little table by the steps, and the headlamp lying on it — where a
+        // hand finds it on the way out into the dark. E puts it on; worn, not
+        // held, so both hands stay free for books, and E on any empty tabletop
+        // sets it back down.
+        { "id": "porch-side", "kind": "sidetable", "at": [2.75, 1.45], "facing": 0 },
+        { "id": "headlamp", "kind": "headlamp", "at": [2.75, 1.45], "facing": 200, "y": 0.56 }
       ]
     },
 

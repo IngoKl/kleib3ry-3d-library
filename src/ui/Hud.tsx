@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { readerStatus } from '../reader/status'
 import { cat } from '../state/cat'
+import { player } from '../state/player'
 import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useAnnotationsStore } from '../state/annotations'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
+import { useArcadeStore } from '../state/arcade'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 import { LAMPS } from '../world/derive'
@@ -34,6 +36,22 @@ const FIXTURE_NAMES: Partial<Record<string, string>> = {
   fairylights: 'Fairy Lights',
   lightswitch: 'Light Switch',
   boxstack: 'Spare Boxes',
+  phone: 'The Telephone',
+  fridge: 'The Fridge',
+  bin: 'The Bin',
+  headlamp: 'A Headlamp',
+  arcade: 'The Arcade Machine',
+  rombox: 'The ROM Box',
+}
+
+/** What each small thing in your hand is called, full and drunk. */
+const PROP_NAMES: Record<string, { full: string; empty: string; consume: string }> = {
+  cup: { full: 'A Cup of Coffee', empty: 'The Empty Cup', consume: 'Drink it' },
+  can: { full: 'A Cold Can', empty: 'An Empty Can', consume: 'Drink it' },
+  takeaway: { full: 'A Takeaway, Still Warm', empty: 'An Empty Takeaway Box', consume: 'Eat' },
+  // Never in a hand — E puts it straight on — but it is a placed prop, and the
+  // pick-up card wants a name for it.
+  headlamp: { full: 'The Headlamp', empty: 'The Headlamp', consume: '' },
 }
 
 /**
@@ -103,8 +121,18 @@ export function Hud() {
   const tapes = useVideoStore((s) => s.tapes)
   const watching = useVideoStore((s) => s.playing)
   const watchPaused = useVideoStore((s) => s.paused)
+  const roms = useArcadeStore((s) => s.roms)
+  const inserted = useArcadeStore((s) => s.inserted)
+  const arcadeError = useArcadeStore((s) => s.error)
+  const heldRom = useAppStore((s) => s.heldRom)
   const lightsOn = useAmbienceStore((s) => s.on)
   const brewing = useAppStore((s) => s.brewing)
+  const readyPots = useAppStore((s) => s.readyPots)
+  const heldProp = useAppStore((s) => s.heldProp)
+  const focusedProp = useAppStore((s) => s.focusedProp)
+  const wornLamp = useAppStore((s) => s.wornLamp)
+  const ordering = useAppStore((s) => s.ordering)
+  const placedProps = useLibraryStore((s) => s.props)
 
   // Why the reader is showing nothing, on the same poll as the render stats:
   // `readerStatus` lives outside React, and the failure plane in the scene has
@@ -116,6 +144,8 @@ export function Hud() {
   const [readerPen, setReaderPen] = useState(false)
   /** The cat's mood, likewise: it changes every frame and is read on a poll. */
   const [purring, setPurring] = useState(false)
+  /** Whether the coffee is still working, likewise — it lives outside React. */
+  const [brisk, setBrisk] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -123,6 +153,7 @@ export function Hud() {
       setReaderSpread(readerStatus.spread)
       setReaderPen(readerStatus.pen)
       setPurring(cat.purr > 0.2)
+      setBrisk(performance.now() < player.boostUntil)
     }, 250)
     return () => clearInterval(id)
   }, [])
@@ -149,6 +180,8 @@ export function Hud() {
   const heldRecordTrack = heldRecord ? tracks.find((track) => track.id === heldRecord) : undefined
   const tape = focusedTape ? tapes.find((t) => t.id === focusedTape) : undefined
   const heldTapeItem = heldTape ? tapes.find((t) => t.id === heldTape) : undefined
+  const heldRomItem = heldRom ? roms.find((r) => r.id === heldRom) : undefined
+  const insertedRom = inserted ? roms.find((r) => r.id === inserted) : undefined
   const fixture = focusedFixture
     ? world?.furniture.find((item) => item.id === focusedFixture)
     : undefined
@@ -176,6 +209,14 @@ export function Hud() {
       case 'crt':
         if (watching === null) return 'no tape in it'
         return watchPaused ? 'play' : 'pause'
+      // An empty machine follows the television's rule, and a game that would
+      // not boot says why here rather than only in a console nobody has open.
+      case 'arcade':
+        if (arcadeError) return arcadeError
+        if (inserted === null) return 'no cartridge in it'
+        return 'step up and play'
+      case 'rombox':
+        return roms.length > 0 ? 'take a cartridge' : 'nothing in it — put games in roms/'
       case 'computer':
         return 'look something up'
       case 'postits':
@@ -184,8 +225,24 @@ export function Hud() {
         return 'pick it up'
       case 'boxstack':
         return 'make a box up'
+      case 'coffeemaker': {
+        if (brewing === fixture.id) return 'brewing…'
+        if (readyPots[fixture.id]) {
+          // The pot pours into the one cup, and only when the cup is home.
+          return 'cup' in placedProps ? 'the pot is full — your cup is out in the room' : 'take the coffee'
+        }
+        return 'put the coffee on'
+      }
+      case 'phone':
+        return ordering ? 'the food is on its way…' : 'order some food'
+      case 'fridge':
+        return 'take a cold can'
+      case 'bin':
+        return 'nothing in your hands to throw away'
+      case 'headlamp':
+        return 'put it on'
       default:
-        return brewing === fixture.id ? 'brewing…' : 'put the coffee on'
+        return ''
     }
   })()
 
@@ -307,7 +364,7 @@ export function Hud() {
           {walking && focusedSeat && !seat && (
             <div className="focus-card" data-testid="seat-card">
               <p className="focus-key">
-                <kbd>E</kbd> Sit down{held ? ' with it' : ''}
+                <kbd>E</kbd> Sit down{held || heldProp ? ' with it' : ''}
               </p>
             </div>
           )}
@@ -458,7 +515,124 @@ export function Hud() {
             </div>
           )}
 
-          {walking && focusedFixture && !held && !focusedRecord && !focusedTape && (
+          {walking && heldRom && (
+            <div className="held-card" data-testid="held-rom-card">
+              <p className="held-label">Holding a Cartridge</p>
+              <p className="focus-title">{heldRomItem?.title ?? 'A Cartridge'}</p>
+              <p className="focus-author">{heldRomItem?.series ?? 'Unlabelled'}</p>
+              <p className="focus-key">
+                {fixture?.kind === 'arcade' ? (
+                  <>
+                    <kbd>E</kbd> Slot it in
+                  </>
+                ) : fixture?.kind === 'rombox' ? (
+                  <>
+                    <kbd>E</kbd> Swap it for the next
+                  </>
+                ) : (
+                  <span className="warn">Aim at the machine, or at the box</span>
+                )}
+                {' · '}
+                <kbd>Q</kbd> Put it back
+              </p>
+            </div>
+          )}
+
+          {/* Standing at the machine: the keypad legend, because sixteen keys
+              on the left of a keyboard is nothing anybody guesses. */}
+          {mode === 'play' && (
+            <div className="held-card" data-testid="arcade-card">
+              <p className="held-label">At the Machine</p>
+              <p className="focus-title">{insertedRom?.title ?? 'Arcade'}</p>
+              <p className="focus-key">
+                The keypad is <kbd>1</kbd>–<kbd>4</kbd>, <kbd>Q</kbd>–<kbd>R</kbd>,{' '}
+                <kbd>A</kbd>–<kbd>F</kbd>, <kbd>Z</kbd>–<kbd>V</kbd> · Pong steers with{' '}
+                <kbd>W</kbd> and <kbd>S</kbd> · <kbd>Esc</kbd> Step away
+              </p>
+            </div>
+          )}
+
+          {/* A small thing standing in the room, to pick back up. */}
+          {walking && focusedProp && !held && !heldProp && (
+            <div className="focus-card" data-testid="prop-card">
+              <p className="focus-title">
+                {(() => {
+                  const prop = placedProps[focusedProp]
+                  if (!prop) return 'Something Small'
+                  return PROP_NAMES[prop.kind]?.[prop.full ? 'full' : 'empty'] ?? 'Something Small'
+                })()}
+              </p>
+              <p className="focus-key">
+                <kbd>E</kbd>{' '}
+                {placedProps[focusedProp]?.kind === 'headlamp' ? 'Put it on' : 'Pick it up'}
+              </p>
+            </div>
+          )}
+
+          {/* A cup, can or box in hand. What E does depends on what you aim at;
+              F is the mouth. */}
+          {walking && heldProp && (
+            <div className="held-card" data-testid="held-prop-card">
+              <p className="held-label">Holding</p>
+              <p className="focus-title">
+                {PROP_NAMES[heldProp.kind]?.[heldProp.full ? 'full' : 'empty'] ?? 'Something Small'}
+              </p>
+              <p className="focus-key">
+                {fixture?.kind === 'bin' ? (
+                  heldProp.kind === 'cup' ? (
+                    <span className="warn">Not the crockery — the cup lives by its machine</span>
+                  ) : (
+                    <>
+                      <kbd>E</kbd> Throw it away
+                    </>
+                  )
+                ) : fixture?.kind === 'coffeemaker' ? (
+                  readyPots[fixture.id] ? (
+                    <>
+                      <kbd>E</kbd> Refill it
+                    </>
+                  ) : (
+                    <span className="warn">The pot is empty — put a brew on first</span>
+                  )
+                ) : surfaceTarget ? (
+                  <>
+                    <kbd>E</kbd> Set it down here
+                  </>
+                ) : (
+                  <span className="warn">Aim at a table, or at the bin</span>
+                )}
+                {heldProp.full && (
+                  <>
+                    {' · '}
+                    <kbd>F</kbd> {PROP_NAMES[heldProp.kind]?.consume ?? 'Drink it'}
+                  </>
+                )}
+                {' · '}
+                <kbd>Q</kbd> Put it down
+              </p>
+            </div>
+          )}
+
+          {/* The headlamp, while it is on your head. */}
+          {walking && wornLamp && (
+            <div className="held-card" data-testid="worn-lamp-card">
+              <p className="held-label">Wearing</p>
+              <p className="focus-title">The Headlamp</p>
+              <p className="focus-key">
+                {!held && !heldProp && surfaceTarget ? (
+                  <>
+                    <kbd>E</kbd> Set it down here
+                  </>
+                ) : (
+                  <>
+                    <kbd>E</kbd> on an empty tabletop takes it off
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+
+          {walking && focusedFixture && !held && !heldProp && !focusedRecord && !focusedTape && (
             <div className="focus-card" data-testid="fixture-card">
               <p className="focus-title">{fixtureName}</p>
               <p className="focus-key">
@@ -641,6 +815,17 @@ export function Hud() {
             {scanning && progress && (
               <p className="note" data-testid="scan-progress">
                 Scanning {progress.done} / {progress.total} — {progress.current}
+              </p>
+            )}
+
+            {ordering && (
+              <p className="note" data-testid="delivery-note">
+                The food is on its way.
+              </p>
+            )}
+            {brisk && (
+              <p className="note" data-testid="coffee-note">
+                The coffee is working — you are quicker on your feet.
               </p>
             )}
 
