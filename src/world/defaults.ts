@@ -177,6 +177,11 @@ export const DEFAULT_WORLD_TEXT = `{
         // top of the stairs.
         { "id": "stairs", "kind": "stairs", "at": [4.4, -0.4], "facing": 180, "size": [1.05, 3.4], "rise": 2.5 },
 
+        // The front door, hung in the south doorway to the porch. E swings it;
+        // whether it stands open is remembered in ambience.json with the
+        // lamps, and a closed one really does block the doorway.
+        { "id": "front-door", "kind": "door", "at": [2.6, 4.06], "facing": 180, "size": [1.24, 0.08], "height": 2.03, "on": true },
+
         // Books with nowhere to go end up in these. Add more if you run out.
         { "id": "box-1", "kind": "box", "at": [-1.0, 2.5], "facing": 8 },
         { "id": "box-2", "kind": "box", "at": [-0.3, 2.65], "facing": -6 },
@@ -514,7 +519,9 @@ export const DEFAULT_WORLD_TEXT = `{
         // clear. The terminal on it is the library's index: E on it searches
         // every book, record, tape and picture the library knows about and says
         // where the thing actually is.
-        { "id": "desk", "kind": "desk", "at": [-1.2, 1.6], "facing": 0, "size": [1.6, 0.75] },
+        // Turned so the drawers face the chair — a desk's drawers belong on
+        // the side of the person sitting at it.
+        { "id": "desk", "kind": "desk", "at": [-1.2, 1.6], "facing": 180, "size": [1.6, 0.75] },
         { "id": "desk-chair", "kind": "diningchair", "at": [-1.2, 0.75], "facing": 0 },
         // The terminal faces 180 while the desk it stands on faces 0, which
         // looks like a mistake and is the opposite: facing points a thing's
@@ -684,6 +691,38 @@ export const DEFAULT_WORLD_TEXT = `{
         // Along the north railing, facing the water. This deck's roof only
         // reaches 2.3, so the line hangs at 1.9.
         { "id": "deck-lights", "kind": "fairylights", "at": [0, -1.08], "facing": 0, "y": 1.9, "size": [4.0, 0.14] }
+      ]
+    },
+
+    {
+      "id": "camp",
+      "name": "The camp",
+      // Across the water: the far shore, just past the walk that rings the
+      // lake, looking back at both houses. Not a building — no walls, no
+      // roof, a stone pad barely proud of the grass — but a room as far as
+      // the format cares, which is what clears the forest around it and
+      // gives the fire somewhere to be. The pad sits 2 cm above the ground
+      // (which is at -0.24) so the two surfaces never fight for pixels.
+      "origin": [-4, -65],
+      "size": [6, 5],
+      "height": 2.4,
+      "elevation": -0.22,
+      "outdoor": true,
+      "walls": [],
+      "ceiling": false,
+      "floor": "stone",
+      "roof": { "kind": "none", "pitch": 0, "overhang": 0, "fall": "south" },
+
+      "shelves": [],
+
+      // A fire in a ring of stones — lit with E, like a lamp, but not on the
+      // house circuit: the switch by the cabin door leaves it alone. The two
+      // benches are the logs you sit on, and the tent faces the fire.
+      "furniture": [
+        { "id": "camp-fire", "kind": "campfire", "at": [0, 0.3], "facing": 0, "on": false },
+        { "id": "camp-tent", "kind": "tent", "at": [-1.6, -0.9], "facing": 55 },
+        { "id": "camp-log-1", "kind": "bench", "at": [1.3, -0.6], "facing": 305 },
+        { "id": "camp-log-2", "kind": "bench", "at": [0.9, 1.55], "facing": 217 }
       ]
     }
   ]

@@ -853,6 +853,164 @@ function Bin({ width, height }: { width: number; height: number }) {
 // see `HeadlampAtRest` in Props.tsx. There is one lamp: on your head, standing
 // somewhere as a prop, or here, and the home only draws it in the third case.
 
+/**
+ * A hinged door leaf, standing in a doorway. `E` swings it — the angle is
+ * eased here, per frame, because a door that snaps between its two states
+ * reads as a texture flipping — and whether it is open is remembered in
+ * `ambience.json` with the lamps, because which doors stand open is a fact
+ * about the room, not about this machine. A closed one blocks the doorway:
+ * the walk controller adds that collider itself, off the same bit.
+ */
+function DoorLeaf({ width, height, open }: { width: number; height: number; open: boolean }) {
+  const swing = useRef<THREE.Group>(null)
+  // Primed to its resting state so a saved-open door mounts open rather than
+  // swinging theatrically on every launch.
+  const angle = useRef(open ? DOOR_OPEN : 0)
+
+  useFrame((_, delta) => {
+    const want = open ? DOOR_OPEN : 0
+    angle.current += (want - angle.current) * Math.min(1, delta * 6)
+    if (Math.abs(want - angle.current) < 0.002) angle.current = want
+    if (swing.current) swing.current.rotation.y = angle.current
+  })
+
+  return (
+    <group position={[-width / 2, 0, 0]}>
+      {/* The post the hinges hang on. */}
+      <mesh position={[0, height / 2, 0]} castShadow>
+        <boxGeometry args={[0.05, height, 0.07]} />
+        <meshStandardMaterial color={OAK} roughness={0.7} />
+      </mesh>
+      <group ref={swing}>
+        <mesh position={[width / 2, height / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[width, height, 0.045]} />
+          <meshStandardMaterial color={OAK} roughness={0.65} />
+        </mesh>
+        {/* Two sunken panels, one each side, so it reads as joinery. */}
+        {[-1, 1].map((face) =>
+          [0.3, 0.71].map((at) => (
+            <mesh key={`${face}:${at}`} position={[width / 2, height * at, face * 0.024]}>
+              <boxGeometry args={[width * 0.68, height * 0.28, 0.008]} />
+              <meshStandardMaterial color="#6d4b2e" roughness={0.8} />
+            </mesh>
+          )),
+        )}
+        {[-1, 1].map((face) => (
+          <mesh key={`knob${face}`} position={[width * 0.86, height * 0.48, face * 0.045]}>
+            <sphereGeometry args={[0.028, 8, 8]} />
+            <meshStandardMaterial color={BRASS} roughness={0.35} metalness={0.7} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  )
+}
+
+/** Radians a door stands open at: flat-ish back, clear of the walkway. */
+const DOOR_OPEN = -1.92
+
+/** An A-frame tent: two canvas slopes on a ridge pole, open at both ends. */
+function Tent({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const CANVAS = '#66704f'
+  const slope = Math.hypot(width / 2, height)
+  const pitch = Math.atan2(width / 2, height)
+  return (
+    <group>
+      <mesh position={[0, 0.015, 0]} receiveShadow>
+        <boxGeometry args={[width - 0.1, 0.03, depth - 0.1]} />
+        <meshStandardMaterial color="#4c523f" roughness={1} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh
+          key={side}
+          position={[(side * width) / 4, height / 2, 0]}
+          rotation-z={-side * pitch}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[slope, 0.025, depth]} />
+          <meshStandardMaterial color={CANVAS} roughness={1} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+      {/* Ridge pole and the two uprights it rests on. */}
+      <mesh position={[0, height, 0]} rotation-x={Math.PI / 2} castShadow>
+        <cylinderGeometry args={[0.02, 0.02, depth + 0.16, 6]} />
+        <meshStandardMaterial color={OAK} roughness={0.8} />
+      </mesh>
+      {[-1, 1].map((end) => (
+        <mesh key={`pole${end}`} position={[0, height / 2, (end * depth) / 2]} castShadow>
+          <cylinderGeometry args={[0.02, 0.024, height, 6]} />
+          <meshStandardMaterial color={OAK} roughness={0.8} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** A ring of stones, a few logs leaned together, and the fire when it is lit. */
+function Campfire({ lit }: { lit: boolean }) {
+  return (
+    <group>
+      {Array.from({ length: 8 }, (_, i) => {
+        const angle = (i / 8) * Math.PI * 2 + 0.3
+        return (
+          <mesh
+            key={i}
+            position={[Math.cos(angle) * 0.36, 0.05, Math.sin(angle) * 0.36]}
+            rotation-y={angle + ((i * 31) % 7) / 7}
+            rotation-z={((i * 17) % 5) / 25}
+            castShadow
+          >
+            <boxGeometry args={[0.15, 0.11, 0.12]} />
+            <meshStandardMaterial color={MATERIALS.stone} roughness={1} />
+          </mesh>
+        )
+      })}
+      {[0, 1, 2].map((i) => {
+        const angle = (i / 3) * Math.PI * 2 + 0.8
+        return (
+          <mesh
+            key={`log${i}`}
+            position={[Math.cos(angle) * 0.1, 0.12, Math.sin(angle) * 0.1]}
+            rotation-z={Math.PI / 2 - 0.5}
+            rotation-y={angle}
+            castShadow
+          >
+            <cylinderGeometry args={[0.04, 0.045, 0.5, 7]} />
+            <meshStandardMaterial color={TRUNK_BROWN} roughness={1} />
+          </mesh>
+        )
+      })}
+      {/* The embers, and a low flame when it is going. Nothing animates — the
+          same argument the hearth makes about flicker. */}
+      <mesh position={[0, 0.06, 0]}>
+        <cylinderGeometry args={[0.17, 0.2, 0.06, 10]} />
+        <meshStandardMaterial
+          color={lit ? '#c9541e' : '#2b241d'}
+          emissive={lit ? '#ff7a2a' : '#000000'}
+          emissiveIntensity={lit ? 1.6 : 0}
+          roughness={1}
+        />
+      </mesh>
+      {lit && (
+        <mesh position={[0, 0.22, 0]}>
+          <coneGeometry args={[0.11, 0.26, 7]} />
+          <meshStandardMaterial
+            color="#ffb03a"
+            emissive="#ff9030"
+            emissiveIntensity={1.8}
+            transparent
+            opacity={0.85}
+            roughness={1}
+          />
+        </mesh>
+      )}
+    </group>
+  )
+}
+
+const TRUNK_BROWN = '#4a3826'
+
 /** A crate for records, open at the front, with a top you can put things on. */
 function RecordShelf({ width, depth, height }: { width: number; depth: number; height: number }) {
   const wall = 0.026
@@ -1832,6 +1990,11 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
     item.kind === 'headlamp' ? 'headlamp' in s.props : false,
   )
   const heldMarker = useAppStore((s) => (item.kind === 'marker' ? s.heldMarker === item.id : false))
+  // A door's open bit rides the same keyed store the lamps use — which doors
+  // stand open is a fact about the room, saved beside the weather.
+  const doorOpen = useAmbienceStore((s) =>
+    item.kind === 'door' ? s.isOn(item.id, item.on ?? true) : false,
+  )
   const ink = useAppStore((s) => (item.kind === 'marker' ? s.markerInk : 0))
   const allOn = useAnyLightOn(item.kind === 'lightswitch')
   // The terminal's screen lights when its search is open, so the thing you are
@@ -1895,6 +2058,12 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <Bin width={item.width} height={item.height} />
       case 'headlamp':
         return lampAway || lampOut ? null : <PropModel kind="headlamp" full={false} />
+      case 'door':
+        return <DoorLeaf width={item.width} height={item.height} open={doorOpen} />
+      case 'tent':
+        return <Tent width={item.width} depth={item.depth} height={item.height} />
+      case 'campfire':
+        return <Campfire lit={lit} />
       case 'computer':
         return (
           <Computer width={item.width} depth={item.depth} height={item.height} awake={searching} />
@@ -2085,7 +2254,7 @@ export function FurnitureLights() {
     <>
       {world.lights.map((lamp) => {
         const lit = on[lamp.id] ?? lamp.defaultOn
-        const fire = lamp.kind === 'fireplace'
+        const fire = lamp.kind === 'fireplace' || lamp.kind === 'campfire'
         const fairy = lamp.kind === 'fairylights'
         return (
           <pointLight

@@ -98,6 +98,10 @@ export type FurnitureKind =
   | 'fridge'
   | 'bin'
   | 'headlamp'
+  | 'door'
+  // camping
+  | 'tent'
+  | 'campfire'
   | 'arcade'
   | 'rombox'
   // light
@@ -376,6 +380,9 @@ export const FURNITURE_KINDS = [
   'fridge',
   'bin',
   'headlamp',
+  'door',
+  'tent',
+  'campfire',
   'arcade',
   'rombox',
   'floorlamp',

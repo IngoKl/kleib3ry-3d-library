@@ -85,6 +85,7 @@ test.describe('world document', () => {
       'porch',
       'lakehouse',
       'lakedeck',
+      'camp',
     ])
     expect(WORLD.shelves.length).toBeGreaterThan(10)
     expect(WORLD.furniture.some((f) => f.kind === 'box')).toBe(true)
@@ -920,5 +921,26 @@ test.describe('the food delivery', () => {
     })
     const spot = deliverySpot(world)
     expect(Math.hypot(spot.x - world.spawn.x, spot.z - world.spawn.z)).toBeLessThan(1.0)
+  })
+})
+
+test.describe('the camp and the front door', () => {
+  test('the camp pad is real floor, across the water', () => {
+    const camp = WORLD.rooms.find((room) => room.id === 'camp')!
+    expect(camp.outdoor).toBe(true)
+    // Standing on the pad: the floor under you is the pad, not the grass.
+    expect(floorAt(WORLD, camp.origin[0], camp.origin[1], 0)).toBeCloseTo(camp.elevation, 6)
+    // Genuinely across the lake: past the walk that rings it.
+    expect(lakeRadius(camp.origin[0], camp.origin[1])).toBeGreaterThan(PATH.to)
+    // The fire is a lamp to the machinery, so E can light it.
+    expect(WORLD.lights.some((lamp) => lamp.kind === 'campfire')).toBe(true)
+  })
+
+  test('the front door hangs in the wall line of the south doorway', () => {
+    const door = WORLD.furniture.find((item) => item.kind === 'door')
+    expect(door).toBeDefined()
+    // In the wall's thickness, not standing in the room.
+    expect(door!.z).toBeGreaterThan(3.99)
+    expect(door!.z).toBeLessThan(4.13)
   })
 })

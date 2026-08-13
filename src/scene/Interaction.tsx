@@ -351,9 +351,12 @@ export function Interaction() {
         const id = furnitureIdOf(hit)
         const kind = kindOf(id)
         // Only the *empty* cup wants the machine: aiming a full one at it
-        // falls through to the counter, which is where a full cup goes.
+        // falls through to the counter, which is where a full cup goes. The
+        // door answers too — carrying the takeaway in through a shut door
+        // must not need a free hand.
         const wants =
           kind === 'bin' ||
+          kind === 'door' ||
           (kind === 'coffeemaker' && store.heldProp.kind === 'cup' && !store.heldProp.full)
         if (hit && id && wants) fixture = { distance: hit.distance, id }
       }

@@ -664,7 +664,7 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
   // The great room, the loft inside it, the reading corner, the bedroom over
   // that, the kitchen, the bathroom off it, the office, the porch — and the
   // lake house and its deck, a trail away across the site.
-  expect(stats.rooms).toBe(10)
+  expect(stats.rooms).toBe(11)
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 
@@ -2336,7 +2336,7 @@ test('low performance mode is a switch, and the room survives it', async ({ page
   // the room has to come back rather than come back empty.
   await page.waitForFunction(() => window.__app?.ready() === true, null, { timeout: 30_000 })
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.rooms).toBe(10)
+  expect(stats.rooms).toBe(11)
   expect(stats.books).toBeGreaterThan(100)
   expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([])
 })

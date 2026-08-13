@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { groundAt, stepPlayer } from './walk'
+import { aabbFromCentre } from './collision'
 import { askCatForBook, callCat, petCat } from './Cat'
 import { floorAt } from '../world/derive'
 import { shelfColliders } from '../world/shelf'
@@ -75,11 +76,22 @@ export function Player() {
   // Walls and furniture come pre-derived; the bookcases are added here because
   // their footprint belongs to the carcass rather than to the document. Each
   // carries the height band it occupies, so the loft's balustrade is not a wall
-  // in the middle of the living room below it.
-  const solids = useMemo(
-    () => (world ? [...world.solids, ...shelfColliders(world.shelves)] : []),
-    [world],
-  )
+  // in the middle of the living room below it. Closed doors are added here
+  // too: whether one blocks is ambience state, which the static derivation
+  // deliberately does not know about — and swinging a door is an edit, so
+  // rebuilding this list on it is fine.
+  const ambienceOn = useAmbienceStore((s) => s.on)
+  const solids = useMemo(() => {
+    if (!world) return []
+    const doors = world.furniture
+      .filter((item) => item.kind === 'door' && !(ambienceOn[item.id] ?? (item.on ?? true)))
+      .map((door) => ({
+        ...aabbFromCentre(door.x, door.z, door.width, 0.16, door.rotationY),
+        bottom: door.y,
+        top: door.y + door.height,
+      }))
+    return [...world.solids, ...shelfColliders(world.shelves), ...doors]
+  }, [world, ambienceOn])
   const keys = useRef(new Set<string>())
   const velocity = useRef({ x: 0, z: 0 })
   /** Bob phase, advanced by distance, and how much of it is applied. */
@@ -272,6 +284,11 @@ export function Player() {
             if (prop.kind !== 'cup') state.setHeldProp(null)
             return
           }
+          // The door swings with your hands full: an elbow works a handle.
+          if (piece?.kind === 'door') {
+            useAmbienceStore.getState().toggle(piece.id, piece.on ?? true)
+            return
+          }
           if (piece?.kind === 'coffeemaker' && prop.kind === 'cup' && !prop.full) {
             if (state.readyPots[piece.id]) {
               state.drainPot(piece.id)
@@ -391,13 +408,22 @@ export function Player() {
         useAmbienceStore.getState().toggle(id, item.on ?? true)
         return
       }
+      // A door swings on the same one bit a lamp switches on, and it is
+      // remembered the same way — which doors stand open travels with the room.
+      if (item.kind === 'door') {
+        useAmbienceStore.getState().toggle(id, item.on ?? true)
+        return
+      }
       // The switch by the door: every light in the library, on or off together.
       // Off when anything is lit, so one press always darkens the house.
+      // Except the campfire: a switch plate indoors must not light a fire
+      // across the lake.
       if (item.kind === 'lightswitch' && world) {
         const lights = useAmbienceStore.getState()
-        const anyOn = world.lights.some((lamp) => lights.isOn(lamp.id, lamp.defaultOn))
+        const house = world.lights.filter((lamp) => lamp.kind !== 'campfire')
+        const anyOn = house.some((lamp) => lights.isOn(lamp.id, lamp.defaultOn))
         lights.setAll(
-          world.lights.map((lamp) => lamp.id),
+          house.map((lamp) => lamp.id),
           !anyOn,
         )
         return

@@ -94,6 +94,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
   {
     title: 'The Room',
     rows: [
+      [['E'], 'Open and close the front door; light the campfire across the lake'],
       [['N'], 'Day to night and back'],
       [['K'], 'Rain on and off — you can hear it, louder outside'],
       [['E'], 'At the office terminal, search the whole library for anything'],

@@ -42,6 +42,8 @@ const FIXTURE_NAMES: Partial<Record<string, string>> = {
   headlamp: 'A Headlamp',
   arcade: 'The Arcade Machine',
   rombox: 'The ROM Box',
+  door: 'The Door',
+  campfire: 'The Campfire',
 }
 
 /** What each small thing in your hand is called, full and drunk. */
@@ -188,16 +190,24 @@ export function Hud() {
   const fixtureLit = fixture ? (lightsOn[fixture.id] ?? (fixture.on ?? true)) : false
   // What a switch plate would do next. Only asked when one is under the
   // crosshair — it walks every lamp in the building.
+  // The campfire is not on the house circuit — see the switch in `Player.tsx`.
   const anyLightOn =
     fixture?.kind === 'lightswitch' &&
-    (world?.lights ?? []).some((lamp) => lightsOn[lamp.id] ?? lamp.defaultOn)
+    (world?.lights ?? [])
+      .filter((lamp) => lamp.kind !== 'campfire')
+      .some((lamp) => lightsOn[lamp.id] ?? lamp.defaultOn)
   const fixtureName = (fixture && FIXTURE_NAMES[fixture.kind]) ?? 'Lamp'
 
   /** What E would do to the thing under the crosshair, in the words of the room. */
   const fixtureVerb = (() => {
     if (!fixture) return ''
+    // The campfire is a lamp to the machinery, but nobody "switches" a fire.
+    if (fixture.kind === 'campfire') return fixtureLit ? 'put it out' : 'light it'
     if (LAMPS.has(fixture.kind)) return fixtureLit ? 'switch it off' : 'switch it on'
     switch (fixture.kind) {
+      case 'door':
+        // The same keyed bit as a lamp: `fixtureLit` here means "standing open".
+        return fixtureLit ? 'close the door' : 'open the door'
       case 'lightswitch':
         return anyLightOn ? 'switch every light off' : 'switch every light on'
       // A deck with nothing on it says so, and there is one of each record: it
@@ -578,7 +588,11 @@ export function Hud() {
                 {PROP_NAMES[heldProp.kind]?.[heldProp.full ? 'full' : 'empty'] ?? 'Something Small'}
               </p>
               <p className="focus-key">
-                {fixture?.kind === 'bin' ? (
+                {fixture?.kind === 'door' ? (
+                  <>
+                    <kbd>E</kbd> {fixtureLit ? 'Close the door' : 'Open the door'}
+                  </>
+                ) : fixture?.kind === 'bin' ? (
                   heldProp.kind === 'cup' ? (
                     <span className="warn">Not the crockery — the cup lives by its machine</span>
                   ) : (

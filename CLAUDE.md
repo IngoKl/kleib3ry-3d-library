@@ -119,7 +119,8 @@ derived from an ordering: `loose` (a book on a table or the floor), `pins` (shee
 on walls), `records.loose` and `props` (the coffee cup — there is exactly one, id
 `cup` — the fridge's cans and the takeaway boxes; `F` drinks or eats, the coffee
 writes `player.boostUntil`, the kitchen `bin` destroys empties, and the `phone`'s
-delivery lands at `deliverySpot` in `world/derive.ts`). Keep the list short.
+delivery is walked in by the courier in `state/courier.ts` and lands at
+`deliverySpot` in `world/derive.ts`). Keep the list short.
 
 **Records are dealt, not arranged.** Every `recordshelf` takes a slice of `music/`
 in folder order, so nothing has to be written down for a few hundred sleeves to

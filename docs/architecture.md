@@ -442,6 +442,19 @@ beam ([src/scene/Headlamp.tsx](../src/scene/Headlamp.tsx)) is a camera-riding
 spot light mounted only while worn, for the same shader-count reason as the
 television's glow.
 
+**A door is a lamp with a hinge.** The `door` kind stores one bit — standing
+open — in `ambience.json` under the same keyed toggles the lamps use, because
+which doors are open is a fact about the room. The leaf's swing is eased per
+frame in its own component; whether it _blocks_ is the interesting part: the
+static derivation deliberately does not know ambience, so the walk controller
+in `Player.tsx` adds a collider for each closed door itself, rebuilt on the
+toggle — an edit, not a frame cost. The campfire (`campfire`) is a lamp too —
+`E` lights it — but the light switch indoors filters it out of "every light":
+a switch plate must not ignite a fire across the lake. The camp itself is the
+trick worth knowing: **a room with no walls, no roof and a stone floor is a
+campsite** — the format needed nothing new for it, and being a room is what
+clears the forest around it and makes its pad real floor.
+
 ---
 
 ## Nothing Shelves Itself

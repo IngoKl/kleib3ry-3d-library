@@ -94,6 +94,13 @@ export const FURNITURE_SIZE: Record<
   bin: { width: 0.34, depth: 0.34, height: 0.42, solid: true, surface: false },
   // The headlamp, lying wherever `y` puts it — on the porch table, by default.
   headlamp: { width: 0.16, depth: 0.14, height: 0.08, solid: false, surface: false },
+  // A hinged leaf standing in a doorway. Not solid *here*: whether it blocks
+  // depends on whether it is shut, which is ambience state — the walk
+  // controller adds a collider for a closed one itself.
+  door: { width: 1.0, depth: 0.1, height: 2.02, solid: false, surface: false },
+  // An A-frame shelter. Solid: canvas is not something to walk through.
+  tent: { width: 1.9, depth: 2.2, height: 1.5, solid: true, surface: false },
+  campfire: { width: 0.95, depth: 0.95, height: 0.4, solid: true, surface: false },
   // An upright cabinet: person-height, deep enough to house a tube, and solid
   // because it stands on the floor and you walk up to its front.
   arcade: { width: 0.72, depth: 0.78, height: 1.75, solid: true, surface: false },
@@ -145,6 +152,7 @@ export const LAMPS = new Set<FurnitureKind>([
   'pendant',
   'fireplace',
   'fairylights',
+  'campfire',
 ])
 
 /** Furniture you operate rather than sit on or fill: press E and something happens. */
@@ -161,6 +169,7 @@ export const APPLIANCES = new Set<FurnitureKind>([
   'fridge',
   'bin',
   'headlamp',
+  'door',
   'arcade',
   'rombox',
 ])
@@ -845,9 +854,11 @@ export function deriveWorld(
               ? 1.44
               : item.kind === 'fireplace'
                 ? 0.4
-                : item.kind === 'fairylights'
-                  ? -0.06
-                  : 0.12),
+                : item.kind === 'campfire'
+                  ? 0.3
+                  : item.kind === 'fairylights'
+                    ? -0.06
+                    : 0.12),
           z: derived.z,
           defaultOn: item.on ?? true,
         })
