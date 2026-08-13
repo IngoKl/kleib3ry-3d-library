@@ -162,7 +162,8 @@ all: its filename is its title and its folder is its series.
 
 **Both formats open.** Everything above [src/reader/source.ts](src/reader/source.ts)
 is written against "a thing with pages you can rasterise" rather than against
-pdf.js, so the drag, the turn, bookmarks, `J` and `P` are identical for a PDF and
+pdf.js, so the drag, the turn, bookmarks, `J`, `N` (a note on the page) and `P`
+are identical for a PDF and
 an EPUB. An EPUB is unzipped by [src/reader/zip.ts](src/reader/zip.ts) with the
 platform's own `DecompressionStream` (no dependency), reduced to headings and
 paragraphs by [epub.ts](src/reader/epub.ts), and set in type by
@@ -217,6 +218,11 @@ to extract something new.
 focus, held book, held tape, held sheet, driver, whether you have gone in yet).
 `state/library.ts` holds the catalogue, shelving and pins, reconciles a saved layout
 against the latest scan on load, and debounces layout saves (600 ms).
+`state/annotations.ts` holds bookmarks (spreads in memory, pages in the file),
+page notes and page ink (`D` picks the pen up in the reader; strokes are
+whiteboard-shaped, in page space, painted onto the rasterised page canvas),
+saved to `.library/annotations.json` — its own file, page-numbered and
+title-carrying, so the marginalia read without the app.
 `state/ambience.ts`, `state/media.ts` and `state/video.ts` own the smaller save files,
 the record player and the television. `state/player.ts`, `state/cat.ts` and
 `state/metrics.ts` are plain mutable objects deliberately outside zustand — they

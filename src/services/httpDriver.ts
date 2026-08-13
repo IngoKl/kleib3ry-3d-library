@@ -1,4 +1,5 @@
 import type {
+  AnnotationsDocument,
   IndexedArtwork,
   IndexedBook,
   IndexedTape,
@@ -212,6 +213,20 @@ export const httpDriver: LibraryService = {
 
   async saveAmbience(state) {
     await send('/ambience', 'PUT', JSON.stringify(state), 'application/json')
+  },
+
+  async loadAnnotations() {
+    return optional<AnnotationsDocument>('/annotations')
+  },
+
+  async saveAnnotations(doc) {
+    await send('/annotations', 'PUT', JSON.stringify(doc), 'application/json')
+  },
+
+  // No filesystem on this side of the wire: the settings card offers the
+  // digest as a download instead.
+  async exportAnnotationsMarkdown() {
+    return null
   },
 
   /**

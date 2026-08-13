@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import type {
+  AnnotationsDocument,
   IndexedArtwork,
   IndexedBook,
   IndexedTape,
@@ -122,6 +123,18 @@ export const tauriDriver: LibraryService = {
 
   async saveAmbience(state) {
     await invoke('save_ambience', { state })
+  },
+
+  async loadAnnotations() {
+    return invoke<AnnotationsDocument | null>('get_annotations')
+  },
+
+  async saveAnnotations(doc) {
+    await invoke('save_annotations', { doc })
+  },
+
+  async exportAnnotationsMarkdown(markdown) {
+    return invoke<string>('export_annotations', { markdown })
   },
 
   assetUrl(path) {

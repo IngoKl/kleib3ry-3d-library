@@ -40,6 +40,7 @@ type ReaderStatus = {
   rendered: boolean
   showing: [number, number] | null
   turning: boolean
+  pen: boolean
   failure: string | null
 }
 
@@ -162,6 +163,16 @@ declare global {
       readForTest: (id: string) => Promise<ReaderStatus>
       setModeForTest: (mode: string) => void
       bookmarksOf: (id: string) => number[]
+      notesOf: (id: string) => { id: string; page: number; text: string; created: string }[]
+      addNoteForTest: (
+        id: string,
+        page: number,
+        text: string,
+      ) => { id: string; page: number; text: string; created: string }
+      deleteNoteForTest: (id: string, noteId: string) => boolean
+      pageDrawingsOf: (id: string, page: number) => { ink: number; points: number[] }[]
+      wipePageForTest: (id: string, page: number) => number
+      inkPixelsOnPage: (page: number) => number
       spines: () => { printed: number; slots: number; reprinted: number }
     }
   }
@@ -1293,6 +1304,160 @@ test('a bookmark is set, survives a reload, and takes you back to its page', asy
   // `readProgress` is saved on every turn for.
   await page.evaluate(() => window.__app.readForTest('sample-book'))
   expect(await page.evaluate(() => window.__app.reader().spread)).toBe(1)
+})
+
+test('a note is written on the page, survives a reload, and can be rubbed out', async ({
+  page,
+}) => {
+  test.slow()
+  await boot(page)
+  await page.evaluate(() => window.__app.readForTest('sample-book'))
+
+  await page.keyboard.press('KeyN')
+  await expect(page.getByTestId('book-note-field')).toBeVisible()
+  await page.keyboard.type('check the colophon')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('book-note-field')).toHaveCount(0)
+
+  // Spread 0's recto is page 1, by the tear-out convention.
+  const written = await page.evaluate(() => window.__app.notesOf('sample-book'))
+  expect(written).toHaveLength(1)
+  expect(written[0]).toMatchObject({ page: 1, text: 'check the colophon' })
+
+  // The reading card lists the notes on the pages you are looking at.
+  await expect(page.getByTestId('reader-note')).toContainText('check the colophon')
+
+  // The save is debounced; give it time to land before reloading.
+  await page.waitForTimeout(1200)
+  await reboot(page)
+  const kept = await page.evaluate(() => window.__app.notesOf('sample-book'))
+  expect(kept).toHaveLength(1)
+  expect(kept[0]).toMatchObject({ page: 1, text: 'check the colophon' })
+
+  // And the file speaks pages and titles, so it is legible without the app.
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('kleib3ry.annotations') ?? 'null'),
+  )
+  expect(stored.books['sample-book'].title).toBe('The Shelf as Argument')
+  expect(stored.books['sample-book'].notes[0].page).toBe(1)
+
+  // Rubbing it out from the reading card.
+  await page.evaluate(() => window.__app.readForTest('sample-book'))
+  await expect(page.getByTestId('reader-note')).toBeVisible()
+  await page.getByTestId('delete-note').click()
+  await expect(page.getByTestId('reader-note')).toHaveCount(0)
+  expect(await page.evaluate(() => window.__app.notesOf('sample-book'))).toEqual([])
+})
+
+test('the pen draws on a page, the ink survives a reload, and a wipe takes it off', async ({
+  page,
+}) => {
+  test.slow()
+  await boot(page)
+  await page.evaluate(() => window.__app.readForTest('sample-book'))
+
+  // Pick the pen up: a drag must now be a line, not a page turn.
+  await page.keyboard.press('KeyD')
+  await page.waitForFunction(() => window.__app.reader().pen === true)
+
+  const box = (await page.locator('canvas').boundingBox())!
+  const y = box.y + box.height * 0.5
+  await page.mouse.move(box.x + box.width * 0.56, y)
+  await page.mouse.down()
+  for (let i = 1; i <= 8; i++) {
+    await page.mouse.move(box.x + box.width * (0.56 + i * 0.01), y + i * 2)
+  }
+  await page.mouse.up()
+
+  // The stroke landed on the recto (page 1 of spread 0) — and it did not turn
+  // the page, which the same drag would have done with the pen down.
+  await page.waitForFunction(
+    () => window.__app.pageDrawingsOf('sample-book', 1).length === 1,
+    null,
+    { timeout: 10_000 },
+  )
+  expect(await page.evaluate(() => window.__app.reader().spread)).toBe(0)
+  const stroke = (await page.evaluate(() => window.__app.pageDrawingsOf('sample-book', 1)))[0]!
+  expect(stroke.points.length).toBeGreaterThanOrEqual(4)
+  // Saved is not enough — the ink has to be on the page.
+  expect(await page.evaluate(() => window.__app.inkPixelsOnPage(1))).toBeGreaterThan(0)
+
+  // The save is debounced; give it time to land before reloading.
+  await page.waitForTimeout(1200)
+  await reboot(page)
+  expect(await page.evaluate(() => window.__app.pageDrawingsOf('sample-book', 1))).toHaveLength(1)
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('kleib3ry.annotations') ?? 'null'),
+  )
+  expect(stored.books['sample-book'].drawings['1']).toHaveLength(1)
+
+  // The wipe button on the reading card takes the ink off again.
+  await page.evaluate(() => window.__app.readForTest('sample-book'))
+  await page.getByTestId('wipe-page').click()
+  await page.waitForFunction(() => window.__app.pageDrawingsOf('sample-book', 1).length === 0)
+  await expect(page.getByTestId('wipe-page')).toHaveCount(0)
+})
+
+test('the pen draws visibly on an EPUB page too', async ({ page }) => {
+  // The regression this guards: the EPUB type setter leaves a scale() on its
+  // canvas context, and ink painted through it landed off the canvas — the
+  // stroke saved, and nothing showed. Only counting pixels tells those apart.
+  test.slow()
+  await boot(page)
+  await page.evaluate(() => window.__app.readForTest('sample-epub'))
+
+  await page.keyboard.press('KeyD')
+  await page.waitForFunction(() => window.__app.reader().pen === true)
+
+  const box = (await page.locator('canvas').boundingBox())!
+  const y = box.y + box.height * 0.5
+  await page.mouse.move(box.x + box.width * 0.56, y)
+  await page.mouse.down()
+  for (let i = 1; i <= 8; i++) {
+    await page.mouse.move(box.x + box.width * (0.56 + i * 0.01), y + i * 2)
+  }
+  await page.mouse.up()
+
+  await page.waitForFunction(
+    () => window.__app.pageDrawingsOf('sample-epub', 1).length === 1,
+    null,
+    { timeout: 10_000 },
+  )
+  expect(await page.evaluate(() => window.__app.inkPixelsOnPage(1))).toBeGreaterThan(0)
+})
+
+test('bookmarks kept in an old layout migrate into the annotations file once', async ({
+  page,
+}) => {
+  // A schema-7 layout carries its bookmarks inline; the first launch after the
+  // split must carry them over rather than losing them.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'kleib3ry.layout',
+      JSON.stringify({ schemaVersion: 7, rows: {}, bookmarks: { 'sample-book': [1, 3] } }),
+    )
+  })
+  await boot(page)
+
+  await page.waitForFunction(
+    () => window.__app.bookmarksOf('sample-book').length === 2,
+    null,
+    { timeout: 10_000 },
+  )
+  expect(await page.evaluate(() => window.__app.bookmarksOf('sample-book'))).toEqual([1, 3])
+
+  // The file is written immediately — spreads 1 and 3 of a 12-page book are
+  // pages 3 and 7 — with the title embedded, so the entry outlives the index.
+  await page.waitForFunction(
+    () => localStorage.getItem('kleib3ry.annotations') !== null,
+    null,
+    { timeout: 10_000 },
+  )
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('kleib3ry.annotations') ?? 'null'),
+  )
+  expect(stored.books['sample-book'].bookmarks).toEqual([3, 7])
+  expect(stored.books['sample-book'].title).toBe('The Shelf as Argument')
 })
 
 test('spines are printed for the shelf you are at, and only for that shelf', async ({ page }) => {

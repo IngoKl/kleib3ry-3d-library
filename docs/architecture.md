@@ -202,8 +202,10 @@ books looks like _your_ books from across the room.
 prose with comments in it. Everything the app decides about the room goes to
 files beside it: where you shoved the boxes and what you wrote on a shelf into
 `books.json`, which lamps are off and what the weather is doing into
-`ambience.json`. `deriveWorld(doc, overrides, boxEdits)` takes both as arguments
-for exactly this reason.
+`ambience.json`, your bookmarks and page notes into `annotations.json` — that
+one page-numbered and title-carrying, so it reads without the app.
+`deriveWorld(doc, overrides, boxEdits)` takes both as arguments for exactly
+this reason.
 
 **Everything geometric is derived from the document, every time.** Wall panels
 with their openings cut out, floor slabs with the stairwells subtracted, roofs,
@@ -333,20 +335,21 @@ platter.
 
 ## State, Split by Lifetime
 
-| module              | holds                                                                                          | notes                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `state/store.ts`    | session and UI: mode, crosshair focus, what is in your hands                                   | zustand                                   |
-| `state/library.ts`  | the catalogue, the shelving, bookmarks, progress, pins, board drawings, records you have moved | zustand; debounces layout saves by 600 ms |
-| `state/world.ts`    | the parsed document and the derived world                                                      | zustand                                   |
-| `state/ambience.ts` | which lamps are on, whether it is night, whether it is raining                                 | zustand                                   |
-| `state/settings.ts` | what is about _this machine_, not this library                                                 | zustand + `localStorage`                  |
-| `state/media.ts`    | `music/` and `artwork/`, and which record is on which deck                                     | zustand                                   |
-| `state/video.ts`    | `video/`, and the tape in the machine                                                          | zustand                                   |
-| `state/covers.ts`   | cover images, two queues, one rate limit                                                       | plain module                              |
-| `state/pages.ts`    | page images for books left open in the _room_, not in the reader                               | plain module                              |
-| `state/player.ts`   | position, yaw, pitch, crouch, zoom                                                             | **plain mutable object**                  |
-| `state/cat.ts`      | where the cat is and what it is doing                                                          | **plain mutable object**                  |
-| `state/metrics.ts`  | draw calls, triangles, frames                                                                  | **plain mutable object**                  |
+| module                 | holds                                                                               | notes                                     |
+| ---------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------- |
+| `state/store.ts`       | session and UI: mode, crosshair focus, what is in your hands                        | zustand                                   |
+| `state/library.ts`     | the catalogue, the shelving, progress, pins, board drawings, records you have moved | zustand; debounces layout saves by 600 ms |
+| `state/annotations.ts` | bookmarks and page notes, in their own readable file                                | zustand; saves to `annotations.json`      |
+| `state/world.ts`       | the parsed document and the derived world                                           | zustand                                   |
+| `state/ambience.ts`    | which lamps are on, whether it is night, whether it is raining                      | zustand                                   |
+| `state/settings.ts`    | what is about _this machine_, not this library                                      | zustand + `localStorage`                  |
+| `state/media.ts`       | `music/` and `artwork/`, and which record is on which deck                          | zustand                                   |
+| `state/video.ts`       | `video/`, and the tape in the machine                                               | zustand                                   |
+| `state/covers.ts`      | cover images, two queues, one rate limit                                            | plain module                              |
+| `state/pages.ts`       | page images for books left open in the _room_, not in the reader                    | plain module                              |
+| `state/player.ts`      | position, yaw, pitch, crouch, zoom                                                  | **plain mutable object**                  |
+| `state/cat.ts`         | where the cat is and what it is doing                                               | **plain mutable object**                  |
+| `state/metrics.ts`     | draw calls, triangles, frames                                                       | **plain mutable object**                  |
 
 The last three are deliberately outside zustand: they change every frame and
 must not trigger a React render.
@@ -450,8 +453,8 @@ is what keeps a page at a readable size without a DPI the GPU cannot carry.
 **Both formats open, and read mode does not know which it has.** Everything
 above [src/reader/source.ts](../src/reader/source.ts) is written against "a
 thing with pages you can rasterise" rather than against pdf.js, which is what
-lets the drag, the turn, the bookmarks, `J` and `P` all work identically for an
-EPUB. Below it there are two implementations:
+lets the drag, the turn, the bookmarks, `J`, `N` and `P` all work identically
+for an EPUB. Below it there are two implementations:
 
 - a **PDF** is pdf.js, as before;
 - an **EPUB** is opened as a zip by [zip.ts](../src/reader/zip.ts) — the

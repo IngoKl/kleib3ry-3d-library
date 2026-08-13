@@ -153,6 +153,11 @@ type AppState = {
   /** True while the "go to page" field is open, so movement keys stay typed. */
   jumping: boolean
   /**
+   * True while the book-note field is open, in read mode. Not `noting`: that
+   * is a note for a wall, this is a note on the page you are reading.
+   */
+  annotating: boolean
+  /**
    * Whether the overlay is drawn at all. The room is the point; the HUD is
    * scaffolding, and being able to strike it is what makes screenshots worth
    * taking. The label and page fields ignore this — they are conversations you
@@ -207,6 +212,7 @@ type AppState = {
   setSearching: (open: boolean) => void
   setFocusedCat: (near: boolean) => void
   setJumping: (open: boolean) => void
+  setAnnotating: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
   /** Leave the main menu and go in. One way: there is no menu to go back to. */
   start: () => void
@@ -333,6 +339,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   brewing: null,
   jumpTo: null,
   jumping: false,
+  annotating: false,
 
   /**
    * Read mode without a book is a dead end — nothing renders, the walk
@@ -415,6 +422,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().focusedCat !== focusedCat) set({ focusedCat })
   },
   setJumping: (jumping) => set({ jumping }),
+  setAnnotating: (annotating) => set({ annotating }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   start: () => set({ started: true, settingsOpen: false }),
   requestJump: (jumpTo) => set({ jumpTo, jumping: false }),
@@ -501,6 +509,7 @@ export function roomHasKeyboard(): boolean {
     !state.settingsOpen &&
     state.labelling === null &&
     !state.noting &&
+    !state.annotating &&
     !state.searching
   )
 }

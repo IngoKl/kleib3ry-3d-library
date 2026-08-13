@@ -69,6 +69,12 @@ your hand.
 - **drag** — pull a page across to turn it. Let go early and it falls back.
 - **`←`** **`→`** — turn pages without dragging.
 - **`B`** — put a bookmark in the page you are on, or take it out again.
+- **`N`** — write a note on the page. A paper tab on the fore-edge marks it,
+  and the Reading card lists the notes on the pages you are looking at, each
+  with an `×` to rub it out.
+- **`D`** — pick the pen up. While it is up, dragging draws on the page instead
+  of turning it (the arrows still turn); `D` again puts it down. The Reading
+  card offers **Wipe the Drawing** when the pages you are looking at carry ink.
 - **`P`** — tear out a copy of the page. The book keeps its own.
 - **`J`** — go to a page by number.
 - **`Esc`** — close the book.
@@ -83,12 +89,16 @@ your hand.
 - **`H`** — hide the interface, and bring it back.
 - **`F1`** — this card, in the room. **`F2`** — settings.
 
-## Bookmarks
+## Bookmarks and Notes
 
 Bookmarks are slips standing out of the top of the book, placed along its width
 by how far in they are, and each one is a different colour with a stitched edge
 so several in one book stay tellable apart. Click one to open the book there.
-They are saved with the library, so they are still in it next time.
+Notes are paper tabs standing out of the fore-edges the same way — click one and
+the book opens at its page. They, and the ink drawn with the pen, are saved with the library, in
+`.library/annotations.json` — a plain page-numbered file yours to read outside
+the app, and **Export Annotations** in settings writes the whole lot out as
+Markdown; see [library-folder.md](library-folder.md).
 
 A book you leave open stays open: it lies there showing the spread you were on,
 and picking it up again and pressing `R` puts you back on that page.

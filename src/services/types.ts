@@ -41,7 +41,10 @@ export type LayoutDocument = {
   rows: Record<string, string[]>
   /** Box furniture id -> the books in that moving box, bottom of the pile first. */
   boxes?: Record<string, string[]>
-  /** Book id -> the spreads you have put a bookmark in, ascending. */
+  /**
+   * Legacy (schema <= 7): bookmarks now live in `annotations.json`, and this
+   * field is read exactly once, to migrate them out. Never written back.
+   */
   bookmarks?: Record<string, number[]>
   /** Book id -> the spread you had open when you last closed it. */
   progress?: Record<string, number>
@@ -155,8 +158,44 @@ export type LoosePlacement = {
   spread: number
 }
 
-/** Where this library is saved. Both files live in the library folder. */
-export type SavePaths = { world: string; layout: string }
+/** Where this library is saved. All the files live in the library folder. */
+export type SavePaths = { world: string; layout: string; annotations: string }
+
+/** One note written on a page of a book. Pages are 1-based, as printed. */
+export type BookNote = {
+  /** Unique within a library. Generated when the note is written. */
+  id: string
+  page: number
+  text: string
+  /** ISO 8601, so the file is legible without the app. */
+  created: string
+}
+
+/**
+ * Bookmarks and notes, in `.library/annotations.json` — a file meant to be
+ * readable outside the app: 1-based page numbers, and each book carries its
+ * title and author so an entry outlives the index.
+ */
+export type AnnotationsDocument = {
+  schemaVersion: number
+  books: Record<
+    string,
+    {
+      title: string
+      author: string | null
+      /** 1-based page numbers, ascending. */
+      bookmarks?: number[]
+      /** Page order, then creation order. */
+      notes?: BookNote[]
+      /**
+       * Ink drawn on pages, keyed by page number (a string, as JSON keys are).
+       * Strokes are in page space — `u` across, `v` up, 0 to 1 — the same
+       * shape a whiteboard stores, so one painter serves both.
+       */
+      drawings?: Record<string, BoardStroke[]>
+    }
+  >
+}
 
 /** A track in the library's `music/` folder, as the indexer found it. */
 export type IndexedTrack = {
@@ -285,6 +324,19 @@ export interface LibraryService {
    */
   loadAmbience(): Promise<AmbienceState | null>
   saveAmbience(state: AmbienceState): Promise<void>
+
+  /**
+   * Bookmarks and notes, from `.library/annotations.json` — its own file,
+   * page-numbered and readable without the app. Null if never written.
+   */
+  loadAnnotations(): Promise<AnnotationsDocument | null>
+  saveAnnotations(doc: AnnotationsDocument): Promise<void>
+  /**
+   * Land a Markdown digest of the annotations where this mode can. Resolves to
+   * the written path (desktop: `.library/annotations.md`), or null meaning
+   * "no filesystem here — offer it as a download instead".
+   */
+  exportAnnotationsMarkdown(markdown: string): Promise<string | null>
 
   /** Turn an absolute file path into a URL the WebView can actually load. */
   assetUrl(path: string): string

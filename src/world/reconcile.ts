@@ -53,10 +53,10 @@ export type BookLayout = {
  * added books put down in the room, reading progress, shelf labels, and where
  * the boxes have been shoved to; 6 added whiteboard drawings and the records
  * you have filed or set down; 7 added the boxes you have made up off the stack
- * or broken down. Older documents still load — every field added since has
- * been optional.
+ * or broken down; 8 moved bookmarks out to `.library/annotations.json`. Older
+ * documents still load — every field added since has been optional.
  */
-export const LAYOUT_SCHEMA_VERSION = 7
+export const LAYOUT_SCHEMA_VERSION = 8
 
 export type Reconciliation = {
   rows: Record<RowKey, string[]>

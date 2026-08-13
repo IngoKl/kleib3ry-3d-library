@@ -22,6 +22,8 @@ export type ReaderStatus = {
   turning: boolean
   /** How far through the turn the leaf is, 0 to 1. Drives the drag tests. */
   progress: number
+  /** True while the pen is picked up and a drag draws instead of turning. */
+  pen: boolean
   failure: string | null
 }
 
@@ -33,8 +35,17 @@ export const readerStatus: ReaderStatus = {
   showing: null,
   turning: false,
   progress: 0,
+  pen: false,
   failure: null,
 }
+
+/**
+ * Test access to the open book's rasterised page canvases; the Reader installs
+ * it while a book is open. Outside React for the same reason the status is.
+ */
+export const readerHandles: {
+  pageCanvas: ((page: number) => HTMLCanvasElement | null) | null
+} = { pageCanvas: null }
 
 export function resetReaderStatus(bookId: string | null) {
   readerStatus.bookId = bookId
@@ -44,5 +55,6 @@ export function resetReaderStatus(bookId: string | null) {
   readerStatus.showing = null
   readerStatus.turning = false
   readerStatus.progress = 0
+  readerStatus.pen = false
   readerStatus.failure = null
 }

@@ -63,6 +63,8 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['drag'], 'Pull a page across to turn it — let go early and it falls back'],
       [['←', '→'], 'Turn pages'],
       [['B'], 'Put a bookmark in, or take it out'],
+      [['N'], 'Write a note on this page — the tab on the fore-edge marks it'],
+      [['D'], 'Pick the pen up — drag draws on the page; D again puts it down'],
       [['P'], 'Tear out a copy of the page — the book keeps its own'],
       [['J'], 'Go to a page by number'],
       [['Esc'], 'Close the book'],

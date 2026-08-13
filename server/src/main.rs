@@ -278,6 +278,7 @@ fn route(request: &Request, state: &State) -> Handler {
         ("GET", "/api/paths") => Ok(Response::json(&json!({
             "world": files.world.to_string_lossy(),
             "layout": files.layout.to_string_lossy(),
+            "annotations": files.annotations.to_string_lossy(),
         }))),
 
         // ---- the layout, opaque and owned by the front end -------------------
@@ -301,6 +302,19 @@ fn route(request: &Request, state: &State) -> Handler {
 
         ("PUT", "/api/ambience") => {
             write_json_file(&files.ambience, &request.body)?;
+            Ok(Response::empty(204))
+        }
+
+        // Bookmarks and notes. Its own file so the marginalia are readable
+        // without the app; the schema is the front end's, like the layout.
+        ("GET", "/api/annotations") => match fs::read_to_string(&files.annotations) {
+            Ok(text) => Ok(Response::new(200, "application/json; charset=utf-8", text.into_bytes())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Response::empty(404)),
+            Err(e) => Err(oops(e)),
+        },
+
+        ("PUT", "/api/annotations") => {
+            write_json_file(&files.annotations, &request.body)?;
             Ok(Response::empty(204))
         }
 
@@ -698,6 +712,30 @@ mod tests {
         assert_eq!(back["on"]["lamp"], serde_json::Value::Bool(false));
         assert_eq!(back["rain"], serde_json::Value::Bool(true));
         assert!(save_files(&h.root).ambience.exists());
+    }
+
+    #[test]
+    fn the_bookmarks_and_notes_round_trip_and_a_truncated_put_is_refused() {
+        let h = Harness::new("annotations");
+        assert_eq!(h.call("GET", "/api/annotations", b"").status, 404);
+
+        let doc = br#"{"schemaVersion":1,"books":{"abc":{"title":"A Book","author":null,"bookmarks":[1,45]}}}"#;
+        assert_eq!(h.call("PUT", "/api/annotations", doc).status, 204);
+
+        let back: serde_json::Value =
+            serde_json::from_slice(&h.call("GET", "/api/annotations", b"").body).unwrap();
+        assert_eq!(back["books"]["abc"]["bookmarks"][1], 45);
+        assert!(save_files(&h.root).annotations.exists());
+
+        // Parsed before it is written, like the layout: a half-sent PUT must not
+        // leave a file the next load refuses.
+        assert!(h.try_call("PUT", "/api/annotations", br#"{"books":"#).is_err());
+        let still: serde_json::Value =
+            serde_json::from_slice(&h.call("GET", "/api/annotations", b"").body).unwrap();
+        assert_eq!(still["books"]["abc"]["title"], "A Book");
+
+        // The save panel can point at the file: that is half the point of it.
+        assert!(h.json("GET", "/api/paths")["annotations"].is_string());
     }
 
     /// The three folders that are not books, each answering with a list rather

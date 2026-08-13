@@ -237,6 +237,12 @@ button:disabled {
   text-align: left;
 }
 
+/* The card ignores the pointer so a page drag can start under it; anything in
+   it you can actually press has to opt back in. */
+.held-card button {
+  pointer-events: auto;
+}
+
 .held-label {
   margin: 0 0 3px;
   font-size: 10px;

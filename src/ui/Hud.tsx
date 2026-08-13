@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { readerStatus } from '../reader/status'
 import { cat } from '../state/cat'
 import { NEW_BOX, useLibraryStore } from '../state/library'
+import { useAnnotationsStore } from '../state/annotations'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
@@ -11,6 +12,7 @@ import { LAMPS } from '../world/derive'
 import { ShelfLabelField } from './ShelfLabelField'
 import { JumpToPageField } from './JumpToPageField'
 import { NoteField } from './NoteField'
+import { BookNoteField } from './BookNoteField'
 import { SearchField } from './SearchField'
 import { ControlsCard } from './ControlsCard'
 import { SettingsCard } from './SettingsCard'
@@ -108,16 +110,31 @@ export function Hud() {
   // `readerStatus` lives outside React, and the failure plane in the scene has
   // no way to carry text — without this the message existed only for tests.
   const [readerFailure, setReaderFailure] = useState<string | null>(null)
+  /** The open spread, on the same poll, so the card can list its notes. */
+  const [readerSpread, setReaderSpread] = useState(0)
+  /** Whether the pen is up, likewise. */
+  const [readerPen, setReaderPen] = useState(false)
   /** The cat's mood, likewise: it changes every frame and is read on a poll. */
   const [purring, setPurring] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => {
       setReaderFailure(readerStatus.failure)
+      setReaderSpread(readerStatus.spread)
+      setReaderPen(readerStatus.pen)
       setPurring(cat.purr > 0.2)
     }, 250)
     return () => clearInterval(id)
   }, [])
+
+  const bookNotes = useAnnotationsStore((s) => (readingId ? s.notes[readingId] : undefined))
+  const deleteNote = useAnnotationsStore((s) => s.deleteNote)
+  const bookDrawings = useAnnotationsStore((s) => (readingId ? s.drawings[readingId] : undefined))
+  const wipePage = useAnnotationsStore((s) => s.wipePage)
+  // The two pages the open spread shows: 2s and 2s+1.
+  const visiblePages = [2 * readerSpread, 2 * readerSpread + 1]
+  const visibleNotes = (bookNotes ?? []).filter((n) => visiblePages.includes(n.page))
+  const inkedPages = visiblePages.filter((p) => (bookDrawings?.[p]?.length ?? 0) > 0)
 
   const focused = focusedId ? byId.get(focusedId) : undefined
   const held = heldId ? byId.get(heldId) : undefined
@@ -557,13 +574,43 @@ export function Hud() {
                 <p className="focus-key" data-testid="reader-failure">
                   This book will not open — {readerFailure} · <kbd>Esc</kbd> Close
                 </p>
+              ) : readerPen ? (
+                <p className="focus-key">
+                  The pen is up — drag to draw on the page · <kbd>←</kbd>
+                  <kbd>→</kbd> Turn · <kbd>D</kbd> Put the pen down
+                </p>
               ) : (
                 <p className="focus-key">
                   Drag a page across · <kbd>←</kbd>
-                  <kbd>→</kbd> Turn · <kbd>B</kbd> Bookmark · <kbd>P</kbd> Copy this page ·{' '}
-                  <kbd>J</kbd> Go to page · <kbd>Esc</kbd> Close
+                  <kbd>→</kbd> Turn · <kbd>B</kbd> Bookmark · <kbd>N</kbd> Note ·{' '}
+                  <kbd>D</kbd> Pen · <kbd>P</kbd> Copy this page · <kbd>J</kbd> Go to page ·{' '}
+                  <kbd>Esc</kbd> Close
                 </p>
               )}
+              {inkedPages.length > 0 && (
+                <p className="note">
+                  <button
+                    data-testid="wipe-page"
+                    onClick={() => {
+                      if (readingId) for (const p of inkedPages) wipePage(readingId, p)
+                    }}
+                  >
+                    Wipe the Drawing
+                  </button>
+                </p>
+              )}
+              {visibleNotes.map((note) => (
+                <p className="note" key={note.id} data-testid="reader-note">
+                  p. {note.page} — {note.text}{' '}
+                  <button
+                    data-testid="delete-note"
+                    aria-label="Delete this note"
+                    onClick={() => readingId && deleteNote(readingId, note.id)}
+                  >
+                    ×
+                  </button>
+                </p>
+              ))}
             </div>
           )}
 
@@ -635,6 +682,7 @@ export function Hud() {
       <ShelfLabelField />
       <JumpToPageField />
       <NoteField />
+      <BookNoteField />
       <SearchField />
       <ControlsCard />
       <SettingsCard />

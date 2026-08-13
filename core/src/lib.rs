@@ -65,6 +65,9 @@ pub struct SaveFiles {
     /// Which lamps are on, whether it is night, whether it is raining. Its own
     /// file so deleting it brings back every light and the dry daylight.
     pub ambience: std::path::PathBuf,
+    /// Bookmarks and notes, by page number. Deliberately its own readable
+    /// file, so your marginalia are yours without the app.
+    pub annotations: std::path::PathBuf,
     /// The book index. Derived: delete it and rescan.
     pub database: std::path::PathBuf,
     /// Rendered and extracted cover art, so copying a library copies its artwork.
@@ -77,6 +80,7 @@ pub fn save_files(root: &std::path::Path) -> SaveFiles {
         world: base.join("library.json"),
         layout: base.join("books.json"),
         ambience: base.join("ambience.json"),
+        annotations: base.join("annotations.json"),
         database: base.join("index.sqlite"),
         covers: base.join("covers"),
     }

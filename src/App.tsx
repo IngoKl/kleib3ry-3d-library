@@ -31,12 +31,15 @@ import { Body } from './scene/Body'
 import { Sound } from './scene/Sound'
 import { Probe } from './scene/Probe'
 import { Reader } from './reader/Reader'
-import { readerStatus, resetReaderStatus } from './reader/status'
+import { readerHandles, readerStatus, resetReaderStatus } from './reader/status'
+import { PAGE_INK } from './reader/pageInk'
+import { inkAt } from './data/inks'
 import { Hud } from './ui/Hud'
 import { metrics } from './state/metrics'
 import { EYE_HEIGHT, player, teleport } from './state/player'
 import { useAppStore } from './state/store'
 import { useLibraryStore } from './state/library'
+import { useAnnotationsStore } from './state/annotations'
 import { useAmbienceStore } from './state/ambience'
 import { useMediaStore } from './state/media'
 import { useVideoStore } from './state/video'
@@ -62,6 +65,8 @@ export default function App() {
   const watchWorld = useWorldStore((s) => s.watch)
   const worldLoaded = useWorldStore((s) => s.loaded)
 
+  const loadAnnotations = useAnnotationsStore((s) => s.load)
+  const annotationsLoaded = useAnnotationsStore((s) => s.loaded)
   const loadAmbience = useAmbienceStore((s) => s.load)
   const loadMedia = useMediaStore((s) => s.load)
   const loadVideo = useVideoStore((s) => s.load)
@@ -75,7 +80,8 @@ export default function App() {
       await loadWorld()
       await loadRoot()
       await loadLibrary()
-      await Promise.all([loadAmbience(), loadMedia(), loadVideo()])
+      // After the library: migrating old bookmarks needs the index for titles.
+      await Promise.all([loadAnnotations(), loadAmbience(), loadMedia(), loadVideo()])
       // Start the cover sweep only once everything else is up: it is a long,
       // low-priority walk through the whole catalogue, and it must never be
       // what the first frame is waiting on.
@@ -88,7 +94,7 @@ export default function App() {
         error: e instanceof Error ? e.message : String(e),
       })
     })
-  }, [loadWorld, loadRoot, loadLibrary, loadAmbience, loadMedia, loadVideo])
+  }, [loadWorld, loadRoot, loadLibrary, loadAnnotations, loadAmbience, loadMedia, loadVideo])
 
   useEffect(() => watchWorld(), [watchWorld])
 
@@ -134,7 +140,8 @@ export default function App() {
   // teleport/look exist to put the player somewhere specific without a mouse.
   useEffect(() => {
     const app = {
-      ready: () => rootLoaded && libraryLoaded && worldLoaded && metrics.frames > 5,
+      ready: () =>
+        rootLoaded && libraryLoaded && annotationsLoaded && worldLoaded && metrics.frames > 5,
       stats: () => {
         const shelf = useLibraryStore.getState()
         const world = useWorldStore.getState()
@@ -397,7 +404,42 @@ export default function App() {
         return useWorldStore.getState().error
       },
       reader: () => ({ ...readerStatus }),
-      bookmarksOf: (id: string) => [...(useLibraryStore.getState().bookmarks[id] ?? [])],
+      bookmarksOf: (id: string) => [...(useAnnotationsStore.getState().bookmarks[id] ?? [])],
+      notesOf: (id: string) => [...(useAnnotationsStore.getState().notes[id] ?? [])],
+      addNoteForTest: (id: string, page: number, text: string) =>
+        useAnnotationsStore.getState().addNote(id, page, text),
+      deleteNoteForTest: (id: string, noteId: string) =>
+        useAnnotationsStore.getState().deleteNote(id, noteId),
+      pageDrawingsOf: (id: string, page: number) => [
+        ...useAnnotationsStore.getState().strokesOn(id, page),
+      ],
+      wipePageForTest: (id: string, page: number) =>
+        useAnnotationsStore.getState().wipePage(id, page),
+      /**
+       * How many pixels of pen ink the rasterised page actually shows. A saved
+       * stroke whose paint missed the canvas — the EPUB scale() regression —
+       * is invisible ink, and only counting pixels can tell the difference.
+       */
+      inkPixelsOnPage: (page: number) => {
+        const canvas = readerHandles.pageCanvas?.(page)
+        const ctx = canvas?.getContext('2d')
+        if (!canvas || !ctx) return 0
+        const ink = inkAt(PAGE_INK)
+        const [r, g, b] = [1, 3, 5].map((at) => Number.parseInt(ink.slice(at, at + 2), 16))
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+        let count = 0
+        // Every fourth pixel is plenty: a stroke is thousands of them.
+        for (let i = 0; i < data.length; i += 16) {
+          if (
+            Math.abs(data[i]! - r!) < 40 &&
+            Math.abs(data[i + 1]! - g!) < 40 &&
+            Math.abs(data[i + 2]! - b!) < 40
+          ) {
+            count += 1
+          }
+        }
+        return count
+      },
       setModeForTest: (mode: string) => useAppStore.getState().setMode(mode as 'walk' | 'read'),
       /** Open a book and wait until a page has actually rasterised. */
       readForTest: async (id: string) => {
@@ -415,7 +457,7 @@ export default function App() {
       },
     }
     ;(window as unknown as { __app: typeof app }).__app = app
-  }, [rootLoaded, libraryLoaded, worldLoaded])
+  }, [rootLoaded, libraryLoaded, annotationsLoaded, worldLoaded])
 
   /**
    * Low performance mode, at the one place it cannot be applied per frame.

@@ -4,9 +4,19 @@ import * as THREE from 'three'
 import { applyBow, applyGutterCurl, gutterRise, makeSheet, type Sheet } from './pageMesh'
 import { makePageTextures, spreadWindow } from './pageTextures'
 import { openSource, type PageSource } from './source'
-import { readerStatus, resetReaderStatus } from './status'
+import { readerHandles, readerStatus, resetReaderStatus } from './status'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
+import { useAnnotationsStore, pageToSpread } from '../state/annotations'
+import {
+  endPageStroke,
+  extendOnCanvas,
+  extendPageStroke,
+  pageDrawing,
+  paintPageStrokes,
+  startPageStroke,
+} from './pageInk'
+import type { BoardStroke, BookNote } from '../services/types'
 import { player } from '../state/player'
 import { approach } from '../lib/ease'
 
@@ -61,6 +71,13 @@ type Turn = {
  */
 const RIBBON_PROUD = 0.015
 
+/**
+ * How far a note tab stands out of the fore-edge, sideways. Same bargain as
+ * the ribbons: the dock only pays for the extra frame width when the open book
+ * actually has a note in it.
+ */
+const TAB_PROUD = 0.012
+
 /** Fraction of the viewport width a full turn takes. */
 const DRAG_SPAN = 0.42
 /** Carry a leaf past this and letting go completes the turn. */
@@ -76,6 +93,9 @@ const FLICK_SPEED = 1.1
  * loop. One frozen instance keeps the selector referentially stable.
  */
 const NO_BOOKMARKS: readonly number[] = Object.freeze([])
+/** Same again for the notes and ink selectors, for the same reason. */
+const NO_NOTES: readonly BookNote[] = Object.freeze([])
+const NO_STROKES: readonly BoardStroke[] = Object.freeze([])
 
 /**
  * Ribbon colours, dealt out in order.
@@ -129,6 +149,21 @@ export function Reader() {
   /** Set by the ribbons: returns true if a pointer press landed on one. */
   const jumpRef = useRef<((e: PointerEvent) => boolean) | null>(null)
   const ribbons = useRef<THREE.Group>(null)
+  const noteTabs = useRef<THREE.Group>(null)
+
+  /**
+   * Whether the pen is picked up, mirrored into a ref so the pointer handlers
+   * can read it without re-subscribing.
+   */
+  const [pen, setPen] = useState(false)
+  const penRef = useRef(pen)
+  penRef.current = pen
+  useEffect(() => {
+    readerStatus.pen = pen
+  }, [pen])
+  useEffect(() => {
+    if (!reading) setPen(false)
+  }, [reading])
 
   /** Where the book sits: in front of wherever you were standing. */
   const pose = useMemo(() => {
@@ -207,10 +242,29 @@ export function Reader() {
   )
 
   const pages = useMemo(
-    () => (doc ? makePageTextures(doc, targetPx, gl) : null),
+    () =>
+      doc
+        ? makePageTextures(doc, targetPx, gl, (canvas, page) => {
+            // The ink rides the rasterised page itself, so it bends with the
+            // leaf and costs nothing the page did not already cost.
+            const id = readerStatus.bookId
+            if (id) paintPageStrokes(canvas, useAnnotationsStore.getState().strokesOn(id, page))
+          })
+        : null,
     [doc, targetPx, gl],
   )
   useEffect(() => () => pages?.dispose(), [pages])
+
+  // The probe's window onto the page canvases, for the ink-visibility tests.
+  useEffect(() => {
+    readerHandles.pageCanvas = (page) => {
+      const image = pages?.peek(page)?.image as unknown
+      return image instanceof HTMLCanvasElement ? image : null
+    }
+    return () => {
+      readerHandles.pageCanvas = null
+    }
+  }, [pages])
 
   /**
    * Put a spread on the static sheets, but only if both its pages are already
@@ -263,15 +317,46 @@ export function Reader() {
   }, [pages, spread, showSpread])
 
   // ---- input -----------------------------------------------------------
-  const bookmarks = useLibraryStore((s) =>
+  const bookmarks = useAnnotationsStore((s) =>
     reading ? (s.bookmarks[reading] ?? NO_BOOKMARKS) : NO_BOOKMARKS,
   )
-  const toggleBookmark = useLibraryStore((s) => s.toggleBookmark)
+  const toggleBookmark = useAnnotationsStore((s) => s.toggleBookmark)
+  const notes = useAnnotationsStore((s) => (reading ? (s.notes[reading] ?? NO_NOTES) : NO_NOTES))
+  /** The distinct pages with a note on them: one tab per page, not per note. */
+  const notedPages = useMemo(() => [...new Set(notes.map((n) => n.page))], [notes])
+  const drawOnPage = useAnnotationsStore((s) => s.drawOnPage)
+  const leftStrokes = useAnnotationsStore((s) =>
+    reading ? (s.drawings[reading]?.[leftPage(spread)] ?? NO_STROKES) : NO_STROKES,
+  )
+  const rightStrokes = useAnnotationsStore((s) =>
+    reading ? (s.drawings[reading]?.[rightPage(spread)] ?? NO_STROKES) : NO_STROKES,
+  )
   const setProgress = useLibraryStore((s) => s.setProgress)
   // Spread s shows pages 2s and 2s+1, so the last page lives on spread
   // floor(N/2) — `ceil(N/2)` undercounted by one for even page counts, which
   // made the final page unreachable by "go to page".
   const spreadCount = doc ? Math.floor(doc.pages / 2) + 1 : 0
+
+  /**
+   * A wipe is the one edit that takes ink *off* a page, and the canvas cannot
+   * unpaint — so a shrunken stroke list re-rasterises the page from the source
+   * and the decorate hook repaints what is left. A stroke that lands (the list
+   * grows) was already drawn live and needs nothing.
+   */
+  const inkWatermark = useRef({ spread: -1, left: 0, right: 0 })
+  useEffect(() => {
+    const prev = inkWatermark.current
+    const sameSpread = prev.spread === spread
+    inkWatermark.current = { spread, left: leftStrokes.length, right: rightStrokes.length }
+    if (!pages || !sameSpread) return
+    const wipedLeft = leftStrokes.length < prev.left
+    const wipedRight = rightStrokes.length < prev.right
+    if (!wipedLeft && !wipedRight) return
+    void Promise.all([
+      wipedLeft ? pages.refresh(leftPage(spread)) : null,
+      wipedRight ? pages.refresh(rightPage(spread)) : null,
+    ]).then(() => showSpread(spread))
+  }, [leftStrokes, rightStrokes, pages, spread, showSpread])
 
   /**
    * Remember the page, so putting the book down open puts it down *here*.
@@ -313,6 +398,29 @@ export function Reader() {
     if (!reading) return
 
     /**
+     * Which page is under the pointer, and where on it — raycast against the
+     * two resting sheets themselves and read the hit's texture coordinates.
+     * The uv is exact on the curled part near the gutter, where any flat-plane
+     * substitute puts the ink centimetres from the pointer; and it is already
+     * in page space, the frame the strokes are stored in.
+     */
+    const penCaster = new THREE.Raycaster()
+    const penPointer = new THREE.Vector2()
+    const penHit = (e: PointerEvent): { page: number; u: number; v: number } | null => {
+      const rect = canvas.getBoundingClientRect()
+      penPointer.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      )
+      penCaster.setFromCamera(penPointer, camera)
+      const hit = penCaster.intersectObjects([sheets.left.mesh, sheets.right.mesh], false)[0]
+      if (!hit?.uv) return null
+      const s = spreadRef.current
+      const page = hit.object === sheets.left.mesh ? leftPage(s) : rightPage(s)
+      return { page, u: hit.uv.x, v: hit.uv.y }
+    }
+
+    /**
      * Lift a leaf. `held` starts it under the pointer instead of letting it
      * fall on its own; either way nothing moves until its two faces have
      * rasterised, so a leaf never swings blank.
@@ -352,7 +460,7 @@ export function Reader() {
       // While the page field or the settings panel is open, every key is a
       // keystroke in it.
       const app = useAppStore.getState()
-      if (app.jumping || app.settingsOpen) return
+      if (app.jumping || app.settingsOpen || app.annotating) return
       // Held, an arrow key would queue a turn per repeat and `B` would put a
       // bookmark in and take it out again thirty times a second. A page turn is
       // a press. (See the note in `Player.tsx`.)
@@ -383,6 +491,20 @@ export function Reader() {
         const page = rightPage(s) <= doc.pages ? rightPage(s) : leftPage(s)
         if (page < 1 || page > doc.pages) return
         app.setHeldPin({ kind: 'page', bookId: reading, page })
+        return
+      }
+      if (e.code === 'KeyN') {
+        e.preventDefault()
+        // The note lands on the recto by the tear-out convention, and the
+        // field needs a page to land it on, so no book means no field.
+        if (doc) useAppStore.getState().setAnnotating(true)
+        return
+      }
+      if (e.code === 'KeyD') {
+        e.preventDefault()
+        // Pick the pen up, or put it down. While it is up a drag is a line,
+        // not a page turn; the arrows still turn pages.
+        if (doc) setPen((p) => !p)
         return
       }
       if (e.code === 'F1') {
@@ -419,6 +541,17 @@ export function Reader() {
       const jumped = jumpRef.current?.(e)
       if (jumped) return
 
+      if (penRef.current) {
+        // The pen is up: a press on a page starts a line there, and a press
+        // off the pages is nothing — never a turn, or drawing to the edge
+        // would flip the page out from under the stroke.
+        const hit = penHit(e)
+        if (!hit || !doc || hit.page < 1 || hit.page > doc.pages) return
+        startPageStroke(hit.page, hit.u, hit.v)
+        canvas.setPointerCapture(e.pointerId)
+        return
+      }
+
       // Which half you start from decides which way the leaf goes, the same way
       // it does with a real book: right side turns forward, left side back.
       const dir: 1 | -1 = e.clientX > canvas.clientWidth / 2 ? 1 : -1
@@ -428,6 +561,24 @@ export function Reader() {
     }
 
     const onPointerMove = (e: PointerEvent) => {
+      if (pageDrawing.page !== null) {
+        // Ink goes straight onto the page's own canvas, a segment at a time,
+        // and the texture re-uploads — the cost of drawing, paid only while
+        // the pen is down. The stroke stays on the page it started on; carry
+        // the pointer off it and the line simply waits for it to come back.
+        const hit = penHit(e)
+        if (!hit || !pages || hit.page !== pageDrawing.page) return
+        if (extendPageStroke(hit.u, hit.v)) {
+          const texture = pages.peek(pageDrawing.page)
+          const image = texture?.image as unknown
+          if (texture && image instanceof HTMLCanvasElement) {
+            extendOnCanvas(image)
+            texture.needsUpdate = true
+          }
+        }
+        return
+      }
+
       const state = drag.current
       const turn = turnRef.current
       if (!state || !turn || !turn.dragging) return
@@ -445,6 +596,15 @@ export function Reader() {
     }
 
     const onPointerUp = (e: PointerEvent) => {
+      if (pageDrawing.page !== null) {
+        // Let go: the line is finished and only now becomes a fact — the
+        // canvas already shows it, so nothing needs repainting.
+        const done = endPageStroke()
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
+        if (done && reading) drawOnPage(reading, done.page, done.stroke)
+        return
+      }
+
       const state = drag.current
       const turn = turnRef.current
       drag.current = null
@@ -470,7 +630,7 @@ export function Reader() {
       canvas.removeEventListener('pointerup', onPointerUp)
       canvas.removeEventListener('pointercancel', onPointerUp)
     }
-  }, [reading, doc, pages, sheets, gl, setReading, setMode, toggleBookmark])
+  }, [reading, doc, pages, sheets, gl, camera, setReading, setMode, toggleBookmark, drawOnPage])
 
   /**
    * Grabbing a ribbon. Raycast in page coordinates rather than screen ones so
@@ -480,8 +640,12 @@ export function Reader() {
   const pointer = useMemo(() => new THREE.Vector2(), [])
   useEffect(() => {
     jumpRef.current = (e: PointerEvent) => {
-      const group = ribbons.current
-      if (!group || group.children.length === 0) return false
+      // Ribbons and note tabs alike: both carry the spread they mark.
+      const grabbable = [
+        ...(ribbons.current?.children ?? []),
+        ...(noteTabs.current?.children ?? []),
+      ]
+      if (grabbable.length === 0) return false
 
       const rect = gl.domElement.getBoundingClientRect()
       pointer.set(
@@ -489,7 +653,7 @@ export function Reader() {
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       )
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(group.children, true)[0]
+      const hit = raycaster.intersectObjects(grabbable, true)[0]
       const target = hit?.object.userData.spread ?? hit?.object.parent?.userData.spread
       if (typeof target !== 'number' || target === spreadRef.current) return false
 
@@ -575,8 +739,9 @@ export function Reader() {
     const vfov = THREE.MathUtils.degToRad(FOV)
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * (size.width / size.height))
     const halfHeight = PAGE_HEIGHT / 2 + (bookmarks.length ? RIBBON_PROUD : 0)
+    const halfWidth = width + (notedPages.length ? TAB_PROUD : 0)
     const distance =
-      Math.max(halfHeight / Math.tan(vfov / 2), width / Math.tan(hfov / 2)) * 1.05
+      Math.max(halfHeight / Math.tan(vfov / 2), halfWidth / Math.tan(hfov / 2)) * 1.05
 
     const normal = new THREE.Vector3(0, Math.sin(pose.tilt), Math.cos(pose.tilt)).applyAxisAngle(
       new THREE.Vector3(0, 1, 0),
@@ -651,6 +816,39 @@ export function Reader() {
                     // The one you are on glows rather than changing colour, so
                     // it keeps the identity you learned it by.
                     emissive={here ? colour : '#000000'}
+                    emissiveIntensity={here ? 0.55 : 0}
+                  />
+                </mesh>
+              </group>
+            )
+          })}
+        </group>
+
+        {/* Notes: paper tabs standing out of the fore-edges, one per noted
+            page — verso pages tab the left edge, recto the right — placed down
+            the edge by how far into the book the page is, the way a real tab
+            descends a well-thumbed reference. */}
+        <group ref={noteTabs}>
+          {notedPages.map((page) => {
+            const mark = pageToSpread(page)
+            const t = spreadCount > 1 ? mark / (spreadCount - 1) : 0.5
+            const y = (0.5 - t) * (PAGE_HEIGHT - 0.03)
+            const recto = page % 2 === 1
+            const here = mark === spread
+            return (
+              <group
+                key={page}
+                // Half in, half out of the fore-edge, like the ribbons above.
+                position={[recto ? width : -width, y, -rise - BOOK_THICKNESS / 4]}
+                userData={{ spread: mark }}
+              >
+                <mesh userData={{ spread: mark }}>
+                  <boxGeometry args={[TAB_PROUD * 2, 0.018, BOOK_THICKNESS / 2]} />
+                  <meshStandardMaterial
+                    color="#dcbf5a"
+                    roughness={0.9}
+                    // Same convention as the ribbons: the page you are on glows.
+                    emissive={here ? '#dcbf5a' : '#000000'}
                     emissiveIntensity={here ? 0.55 : 0}
                   />
                 </mesh>

@@ -1,6 +1,7 @@
 import { buildCatalogue } from '../data/catalogue'
 import {
   UnsupportedOperation,
+  type AnnotationsDocument,
   type IndexedArtwork,
   type IndexedBook,
   type IndexedTape,
@@ -15,6 +16,7 @@ const LAYOUT_KEY = 'kleib3ry.layout'
 const WORLD_KEY = 'kleib3ry.world'
 const WORLD_STAMP_KEY = 'kleib3ry.world.stamp'
 const AMBIENCE_KEY = 'kleib3ry.ambience'
+const ANNOTATIONS_KEY = 'kleib3ry.annotations'
 
 /**
  * Plain-browser driver: no filesystem, a generated stand-in library.
@@ -245,7 +247,11 @@ export const browserDriver: LibraryService = {
     // There is no filesystem here; name the storage honestly rather than
     // inventing a path that does not exist. On the desktop these are
     // `<your library folder>/.library/library.json` and `.../books.json`.
-    return { world: 'localStorage: kleib3ry.world', layout: 'localStorage: kleib3ry.layout' }
+    return {
+      world: 'localStorage: kleib3ry.world',
+      layout: 'localStorage: kleib3ry.layout',
+      annotations: 'localStorage: kleib3ry.annotations',
+    }
   },
 
   async loadLayout() {
@@ -290,6 +296,26 @@ export const browserDriver: LibraryService = {
 
   async saveAmbience(state) {
     localStorage.setItem(AMBIENCE_KEY, JSON.stringify(state))
+  },
+
+  async loadAnnotations() {
+    const stored = localStorage.getItem(ANNOTATIONS_KEY)
+    if (!stored) return null
+    try {
+      return JSON.parse(stored) as AnnotationsDocument
+    } catch {
+      localStorage.removeItem(ANNOTATIONS_KEY)
+      return null
+    }
+  },
+
+  async saveAnnotations(doc) {
+    localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(doc))
+  },
+
+  // No filesystem; the settings card offers the digest as a download.
+  async exportAnnotationsMarkdown() {
+    return null
   },
 
   assetUrl(path) {

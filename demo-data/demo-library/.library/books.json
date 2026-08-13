@@ -1,19 +1,16 @@
 {
-  "bookmarks": {},
   "boxes": {
     "box-3": [
       "9b21e71419b48081",
       "ebb657745cd8dd17",
       "d7e18f9f15bce077",
-      "97787651002ab249",
       "96e0d61ccfea2a7c"
     ],
     "box-4": [
       "94dfa57d97920d2d",
       "4e0561b47503cc3d",
       "c6e4856105a0f858",
-      "c99da44ef49cb6eb",
-      "239516aa5c3083e3"
+      "c99da44ef49cb6eb"
     ]
   },
   "drawings": {},
@@ -56,8 +53,10 @@
     }
   ],
   "progress": {
+    "239516aa5c3083e3": 8,
     "4e0561b47503cc3d": 2,
     "94dfa57d97920d2d": 7,
+    "97787651002ab249": 4,
     "c6e4856105a0f858": 9,
     "c99da44ef49cb6eb": 1
   },
@@ -71,6 +70,6 @@
     "box-5"
   ],
   "rows": {},
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "spawnedBoxes": {}
 }

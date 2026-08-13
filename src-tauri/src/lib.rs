@@ -147,6 +147,9 @@ struct SaveFiles {
     /// it is about the room rather than about the books, and because deleting
     /// it is a sensible way to get every light and the daylight back.
     ambience: PathBuf,
+    /// Bookmarks and notes. Its own readable file so the marginalia are the
+    /// user's without the app.
+    annotations: PathBuf,
 }
 
 /// Where rendered and extracted covers are cached.
@@ -196,6 +199,7 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
                 world: files.world,
                 layout: files.layout,
                 ambience: files.ambience,
+                annotations: files.annotations,
             })
         }
         Err(e) if is_no_root(&e) => {
@@ -204,6 +208,7 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
                 world: base.join("library.json"),
                 layout: base.join("books.json"),
                 ambience: base.join("ambience.json"),
+                annotations: base.join("annotations.json"),
             })
         }
         Err(e) => Err(e),
@@ -397,6 +402,7 @@ fn save_paths(app: AppHandle) -> Result<serde_json::Value> {
     Ok(serde_json::json!({
         "world": files.world.to_string_lossy(),
         "layout": files.layout.to_string_lossy(),
+        "annotations": files.annotations.to_string_lossy(),
     }))
 }
 
@@ -482,6 +488,39 @@ fn save_ambience(app: AppHandle, state: serde_json::Value) -> Result<()> {
     Ok(())
 }
 
+/// Bookmarks and notes. Opaque to Rust like the layout: the front end owns the
+/// schema, this side only keeps the file readable and pretty-printed.
+#[tauri::command]
+fn get_annotations(app: AppHandle) -> Result<Option<serde_json::Value>> {
+    match fs::read_to_string(&save_files(&app)?.annotations) {
+        Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+#[tauri::command]
+fn save_annotations(app: AppHandle, doc: serde_json::Value) -> Result<()> {
+    let file = save_files(&app)?.annotations;
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&file, serde_json::to_string_pretty(&doc)?)?;
+    Ok(())
+}
+
+/// Write the Markdown digest beside the JSON and say where it landed. The text
+/// is composed by the front end; this is only the landing.
+#[tauri::command]
+fn export_annotations(app: AppHandle, markdown: String) -> Result<String> {
+    let file = save_files(&app)?.annotations.with_extension("md");
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&file, markdown)?;
+    Ok(file.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -504,6 +543,9 @@ pub fn run() {
             list_videos,
             get_ambience,
             save_ambience,
+            get_annotations,
+            save_annotations,
+            export_annotations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

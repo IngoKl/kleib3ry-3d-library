@@ -26,6 +26,7 @@ My Library/                   ← the folder you choose in the app
     books.json                 ← which book is where, and what you wrote on the
                                  shelves. The app writes this.
     ambience.json              ← lamps, night, weather. Delete it for a bright dry day.
+    annotations.json           ← your bookmarks and notes, by page. Readable as it is.
     index.sqlite               ← what was found in the folder. Rebuildable.
     covers/                    ← extracted and rendered cover art, cached
 ```
@@ -48,8 +49,8 @@ is tens of thousands of files — while a music folder is hundreds and a video
 folder is dozens, so a second cache to keep in sync would buy nothing and a record
 you dropped in five seconds ago would not be on the shelf.
 
-**Before you have chosen a folder**, `library.json`, `books.json` and
-`ambience.json` live in the app's own config directory instead, so a fresh
+**Before you have chosen a folder**, `library.json`, `books.json`,
+`ambience.json` and `annotations.json` live in the app's own config directory instead, so a fresh
 install still has somewhere to put them. They move to the library folder the
 first time you choose one. The panel in the app always shows the path of the file
 that is currently live.
@@ -276,7 +277,6 @@ list of book ids, and a map from box id to the books in that box:
       "spread": 74
     }
   },
-  "bookmarks": { "a3f1…": [0, 12, 41] },
   "progress": { "a3f1…": 41 },
   "labels": { "west-0": "Fiction" },
   "furniture": { "box-1": { "at": [-0.9, 2.4], "facing": 8 } },
@@ -301,8 +301,9 @@ dropped it. It is the only part of this file that stores coordinates, because
 position is. `open` and `spread` are what let a book lie face down at the page
 you were reading.
 
-`bookmarks` maps a book to the spreads you have left a slip in, and `progress`
-to the one it was last open at. `labels` is what you have written on each
+`progress` maps a book to the spread it was last open at — a fact about the
+room's copy, not marginalia, which is why it stays here while bookmarks and
+notes live in `annotations.json`. `labels` is what you have written on each
 bookcase — it overrides the `label` in `library.json`. `furniture` is where you
 have shoved things; only the moving boxes can be shoved.
 
@@ -315,16 +316,18 @@ Everything here is in `books.json` rather than in `library.json` for the same
 reason: **`library.json` is a file you wrote**, comments and all, and pushing a
 box across the room must not reformat it.
 
-A bookmark, a label or a placement referring to something the library no longer
-has is dropped on load, the same way a shelf entry is.
+A label or a placement referring to something the library no longer has is
+dropped on load, the same way a shelf entry is.
 
 Version 2 rekeyed `rows` from shelf index to shelf id; version 3 added
 `bookmarks`; version 4 added `boxes` and stopped shelving newly indexed books
 for you; version 5 added `loose`, `progress`, `labels` and `furniture`; version
 6 added `drawings` and `records`; version 7 added `spawnedBoxes` and
-`removedBoxes`. Older documents still load, because every field added since has
-been optional. The one break is the rekey itself: a pre-version-2 file keyed its
-rows by shelf _position_, and those keys name no bookcase any more.
+`removedBoxes`; version 8 moved bookmarks out to `annotations.json` (an old
+file's are carried over on the first launch that has none). Older documents
+still load, because every field added since has been optional. The one break is
+the rekey itself: a pre-version-2 file keyed its rows by shelf _position_, and
+those keys name no bookcase any more.
 
 ### Pages and Notes
 
@@ -383,6 +386,56 @@ a crate has no order worth keeping. `Q` with a record in hand clears both.
 and up from the bottom, both 0 to 1 — so resizing a board in `library.json`
 keeps its drawing instead of scattering it. `ink` is which pen, as an index into
 the three in the tray.
+
+## `annotations.json` — Your Bookmarks and Notes
+
+Written by the app, but **meant to be read without it** — this is the file to
+open when you want your marginalia somewhere else.
+
+```json
+{
+  "schemaVersion": 1,
+  "books": {
+    "a3f1…": {
+      "title": "The Shelf as Argument",
+      "author": "A. Sample",
+      "bookmarks": [1, 45, 203],
+      "notes": [
+        {
+          "id": "note-mfx9k2-1",
+          "page": 45,
+          "text": "Check this against the 1972 edition.",
+          "created": "2026-08-13T10:12:00.000Z"
+        }
+      ],
+      "drawings": {
+        "45": [{ "ink": 1, "points": [0.21, 0.62, 0.24, 0.61] }]
+      }
+    }
+  }
+}
+```
+
+`drawings` is ink drawn on a page with the pen (`D` in the reader), keyed by
+page number. Strokes are the same shape a whiteboard stores — flattened `u, v`
+pairs in page space, across from the left edge and up from the bottom, 0 to
+1 — so the line lands in the same place on the page at any screen size.
+
+Unlike everything in `books.json` it speaks **1-based page numbers**, as
+printed, not the reader's spreads — a bookmark on page 45 means something in
+any other reader. Each entry carries the book's title and author so it stays
+legible on its own, and for the same reason **nothing here is ever pruned**: a
+book that leaves the index keeps its entry, and if the file comes back — ids
+are content hashes — the marginalia reattach by themselves.
+
+Bookmarks are recorded as the right-hand page of the spread the slip is in. For
+an EPUB, page numbers are the reader's own pagination (the same one "go to
+page" uses), since an EPUB has no printed pages; a bookmark on the last spread
+of one can name a page one past the end, which is harmless.
+
+The app can also write the whole thing out as prose: **Export Annotations** in
+the settings panel produces `annotations.md` — a Markdown digest ordered by
+title — beside this file on the desktop, or as a download in the container.
 
 ## `ambience.json` — The Lamps, the Hour and the Weather
 

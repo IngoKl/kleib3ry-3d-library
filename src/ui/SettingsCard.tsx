@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DRIVER_LABELS, library } from '../services'
+import { composeAnnotationsMarkdown } from '../data/annotationsMarkdown'
 import { metrics, type RenderMetrics } from '../state/metrics'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
+import { annotationsDocument, useAnnotationsStore } from '../state/annotations'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
@@ -127,6 +129,28 @@ export function SettingsCard() {
   const world = useWorldStore((s) => s.world)
   const savePaths = useWorldStore((s) => s.paths)
 
+  const annotatedBooks = useAnnotationsStore(
+    (s) => new Set([...Object.keys(s.bookmarks), ...Object.keys(s.notes)]).size,
+  )
+  const [exported, setExported] = useState<string | null>(null)
+
+  const exportAnnotations = async () => {
+    const markdown = composeAnnotationsMarkdown(annotationsDocument(), new Date())
+    const path = await library.exportAnnotationsMarkdown(markdown).catch(() => null)
+    if (path) {
+      setExported(`Written to ${path}`)
+      return
+    }
+    // No filesystem on this host — hand the same text over as a download.
+    const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'annotations.md'
+    a.click()
+    URL.revokeObjectURL(url)
+    setExported('Downloaded annotations.md')
+  }
+
   const tracks = useMediaStore((s) => s.tracks)
   const musicError = useMediaStore((s) => s.error)
   const tapes = useVideoStore((s) => s.tapes)
@@ -242,6 +266,10 @@ export function SettingsCard() {
       <p className="note" data-testid="world-file">
         The room: {savePaths?.world ?? 'checking…'} — edit that file and it reloads as you save it
       </p>
+      <p className="note" data-testid="annotations-file">
+        Bookmarks and notes: {savePaths?.annotations ?? 'checking…'} — plain JSON with page
+        numbers, yours to read
+      </p>
       <div className="row-controls">
         <button onClick={() => void pickRoot()} disabled={!library.canPickFolder}>
           Choose Folder…
@@ -252,7 +280,20 @@ export function SettingsCard() {
         >
           {scanning ? 'Scanning…' : 'Scan'}
         </button>
+        <button
+          data-testid="export-annotations"
+          onClick={() => void exportAnnotations()}
+          disabled={annotatedBooks === 0}
+          title="A Markdown digest of every bookmark and note, by book"
+        >
+          Export Annotations
+        </button>
       </div>
+      {exported && (
+        <p className="note" data-testid="export-result">
+          {exported}
+        </p>
+      )}
       {!scanning && lastScan && (
         <p className="note">
           {lastScan.added} new · {lastScan.unchanged} unchanged · {lastScan.removed} gone

@@ -28,6 +28,8 @@ export type PageTextures = {
   load(page: number): Promise<THREE.Texture | null>
   /** Page numbers a material is currently showing; these survive eviction. */
   pin(pages: number[]): void
+  /** Throw a cached page away and rasterise it again — how a wipe lands. */
+  refresh(page: number): Promise<THREE.Texture | null>
   dispose(): void
 }
 
@@ -35,6 +37,8 @@ export function makePageTextures(
   source: PageSource,
   targetPx: number,
   gl: THREE.WebGLRenderer,
+  /** Painted over every freshly rasterised page — the ink, in practice. */
+  decorate?: (canvas: HTMLCanvasElement, page: number) => void,
 ): PageTextures {
   const ready = new Map<number, THREE.Texture | null>()
   const inflight = new Map<number, Promise<THREE.Texture | null>>()
@@ -69,6 +73,7 @@ export function makePageTextures(
 
       let texture: THREE.Texture | null = null
       if (canvas) {
+        decorate?.(canvas, page)
         texture = new THREE.CanvasTexture(canvas)
         texture.colorSpace = THREE.SRGBColorSpace
         texture.anisotropy = anisotropy
@@ -90,6 +95,14 @@ export function makePageTextures(
     load,
     pin: (pages) => {
       pinned = new Set(pages)
+    },
+    refresh: (page) => {
+      const cached = ready.get(page)
+      if (cached !== undefined) {
+        cached?.dispose()
+        ready.delete(page)
+      }
+      return load(page)
     },
     dispose: () => {
       disposed = true

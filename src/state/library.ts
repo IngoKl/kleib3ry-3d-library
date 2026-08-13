@@ -76,8 +76,6 @@ type LibraryState = {
   loose: Record<string, LoosePlacement>
   /** What the last reconciliation cost, for the panel. Null when it cost nothing. */
   reconciliation: string | null
-  /** Book id -> bookmarked spreads, ascending. Saved beside the layout. */
-  bookmarks: Record<string, number[]>
   /** Book id -> the spread it was last left open at. */
   readProgress: Record<string, number>
   /** Shelf id -> what is written on its label card. Overrides the document. */
@@ -142,8 +140,6 @@ type LibraryState = {
    * Returns how many were picked up.
    */
   packLooseBooks: () => number
-  /** Add or remove a bookmark at `spread`. Returns true if one is now there. */
-  toggleBookmark: (bookId: string, spread: number) => boolean
   /** Remember where you got to in a book, so putting it down keeps the page. */
   setProgress: (bookId: string, spread: number) => void
   /** Write on a bookcase's label. An empty string takes the label off again. */
@@ -259,7 +255,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       schemaVersion: LAYOUT_SCHEMA_VERSION,
       rows: state.savedRows,
       boxes: state.savedBoxes,
-      bookmarks: state.bookmarks,
       progress: state.readProgress,
       loose: state.loose,
       furniture: state.placements,
@@ -323,7 +318,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     boxed: [],
     loose: {},
     reconciliation: null,
-    bookmarks: {},
     readProgress: {},
     labels: {},
     pins: [],
@@ -441,12 +435,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           if (kept.length) savedBoxes[boxId] = kept
         }
 
-        // A bookmark in a book the index has lost is a bookmark in nothing.
-        const bookmarks: Record<string, number[]> = {}
-        for (const [id, spreads] of Object.entries(layout?.bookmarks ?? {})) {
-          if (known.has(id) && spreads.length) bookmarks[id] = [...spreads].sort((a, b) => a - b)
-        }
-
         const readProgress: Record<string, number> = {}
         for (const [id, spread] of Object.entries(layout?.progress ?? {})) {
           if (known.has(id) && spread > 0) readProgress[id] = spread
@@ -479,7 +467,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           dims,
           savedRows,
           savedBoxes,
-          bookmarks,
           readProgress,
           loose,
           labels: layout?.labels ?? {},
@@ -536,22 +523,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       // Otherwise deliberately no save: books that went into boxes are still
       // written down as belonging to the shelf they came from, so putting the
       // bookcase back in `library.json` puts them back on it.
-    },
-
-    toggleBookmark: (bookId, spread) => {
-      const existing = get().bookmarks[bookId] ?? []
-      const already = existing.includes(spread)
-      const next = already
-        ? existing.filter((s) => s !== spread)
-        : [...existing, spread].sort((a, b) => a - b)
-
-      const bookmarks = { ...get().bookmarks }
-      if (next.length) bookmarks[bookId] = next
-      else delete bookmarks[bookId]
-
-      set({ bookmarks })
-      scheduleSave()
-      return !already
     },
 
     setProgress: (bookId, spread) => {
