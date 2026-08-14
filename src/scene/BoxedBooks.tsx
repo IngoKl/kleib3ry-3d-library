@@ -196,9 +196,13 @@ export function BoxedBooks() {
   }, [packing, setBoxViews])
 
   // A cover that finishes loading changes both the board and the binding, so
-  // whatever is on show has to be drawn again.
+  // whatever is on show has to be drawn again — but only for a book actually
+  // on show: a repaint is a full atlas re-upload, and `warmCovers` walks the
+  // whole catalogue while a fresh library is all boxes.
   useEffect(() => {
-    const listener = () => print()
+    const listener = (id: string) => {
+      if (placed.some((item) => item.id === id)) print()
+    }
     onCoverReady.add(listener)
     return () => {
       onCoverReady.delete(listener)

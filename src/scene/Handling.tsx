@@ -217,9 +217,9 @@ export function Handling() {
 
       const x = player.x - Math.sin(player.yaw) * CARRY_AHEAD
       const z = player.z - Math.cos(player.yaw) * CARRY_AHEAD
-      // Snapped to a quarter turn: the collision AABBs assume right-angle
-      // rotations (see `aabbFromCentre`), and a box set down at 45° would
-      // render rotated while colliding axis-aligned.
+      // Snapped to a quarter turn so a set-down box reads as *placed* rather
+      // than dropped. (The collision AABBs now cover any facing, so this is a
+      // look, not a constraint.)
       const facing = Math.round((player.yaw * 180) / Math.PI / 90) * 90
 
       // A box fresh off the stack becomes real furniture here, where it first

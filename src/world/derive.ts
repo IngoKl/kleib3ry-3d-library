@@ -485,6 +485,20 @@ export type DerivedRoof = {
 const areaOf = (room: RoomSpec) => room.size[0] * room.size[1]
 const topOf = (room: RoomSpec) => room.elevation + room.height
 
+/**
+ * The highest point a room's own roof can reach. What the overhang rule has to
+ * clear: a neighbour's slope rises far above its wall plate.
+ */
+function roofTopOf(room: RoomSpec): number {
+  const top = topOf(room)
+  if (room.roof.kind === 'none' || room.roof.kind === 'flat') return top
+  const b = roomBounds(room)
+  const span =
+    room.roof.fall === 'north' || room.roof.fall === 'south' ? b.maxZ - b.minZ : b.maxX - b.minX
+  const pitch = (room.roof.pitch * Math.PI) / 180
+  return top + Math.tan(pitch) * (room.roof.kind === 'gable' ? span / 2 : span)
+}
+
 const overlapsInPlan = (a: RoomSpec, b: RoomSpec): boolean => {
   const p = roomBounds(a)
   const q = roomBounds(b)
@@ -501,9 +515,12 @@ const overlapsInPlan = (a: RoomSpec, b: RoomSpec): boolean => {
  * the east wall. Both are the same mistake: growing a footprint uniformly when
  * one of its sides is a joint rather than an edge.
  *
- * "In the way" is a neighbour that reaches at least as high as these eaves and
- * whose wall runs along this side. Equal heights count, so two wings of the same
- * height meet in a valley instead of crossing overhangs in the gap between them.
+ * "In the way" is a neighbour whose *roof* reaches at least as high as these
+ * eaves and whose wall runs along this side. The roof, not the walls: the
+ * bathroom's walls stop below the kitchen's eaves, but its slope rises well
+ * above them, and the kitchen's eave slab was buried in its shingles. Equal
+ * heights count, so two wings of the same height meet in a valley instead of
+ * crossing overhangs in the gap between them.
  */
 function overhangOn(
   room: RoomSpec,
@@ -516,7 +533,7 @@ function overhangOn(
   const near = (a: number, c: number) => Math.abs(a - c) <= ROOM_GAP + 0.02
 
   for (const other of rooms) {
-    if (other === room || topOf(other) < eaves - EPS) continue
+    if (other === room || roofTopOf(other) < eaves - EPS) continue
     const o = roomBounds(other)
     // Adjacent, not merely somewhere else in the building: the two footprints
     // have to line up across the side in question.

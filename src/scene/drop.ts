@@ -167,10 +167,11 @@ export function shove(
   const nz = distance < 1e-4 ? 0 : dz / distance
   const strength = Math.min(1.6, speed * 0.55 + 0.25)
 
+  // A velocity, not a teleport: jumping the body to the player-circle boundary
+  // put books inside walls in one frame. Pushed instead, it scoots out over a
+  // few frames — the kick reapplies until it is clear.
   return {
     ...body,
-    x: from.x + nx * radius,
-    z: from.z + nz * radius,
     vx: nx * strength,
     vz: nz * strength,
     spin: (nx - nz) * 0.9,

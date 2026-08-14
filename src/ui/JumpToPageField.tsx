@@ -36,7 +36,7 @@ export function JumpToPageField() {
 
   return (
     <div className="field-card" data-testid="jump-field">
-      <p className="field-label">go to page</p>
+      <p className="field-label">Go to Page</p>
       <input
         ref={input}
         value={text}
@@ -51,7 +51,7 @@ export function JumpToPageField() {
         autoFocus
       />
       <p className="field-hint">
-        <kbd>enter</kbd> go · <kbd>esc</kbd> stay
+        <kbd>Enter</kbd> go · <kbd>Esc</kbd> stay
       </p>
     </div>
   )

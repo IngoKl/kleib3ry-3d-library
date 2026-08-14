@@ -55,6 +55,18 @@ test.describe('collision', () => {
     })
   })
 
+  test('an angled footprint covers its rotated corners', () => {
+    // A 2×1 at 45°: both half-extents are (2+1)/(2√2) ≈ 1.06 — the corners of
+    // the rotated rectangle, which the old quarter-turn snap cut off.
+    const box = aabbFromCentre(0, 0, 2, 1, Math.PI / 4)
+    const half = (2 + 1) / (2 * Math.SQRT2)
+    expect(box.maxX).toBeCloseTo(half)
+    expect(box.maxZ).toBeCloseTo(half)
+    // The rectangle's actual corner at 45° sits at x = z ≈ 1.06 · cos component;
+    // the AABB must contain it.
+    expect(box.maxX + 1e-9).toBeGreaterThanOrEqual((2 / 2) * Math.SQRT1_2 + (1 / 2) * Math.SQRT1_2)
+  })
+
   test('nothing is sitting on the player spawn', () => {
     // Asked at the spawn's own *level*. `WORLD.colliders` is every solid in the
     // building flattened, which since the loft includes a balustrade two and a

@@ -86,6 +86,29 @@ pub fn save_files(root: &std::path::Path) -> SaveFiles {
     }
 }
 
+/// Write a save file by way of a sibling `.tmp` and a rename, so a crash or a
+/// full disk mid-write leaves the old file whole instead of truncated.
+pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut name = path.as_os_str().to_owned();
+    name.push(".tmp");
+    let tmp = std::path::PathBuf::from(name);
+    std::fs::write(&tmp, bytes)?;
+    match std::fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        // Windows can refuse to rename over a file another process holds open;
+        // remove-then-rename is not atomic but still narrower than writing in
+        // place ever was.
+        Err(_) if path.exists() => {
+            std::fs::remove_file(path)?;
+            std::fs::rename(&tmp, path)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Changed-ness of a file, cheaply: modified time and length.
 ///
 /// The front end polls this so that editing `library.json` in any editor reloads
@@ -101,4 +124,26 @@ pub fn stamp_of(path: &std::path::Path) -> Option<String> {
         .ok()?
         .as_millis();
     Some(format!("{modified}:{}", meta.len()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_atomic_replaces_the_target_and_leaves_no_tmp_behind() {
+        let dir = std::env::temp_dir().join("kleib3ry-core-atomic");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("save.json");
+
+        // Creates missing parents, like the in-place writes it replaces did.
+        write_atomic(&path, b"{\"a\":1}").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"a\":1}");
+
+        write_atomic(&path, b"{\"a\":2}").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"a\":2}");
+        assert!(!dir.join("save.json.tmp").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

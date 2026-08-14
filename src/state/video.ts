@@ -26,12 +26,19 @@ type VideoState = {
   /** Tape id in the machine, running or paused. */
   playing: string | null
   paused: boolean
+  /**
+   * Which television it is in, by furniture id — the record player's `deck`,
+   * for the same reason: a building may have more than one set, and they share
+   * the single video element, so this is what tells the scene which screen the
+   * picture is on. Null until a tape has gone in.
+   */
+  crt: string | null
   /** Why the last attempt to play failed, for the HUD. */
   error: string | null
 
   load: () => Promise<void>
   /** Put a tape in. Passing the one already in the machine pauses or resumes it. */
-  play: (id: string) => void
+  play: (id: string, crt?: string) => void
   /** Eject. The screen goes back to static. */
   stop: () => void
   tapeAt: (id: string) => IndexedTape | undefined
@@ -72,6 +79,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   loaded: false,
   playing: null,
   paused: false,
+  crt: null,
   error: null,
 
   load: async () => {
@@ -85,11 +93,12 @@ export const useVideoStore = create<VideoState>((set, get) => ({
 
   tapeAt: (id) => get().tapes.find((tape) => tape.id === id),
 
-  play: (id) => {
+  play: (id, crt) => {
     const tape = get().tapeAt(id)
     if (!tape) return
 
     const player = videoElement()
+    if (crt !== undefined) set({ crt })
 
     // The tape already in the machine: pause, or let it run on.
     if (get().playing === id) {
@@ -116,6 +125,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
       set({
         playing: null,
         paused: false,
+        crt: null,
         error: `cannot play ${tape.title} — ${e instanceof Error ? e.message : String(e)}`,
       })
     })
@@ -126,7 +136,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
       element.pause()
       element.removeAttribute('src')
     }
-    set({ playing: null, paused: false })
+    set({ playing: null, paused: false, crt: null })
   },
 
   setVolume: (volume) => {

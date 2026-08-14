@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ambienceBlend } from './ambienceBlend'
 import { sceneRefs } from './refs'
-import { MATERIALS, makeFloorTexture } from './materials'
+import { MATERIALS, makeFloorTexture, wallWashTexture } from './materials'
 import { useAmbienceStore } from '../state/ambience'
 import {
   FLOOR_SLAB,
@@ -71,11 +71,14 @@ function Shell({
   panels,
   color,
   roughness = 0.95,
+  map,
   userData,
 }: {
   panels: readonly Panel[]
   color: string
   roughness?: number
+  /** Multiplied under `color` — a near-white wash, not a palette of its own. */
+  map?: THREE.Texture
   /** Marks a shell as something the crosshair may treat as a wall. */
   userData?: Record<string, unknown>
 }) {
@@ -85,7 +88,7 @@ function Shell({
 
   return (
     <mesh geometry={geometry} userData={userData} castShadow receiveShadow>
-      <meshStandardMaterial color={color} roughness={roughness} metalness={0} />
+      <meshStandardMaterial color={color} roughness={roughness} metalness={0} map={map ?? null} />
     </mesh>
   )
 }
@@ -97,7 +100,15 @@ function Shell({
  * boards run continuously across a stairwell rather than restarting at every
  * cut — which is what gives away a floor built out of pieces.
  */
-function FloorSlab({ slab, texture }: { slab: Slab; texture: THREE.Texture }) {
+function FloorSlab({
+  slab,
+  texture,
+  bias = 0,
+}: {
+  slab: Slab
+  texture: THREE.Texture
+  bias?: number
+}) {
   const width = slab.maxX - slab.minX
   const depth = slab.maxZ - slab.minZ
   const map = useMemo(() => {
@@ -111,7 +122,11 @@ function FloorSlab({ slab, texture }: { slab: Slab; texture: THREE.Texture }) {
 
   return (
     <mesh
-      position={[(slab.minX + slab.maxX) / 2, slab.y - FLOOR_SLAB / 2, (slab.minZ + slab.maxZ) / 2]}
+      position={[
+        (slab.minX + slab.maxX) / 2,
+        slab.y - FLOOR_SLAB / 2 + bias,
+        (slab.minZ + slab.maxZ) / 2,
+      ]}
       receiveShadow
       castShadow
     >
@@ -210,6 +225,12 @@ function Room({ room }: { room: RoomSpec }) {
   const panels = useMemo(() => walls.flatMap((wall) => wallPanels(room, wall)), [room, walls])
   const panes = useMemo(() => windowPanes(room).map(paneOf), [room])
   const slabs = useMemo(() => floorSlabs(room), [room])
+  // See the note where the slabs render: sub-millimetre, downward only.
+  const slabBias = useMemo(() => {
+    let sum = 0
+    for (let i = 0; i < room.id.length; i++) sum = (sum + room.id.charCodeAt(i)) % 7
+    return -sum * 0.0004
+  }, [room.id])
   const timber = useMemo(() => timberOf(room), [room])
   const skirting = useMemo(
     () => (room.outdoor ? [] : walls.map((wall) => skirtingFor(room, wall))),
@@ -219,7 +240,11 @@ function Room({ room }: { room: RoomSpec }) {
   return (
     <group>
       {slabs.map((slab, i) => (
-        <FloorSlab key={`floor-${i}`} slab={slab} texture={floorTexture} />
+        // Flush-abutted rooms extend coplanar slabs under the shared doorway
+        // (the porch against the cabin), and the two faces fight for pixels in
+        // the threshold. A hair of per-room bias, deterministic off the id and
+        // far below anything a foot or an eye can measure, settles the fight.
+        <FloorSlab key={`floor-${i}`} slab={slab} texture={floorTexture} bias={slabBias} />
       ))}
 
       {room.ceiling && ceilingTexture && (
@@ -231,7 +256,12 @@ function Room({ room }: { room: RoomSpec }) {
       {/* Marked, so the raycast that looks for somewhere to pin a page can tell
           a wall from the floor and the rafters it is merged alongside. Plaster
           is the only surface in the building anybody sticks anything to. */}
-      <Shell panels={panels} color={MATERIALS.wall} userData={{ wall: room.id }} />
+      <Shell
+        panels={panels}
+        color={MATERIALS.wall}
+        map={wallWashTexture()}
+        userData={{ wall: room.id }}
+      />
       <Shell panels={timber} color={MATERIALS.timber} roughness={0.87} />
       <Shell panels={skirting} color={MATERIALS.skirting} roughness={0.7} />
 

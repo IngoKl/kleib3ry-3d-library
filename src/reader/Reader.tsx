@@ -525,6 +525,12 @@ export function Reader() {
         e.preventDefault()
         toggleBookmark(reading, spreadRef.current)
       } else if (e.key === 'Escape' || e.code === 'KeyR') {
+        // Esc peels one layer at a time: the controls card first, the book
+        // second — matching the walk controller, where Esc closes the card.
+        if (e.key === 'Escape' && app.controlsOpen) {
+          app.setControlsOpen(false)
+          return
+        }
         setReading(null)
         setMode('walk')
       }

@@ -57,10 +57,17 @@ async function optional<T>(path: string): Promise<T | null> {
 }
 
 async function send(path: string, method: string, body: BodyInit, type: string): Promise<void> {
+  // Saves are flushed from `pagehide`, and a plain fetch is aborted at unload —
+  // the shelving made in the debounce window before closing the tab silently
+  // vanished. `keepalive` lets the PUT outlive the page, but is refused outright
+  // for bodies over 64 KB, so a huge layout falls back to a plain (best-effort)
+  // fetch rather than failing every save.
+  const keepalive = typeof body === 'string' && body.length < 60_000
   const response = await fetch(`${API}${path}`, {
     method,
     headers: { 'Content-Type': type },
     body,
+    keepalive,
   })
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
@@ -249,10 +256,15 @@ export const httpDriver: LibraryService = {
    * server checks every one of them against the three folders it is willing to
    * read before it opens anything; see `is_allowed` there.
    *
-   * Encoded as a single component so that a Windows path, a space or an umlaut
-   * in a filename survives, and split back apart by the server's own decoder.
+   * Encoded per segment so that a space, an umlaut — or a `#` or `?`, which
+   * `encodeURI` leaves bare and the browser then reads as fragment or query —
+   * survives, and split back apart by the server's own decoder.
    */
   assetUrl(path) {
-    return `/media/${encodeURI(path.replace(/\\/g, '/'))}`
+    return `/media/${path
+      .replace(/\\/g, '/')
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')}`
   },
 }

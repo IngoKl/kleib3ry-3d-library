@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { placeSound } from './audioRig'
 import { placeRain, stopRain } from './rainSound'
+import { placeLoop, stopAllLoops } from './ambientSound'
 import { player } from '../state/player'
+import { cat } from '../state/cat'
 import { musicElement, useMediaStore } from '../state/media'
 import { useVideoStore, videoElement } from '../state/video'
 import { useAmbienceStore } from '../state/ambience'
@@ -74,10 +76,14 @@ export function Sound() {
   }, [world])
 
   // Weather that has cleared gives its audio graph back rather than sitting
-  // there at zero gain until the tab closes.
+  // there at zero gain until the tab closes. The small loops go with the
+  // scene the same way.
   useEffect(() => {
     if (!raining) stopRain()
-    return () => stopRain()
+    return () => {
+      stopRain()
+      stopAllLoops()
+    }
   }, [raining])
 
   useFrame(() => {
@@ -120,7 +126,7 @@ export function Sound() {
     if (video.playing !== null) {
       placeSound(
         videoElement(),
-        sourceOf('crt', null),
+        sourceOf('crt', video.crt),
         listener,
         settings.volume,
         settings.positionalAudio,
@@ -131,6 +137,38 @@ export function Sound() {
       const open = openness(world, spots)
       const level = RAIN_INSIDE + (RAIN_OUTSIDE - RAIN_INSIDE) * open
       placeRain(settings.volume * settings.rainVolume * level, open)
+    }
+
+    // The small loops: a lit fire crackles, a close purring cat is audible, a
+    // spinning record carries its dust. Each is a level on a synthesised loop
+    // (`ambientSound`), attenuated here by plain distance — a zero level on a
+    // loop that never started costs nothing at all. All three ride the same
+    // Small Sounds slider, on top of the master volume like the rain.
+    if (world) {
+      const small = settings.volume * settings.ambientVolume
+      const ambience = useAmbienceStore.getState()
+      let fire = 0
+      for (const lamp of world.lights) {
+        if (lamp.kind !== 'fireplace' && lamp.kind !== 'campfire') continue
+        if (!ambience.isOn(lamp.id, lamp.defaultOn)) continue
+        const away = Math.hypot(lamp.x - player.x, lamp.y - player.eye, lamp.z - player.z)
+        fire = Math.max(fire, Math.max(0, 1 - away / 9))
+      }
+      placeLoop('fire', small * 0.5 * fire * fire)
+
+      const catAway = Math.hypot(cat.x - player.x, cat.z - player.z)
+      const catNear = Math.max(0, 1 - catAway / 2.6)
+      placeLoop('purr', small * 0.55 * cat.purr * catNear * catNear)
+
+      let vinyl = 0
+      if (music.playing !== null && !music.paused) {
+        const deck = sourceOf('recordplayer', music.deck)
+        if (deck) {
+          const away = Math.hypot(deck.x - player.x, deck.y - player.eye, deck.z - player.z)
+          vinyl = Math.max(0, 1 - away / 7)
+        }
+      }
+      placeLoop('vinyl', small * 0.16 * vinyl * vinyl)
     }
   })
 

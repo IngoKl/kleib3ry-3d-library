@@ -23,11 +23,16 @@ export function aabbFromCentre(
   depth: number,
   rotationY = 0,
 ): Aabb {
-  // Only right-angle rotations occur in the room, so swapping extents is exact.
-  const quarterTurns = Math.round(rotationY / (Math.PI / 2))
-  const swap = Math.abs(quarterTurns % 2) === 1
-  const halfW = (swap ? depth : width) / 2
-  const halfD = (swap ? width : depth) / 2
+  // The AABB of the rotated footprint, summed like the stair bounds in
+  // `derive.ts`: the schema accepts any facing, and snapping to a quarter turn
+  // let you walk through the corners of anything stood at an angle — the camp
+  // tent most visibly. At right angles one term is zero, so nothing changes;
+  // the snap keeps those cases bit-exact despite sin/cos rounding.
+  const snap = (v: number) => (v < 1e-9 ? 0 : v > 1 - 1e-9 ? 1 : v)
+  const s = snap(Math.abs(Math.sin(rotationY)))
+  const c = snap(Math.abs(Math.cos(rotationY)))
+  const halfW = (c * width + s * depth) / 2
+  const halfD = (s * width + c * depth) / 2
   return { minX: cx - halfW, maxX: cx + halfW, minZ: cz - halfD, maxZ: cz + halfD }
 }
 

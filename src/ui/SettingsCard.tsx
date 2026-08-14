@@ -9,7 +9,7 @@ import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
-import { useSettings } from '../state/settings'
+import { eveningNow, useSettings } from '../state/settings'
 import { floorAt, supportAt } from '../world/derive'
 
 /**
@@ -42,7 +42,7 @@ function Toggle({
         aria-pressed={on}
         onClick={() => onChange(!on)}
       >
-        {on ? 'on' : 'off'}
+        {on ? 'On' : 'Off'}
       </button>
     </div>
   )
@@ -229,6 +229,16 @@ export function SettingsCard() {
         format={(value) => (value === 0 ? 'off' : `${Math.round(value * 100)}%`)}
         onChange={(next) => settings.set('rainVolume', next)}
       />
+      <Slider
+        label="Small Sounds"
+        hint="The fire's crackle, the cat's purr, the dust on a record — on top of the volume above."
+        value={settings.ambientVolume}
+        min={0}
+        max={1}
+        step={0.05}
+        format={(value) => (value === 0 ? 'off' : `${Math.round(value * 100)}%`)}
+        onChange={(next) => settings.set('ambientVolume', next)}
+      />
       <Toggle
         label="Sound in the Room"
         hint="The deck and the television get quieter as you walk away, and come from where they stand."
@@ -250,6 +260,18 @@ export function SettingsCard() {
         on={night}
         testId="toggle-night"
         onChange={() => toggleNight()}
+      />
+      <Toggle
+        label="Match the Clock"
+        hint="Night follows this machine's clock when a library opens. N still works after that."
+        on={settings.matchClock}
+        testId="match-clock"
+        onChange={(next) => {
+          settings.set('matchClock', next)
+          // Apply now rather than on the next launch: switching it on in the
+          // evening should bring the evening with it.
+          if (next && night !== eveningNow()) toggleNight()
+        }}
       />
       <Toggle
         label="Rain"

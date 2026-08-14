@@ -196,6 +196,8 @@ pub fn refresh_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
 
 /// True when the file on disk is unchanged since the last index *and* the row
 /// was written by the current probes, so the expensive probe can be skipped.
+/// `mtime` is in milliseconds — whole seconds missed a same-length rewrite
+/// landing within one clock second.
 ///
 /// The probe version is part of it because a file that has not changed can
 /// still be described wrongly: a row written before the EPUB probe measured
@@ -227,26 +229,30 @@ pub fn list_books(conn: &Connection) -> Result<Vec<Book>> {
 /// cover files can be cleaned up too.
 ///
 /// `unreadable` is the paths the scan found but could not open — a lock held by
-/// a sync client or antivirus, not a deletion. Pruning those would cascade away
-/// reading progress over a transient error, so they are kept for a later scan
-/// to sort out.
+/// a sync client or antivirus, not a deletion.
 pub fn prune_missing(
     conn: &Connection,
     seen: &[String],
     unreadable: &[String],
 ) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT id, path FROM books")?;
+    // A book that both moved and was unreadable this scan looks exactly like a
+    // deletion: its stored path is gone and nothing ties the row to the locked
+    // file at the new path. Rather than guess, skip the prune entirely when
+    // anything was unreadable — a stale row self-heals on the next clean scan,
+    // pruned reading progress does not.
+    if !unreadable.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn.prepare("SELECT id FROM books")?;
     let all = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .query_map([], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let seen: std::collections::HashSet<&str> = seen.iter().map(String::as_str).collect();
-    let unreadable: std::collections::HashSet<&str> =
-        unreadable.iter().map(String::as_str).collect();
     let gone: Vec<String> = all
         .into_iter()
-        .filter(|(id, path)| !seen.contains(id.as_str()) && !unreadable.contains(path.as_str()))
-        .map(|(id, _)| id)
+        .filter(|id| !seen.contains(id.as_str()))
         .collect();
 
     for id in &gone {
@@ -370,6 +376,22 @@ mod tests {
 
         let locked = sample("b", "Locked").path;
         let removed = prune_missing(&conn, &["a".to_string()], &[locked]).unwrap();
+        assert_eq!(removed, Vec::<String>::new());
+        assert_eq!(count_books(&conn).unwrap(), 2);
+    }
+
+    /// A book that moved *and* was unreadable this scan: its stored path is
+    /// gone and the unreadable path does not match the row. Nothing may be
+    /// pruned, or the move would cost the book its reading progress.
+    #[test]
+    fn an_unreadable_scan_prunes_nothing_at_all() {
+        let conn = open_in_memory().unwrap();
+        upsert_book(&conn, &sample("a", "Kept"), 10).unwrap();
+        upsert_book(&conn, &sample("b", "Moved Then Locked"), 10).unwrap();
+
+        let removed =
+            prune_missing(&conn, &["a".to_string()], &[r"C:\books\new-place.epub".to_string()])
+                .unwrap();
         assert_eq!(removed, Vec::<String>::new());
         assert_eq!(count_books(&conn).unwrap(), 2);
     }

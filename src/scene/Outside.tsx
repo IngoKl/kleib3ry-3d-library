@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { advanceAmbience, ambienceBlend, colorCorners, mixColor, mixNumber } from './ambienceBlend'
@@ -13,13 +13,14 @@ import {
   PATH,
   SHORE_EDGE,
   SHORE_Y,
-  TRAIL,
+  TRAILS,
   TRAIL_WIDTH,
   WATER_Y,
   lakePoint,
   lakeRadius,
   onTrail,
 } from '../world/terrain'
+import { groundMottleTexture } from './materials'
 import { useAmbienceStore } from '../state/ambience'
 import { useWorldStore } from '../state/world'
 
@@ -570,25 +571,27 @@ function Trail() {
     const parts: THREE.BufferGeometry[] = []
     const half = TRAIL_WIDTH / 2
 
-    for (let i = 1; i < TRAIL.length; i++) {
-      const [ax, az] = TRAIL[i - 1]!
-      const [bx, bz] = TRAIL[i]!
-      const length = Math.hypot(bx - ax, bz - az)
-      if (length < 1e-6) continue
-      const strip = new THREE.PlaneGeometry(TRAIL_WIDTH, length)
-      strip.rotateX(-Math.PI / 2)
-      // The plane's local +Y runs along the leg once it is laid flat, so the
-      // turn is measured from +Z.
-      strip.rotateY(-Math.atan2(bx - ax, bz - az))
-      strip.translate((ax + bx) / 2, 0, (az + bz) / 2)
-      parts.push(strip)
-    }
+    for (const line of TRAILS) {
+      for (let i = 1; i < line.length; i++) {
+        const [ax, az] = line[i - 1]!
+        const [bx, bz] = line[i]!
+        const length = Math.hypot(bx - ax, bz - az)
+        if (length < 1e-6) continue
+        const strip = new THREE.PlaneGeometry(TRAIL_WIDTH, length)
+        strip.rotateX(-Math.PI / 2)
+        // The plane's local +Y runs along the leg once it is laid flat, so the
+        // turn is measured from +Z.
+        strip.rotateY(-Math.atan2(bx - ax, bz - az))
+        strip.translate((ax + bx) / 2, 0, (az + bz) / 2)
+        parts.push(strip)
+      }
 
-    for (const [x, z] of TRAIL) {
-      const cap = new THREE.CircleGeometry(half, 10)
-      cap.rotateX(-Math.PI / 2)
-      cap.translate(x, 0, z)
-      parts.push(cap)
+      for (const [x, z] of line) {
+        const cap = new THREE.CircleGeometry(half, 10)
+        cap.rotateX(-Math.PI / 2)
+        cap.translate(x, 0, z)
+        parts.push(cap)
+      }
     }
 
     const merged = mergeGeometries(parts, false)
@@ -1044,12 +1047,38 @@ export function Outside() {
   const night = useAmbienceStore((s) => s.night)
   const rain = useAmbienceStore((s) => s.rain)
 
-  const background = useRef<THREE.Color>(null)
-  const fog = useRef<THREE.FogExp2>(null)
+  const scene = useThree((s) => s.scene)
+  const background = useRef<THREE.Color | null>(null)
+  const fog = useRef<THREE.FogExp2 | null>(null)
   const waterMaterial = useRef<THREE.MeshStandardMaterial>(null)
+
+  // Set directly on the scene: as JSX children of this group, `attach` would
+  // write `group.fog`/`group.background`, which the renderer never reads.
+  useEffect(() => {
+    const clear = new THREE.Color('#9dc0dc')
+    const haze = new THREE.FogExp2('#c3d2dd', 0.0085)
+    scene.background = clear
+    scene.fog = haze
+    background.current = clear
+    fog.current = haze
+    return () => {
+      if (scene.background === clear) scene.background = null
+      if (scene.fog === haze) scene.fog = null
+      background.current = null
+      fog.current = null
+    }
+  }, [scene])
 
   const ripples = useMemo(() => makeWaterNormals(), [])
   useEffect(() => () => ripples.dispose(), [ripples])
+
+  // ~5 m per tile across the 300 m disc. The texture is a module singleton and
+  // only the ground reads it, so setting its repeat here is not a fight.
+  const groundTexture = useMemo(() => {
+    const mottle = groundMottleTexture()
+    mottle.repeat.set(60, 60)
+    return mottle
+  }, [])
 
   /**
    * The one place the ambience blend advances, plus everything this component
@@ -1113,10 +1142,10 @@ export function Outside() {
 
   return (
     <group>
-      {/* The clear colour behind everything lives with the sky it has to match,
-          not in App: the two changing in different frames is a visible flash.
-          Faded by the frame loop above, like everything else out here. */}
-      <color ref={background} attach="background" args={['#9dc0dc']} />
+      {/* The clear colour and the haze live with the sky they have to match —
+          set on the scene in the effect above, faded by the frame loop. The
+          haze is what makes a hundred metres of forest read as distance rather
+          than as a lot of cones; at night it thickens a little and goes dark. */}
       <Sky />
       <Hills />
       <MistRing />
@@ -1124,10 +1153,11 @@ export function Outside() {
 
       {/* The ground you now walk on, a whisker below the floor slabs so the two
           never z-fight and the reveal reads as a shadow line at the base of a
-          wall rather than as a cabin standing on air. */}
+          wall rather than as a cabin standing on air. The mottle is multiplied
+          under the colour — meadow, not baize. */}
       <mesh position={[0, GROUND_Y, 0]} rotation-x={-Math.PI / 2} receiveShadow>
         <circleGeometry args={[GROUND_RADIUS, 48]} />
-        <meshStandardMaterial color="#4a5c34" roughness={1} />
+        <meshStandardMaterial color="#4a5c34" roughness={1} map={groundTexture} />
       </mesh>
 
       <Trail />
@@ -1163,12 +1193,6 @@ export function Outside() {
 
       <Forest trees={trees} />
 
-      {/* Haze, which is what makes a hundred metres of forest read as distance
-          rather than as a lot of cones. Thin enough not to fog the room. At
-          night it thickens a little and goes dark, which is what darkness at a
-          distance actually looks like. Colour and density fade with the
-          ambience blend rather than switching. */}
-      <fogExp2 ref={fog} attach="fog" args={['#c3d2dd', 0.0085]} />
     </group>
   )
 }

@@ -40,6 +40,11 @@ export type Settings = {
   /** How loud the rain is, on top of the master volume. 0 silences it. */
   rainVolume: number
   /**
+   * The room's small noises — the fire's crackle, the cat's purr, the dust on
+   * a record — on top of the master volume. 0 silences them.
+   */
+  ambientVolume: number
+  /**
    * Whether sound is placed in the room — quieter from the kitchen, and off to
    * your left when the deck is. Off falls back to one volume everywhere, which
    * is what a browser does and what some audio stacks are happier with.
@@ -54,6 +59,13 @@ export type Settings = {
    * beside the mouse and not in the library folder.
    */
   boxPerFolder: boolean
+  /**
+   * Whether night in the room follows this machine's clock, so an evening
+   * session arrives in an evening room. Here rather than in `ambience.json`
+   * because the timezone is a machine fact — the same library opened on
+   * another continent should follow *that* machine's evening.
+   */
+  matchClock: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -61,9 +73,17 @@ export const DEFAULT_SETTINGS: Settings = {
   showBody: true,
   volume: 0.8,
   rainVolume: 0.35,
+  ambientVolume: 1,
   positionalAudio: true,
   sensitivity: 1,
   boxPerFolder: false,
+  matchClock: false,
+}
+
+/** Whether this machine's clock says it is evening: before 7, or from 19:00. */
+export function eveningNow(): boolean {
+  const hour = new Date().getHours()
+  return hour < 7 || hour >= 19
 }
 
 function read(): Settings {
@@ -80,9 +100,11 @@ function read(): Settings {
       showBody: parsed.showBody ?? DEFAULT_SETTINGS.showBody,
       volume: clamp(parsed.volume ?? DEFAULT_SETTINGS.volume, 0, 1),
       rainVolume: clamp(parsed.rainVolume ?? DEFAULT_SETTINGS.rainVolume, 0, 1),
+      ambientVolume: clamp(parsed.ambientVolume ?? DEFAULT_SETTINGS.ambientVolume, 0, 1),
       positionalAudio: parsed.positionalAudio ?? DEFAULT_SETTINGS.positionalAudio,
       sensitivity: clamp(parsed.sensitivity ?? DEFAULT_SETTINGS.sensitivity, 0.2, 3),
       boxPerFolder: parsed.boxPerFolder ?? DEFAULT_SETTINGS.boxPerFolder,
+      matchClock: parsed.matchClock ?? DEFAULT_SETTINGS.matchClock,
     }
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -152,9 +174,11 @@ function persist(state: Settings) {
         showBody: state.showBody,
         volume: state.volume,
         rainVolume: state.rainVolume,
+        ambientVolume: state.ambientVolume,
         positionalAudio: state.positionalAudio,
         sensitivity: state.sensitivity,
         boxPerFolder: state.boxPerFolder,
+        matchClock: state.matchClock,
       } satisfies Settings),
     )
   } catch {

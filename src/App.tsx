@@ -126,9 +126,18 @@ export default function App() {
         // The panels that take the keyboard each close themselves from their own
         // field; this is the way out when the focus has wandered off it — which
         // is one stray click away and used to leave `Esc` doing nothing at all.
+        // A consumed Esc stops here: the reader and the arcade register their
+        // handlers after this one, and without the stop the press that closed
+        // the panel would go on to close the book or step you off the machine.
         const app = useAppStore.getState()
         if (app.settingsOpen) app.setSettingsOpen(false)
         else if (app.searching) app.setSearching(false)
+        else if (app.jumping) app.setJumping(false)
+        else if (app.annotating) app.setAnnotating(false)
+        else if (app.noting) app.setNoting(false)
+        else if (app.labelling !== null) app.setLabelling(null)
+        else return
+        e.stopImmediatePropagation()
       }
     }
     window.addEventListener('keydown', onKeyDown)

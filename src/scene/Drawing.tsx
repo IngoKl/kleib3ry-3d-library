@@ -20,6 +20,16 @@ import { useWorldStore } from '../state/world'
 /** How far the crosshair reaches to write, in metres. */
 const REACH = 2.6
 
+// Whether pointer lock has ever engaged this session. Headless runs never
+// lock and must keep drawing; a desktop session that has locked before must
+// not start a stroke from the click that merely re-locks after Esc.
+let everLocked = false
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement) everLocked = true
+  })
+}
+
 export function Drawing() {
   const camera = useThree((s) => s.camera)
   const held = useAppStore((s) => s.heldMarker)
@@ -90,6 +100,11 @@ export function Drawing() {
     if (held === null || !down.current) return
     const app = useAppStore.getState()
     if (app.mode !== 'walk' || !roomHasKeyboard()) return
+    // The click that re-locks the pointer after Esc is aiming at the canvas,
+    // not at a board; without this it left a dot wherever the crosshair sat.
+    // Gated on "has ever locked" so the headless tests — where lock is
+    // unavailable and the mouse drives the stroke directly — still draw.
+    if (everLocked && !document.pointerLockElement) return
 
     const boards = sceneRefs.boards
     if (!boards) return

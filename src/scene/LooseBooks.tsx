@@ -331,11 +331,13 @@ export function LooseBooks() {
       if (!size || !body) continue
 
       // Kick it out of the way if you are standing on it. Only ever done to a
-      // book at rest: one already in flight has somewhere it is going.
+      // book at rest: one already in flight has somewhere it is going. Only a
+      // book on the *floor*: one on a footstool or a bench is at knee height,
+      // where feet do not reach — leaning on the stool must not punt it off.
       let current = body
       if (current.resting && held !== id) {
         const feet = Math.abs(current.y - player.floor)
-        if (feet < 0.5) current = shove(current, player, KICK_RADIUS, player.speed)
+        if (feet < 0.15) current = shove(current, player, KICK_RADIUS, player.speed)
       }
 
       const wasResting = current.resting

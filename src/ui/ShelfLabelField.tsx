@@ -36,7 +36,7 @@ export function ShelfLabelField() {
 
   return (
     <div className="field-card" data-testid="label-field">
-      <p className="field-label">label for {shelfId}</p>
+      <p className="field-label">Label for {shelfId}</p>
       <input
         ref={input}
         value={text}
@@ -51,7 +51,7 @@ export function ShelfLabelField() {
         autoFocus
       />
       <p className="field-hint">
-        <kbd>enter</kbd> write it · <kbd>esc</kbd> leave it · empty rubs it out
+        <kbd>Enter</kbd> write it · <kbd>Esc</kbd> leave it · empty rubs it out
       </p>
     </div>
   )

@@ -22,13 +22,12 @@
 mod http;
 
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use kleib3ry_core::{db, index, media, save_files, stamp_of};
+use kleib3ry_core::{db, index, media, save_files, stamp_of, write_atomic};
 use serde_json::json;
 
 use http::{Request, Response};
@@ -151,6 +150,9 @@ fn main() -> std::process::ExitCode {
 
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
+        // A client that connects and then drips bytes — or nothing — must
+        // release its thread rather than pin it forever.
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
         let state = Arc::clone(&state);
         // A thread per connection. This serves one household; a thread pool
         // would be machinery for a load that does not exist, and a book being
@@ -162,12 +164,25 @@ fn main() -> std::process::ExitCode {
 }
 
 fn serve(stream: TcpStream, state: &State) {
-    let Some(request) = http::read_request(&stream) else {
-        http::write_response(&stream, Response::text(400, "bad request"));
-        return
+    let mut request = match http::read_request(&stream) {
+        Ok(request) => request,
+        Err(status) => {
+            http::write_response(&stream, Response::empty(status));
+            return;
+        }
     };
+    // HEAD is GET without the body: routed identically so the headers agree,
+    // then only the head is written.
+    let is_head = request.method == "HEAD";
+    if is_head {
+        request.method = "GET".to_string();
+    }
     let response = route(&request, state).unwrap_or_else(|message| Response::text(500, &message));
-    http::write_response(&stream, response);
+    if is_head {
+        http::write_head(&stream, response);
+    } else {
+        http::write_response(&stream, response);
+    }
 }
 
 /// Errors are strings on purpose.
@@ -179,6 +194,12 @@ type Handler = std::result::Result<Response, String>;
 
 fn oops<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+/// The progress lock, poison-proof: a thread that panicked while holding it
+/// must not take the progress poll — or the next scan — down with it.
+fn progress_of(state: &State) -> MutexGuard<'_, Progress> {
+    state.progress.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 fn route(request: &Request, state: &State) -> Handler {
@@ -220,17 +241,25 @@ fn route(request: &Request, state: &State) -> Handler {
             if state.scanning.swap(1, Ordering::SeqCst) == 1 {
                 return Ok(Response::text(409, "a scan is already running"));
             }
-            {
-                let mut progress = state.progress.lock().unwrap();
-                *progress = Progress { running: true, ..Default::default() };
+            // A drop guard, so a panic escaping `index::scan` cannot leave the
+            // flag set and every later scan answering 409.
+            struct Reset<'a>(&'a State);
+            impl Drop for Reset<'_> {
+                fn drop(&mut self) {
+                    progress_of(self.0).running = false;
+                    self.0.scanning.store(0, Ordering::SeqCst);
+                }
             }
+            let _reset = Reset(state);
+
+            *progress_of(state) = Progress { running: true, ..Default::default() };
 
             let outcome = index::scan(
                 &state.config.root,
                 &files.database,
                 &files.covers,
                 |update| {
-                    let mut progress = state.progress.lock().unwrap();
+                    let mut progress = progress_of(state);
                     progress.done = update.done;
                     progress.total = update.total;
                     progress.current = update.current;
@@ -238,15 +267,12 @@ fn route(request: &Request, state: &State) -> Handler {
                 },
             );
 
-            state.progress.lock().unwrap().running = false;
-            state.scanning.store(0, Ordering::SeqCst);
-
             let summary = outcome.map_err(oops)?;
             Ok(Response::json(&serde_json::to_value(summary).map_err(oops)?))
         }
 
         ("GET", "/api/scan/progress") => {
-            let progress = state.progress.lock().unwrap().clone();
+            let progress = progress_of(state).clone();
             Ok(Response::json(&serde_json::to_value(progress).map_err(oops)?))
         }
 
@@ -386,20 +412,38 @@ fn route_by_prefix(request: &Request, state: &State) -> Handler {
 fn write_json_file(path: &Path, body: &[u8]) -> std::result::Result<(), String> {
     // Parsed before it is written, so a truncated PUT cannot leave a layout file
     // that the next load refuses — which would look like the library forgetting
-    // where every book was.
+    // where every book was. Written atomically so a crash mid-write cannot
+    // truncate the save either.
     let value: serde_json::Value = serde_json::from_slice(body).map_err(oops)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(oops)?;
-    }
-    fs::write(path, serde_json::to_string_pretty(&value).map_err(oops)?).map_err(oops)
+    write_atomic(path, serde_json::to_string_pretty(&value).map_err(oops)?.as_bytes())
+        .map_err(oops)
+}
+
+/// Windows refuses — or worse, aliases to a device — these as file names, so
+/// an id spelling one is unusable on any machine the library might sync to.
+fn is_reserved_name(id: &str) -> bool {
+    let upper = id.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (upper.len() == 4
+            && (upper.starts_with("COM") || upper.starts_with("LPT"))
+            && matches!(upper.as_bytes()[3], b'1'..=b'9'))
 }
 
 fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handler {
     // The id becomes a file name in the covers directory. It is normally a hex
     // hash, but it arrives from a browser, and `join` follows `..` and absolute
     // paths — so anything that is not a plain name is a write outside the cache.
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if id.is_empty()
+        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || is_reserved_name(id)
+    {
         return Ok(Response::text(400, "not a cover id"));
+    }
+    // Only a book the index knows may have a cover cached — anything else is a
+    // way to fill the disk with orphan PNGs, one POST at a time.
+    let conn = db::open(&files.database).map_err(oops)?;
+    if db::path_of(&conn, id).map_err(oops)?.is_none() {
+        return Ok(Response::text(404, "no such book"));
     }
     let text = std::str::from_utf8(body).map_err(oops)?;
     let payload = text
@@ -412,7 +456,6 @@ fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handle
     fs::create_dir_all(&files.covers).map_err(oops)?;
     fs::write(files.covers.join(&name), &bytes).map_err(oops)?;
 
-    let conn = db::open(&files.database).map_err(oops)?;
     db::set_cover(&conn, id, &name).map_err(oops)?;
     Ok(Response::json(&json!({
         "path": files.covers.join(&name).to_string_lossy(),
@@ -506,27 +549,23 @@ fn serve_media(request: &Request, state: &State) -> Handler {
         return Ok(Response::text(404, "not found"));
     }
 
-    let length = fs::metadata(&wanted).map_err(oops)?.len();
+    let file = fs::File::open(&wanted).map_err(oops)?;
+    let length = file.metadata().map_err(oops)?.len();
     let mime = http::mime_of(&wanted);
 
-    // A range, if one was asked for. This is what makes a tape seekable.
+    // A range, if one was asked for. This is what makes a tape seekable. The
+    // bytes are streamed from the open file rather than buffered: Chromium
+    // opens a video with `Range: bytes=0-`, which is the whole tape.
     if let Some(header) = request.header("range") {
         return match http::parse_range(header, length) {
-            Some((start, end)) => {
-                let mut file = fs::File::open(&wanted).map_err(oops)?;
-                file.seek(SeekFrom::Start(start)).map_err(oops)?;
-                let mut bytes = vec![0u8; (end - start + 1) as usize];
-                file.read_exact(&mut bytes).map_err(oops)?;
-                Ok(Response::new(206, mime, bytes)
-                    .with("Content-Range", &format!("bytes {start}-{end}/{length}"))
-                    .with("Accept-Ranges", "bytes"))
-            }
+            Some((start, end)) => Ok(Response::stream(206, mime, file, start, end - start + 1)
+                .with("Content-Range", &format!("bytes {start}-{end}/{length}"))
+                .with("Accept-Ranges", "bytes")),
             None => Ok(Response::empty(416).with("Content-Range", &format!("bytes */{length}"))),
         };
     }
 
-    let bytes = fs::read(&wanted).map_err(oops)?;
-    Ok(Response::new(200, mime, bytes).with("Accept-Ranges", "bytes"))
+    Ok(Response::stream(200, mime, file, 0, length).with("Accept-Ranges", "bytes"))
 }
 
 /// The built front end.
@@ -862,6 +901,14 @@ mod tests {
         // The id becomes a filename, and `join` follows `..`.
         assert_eq!(h.call("POST", "/api/cover/..%2Fescape", png).status, 400);
         assert_eq!(h.call("POST", "/api/cover/has spaces", png).status, 400);
+        // Windows device names are not usable file names anywhere the folder
+        // might sync to.
+        assert_eq!(h.call("POST", "/api/cover/NUL", png).status, 400);
+        assert_eq!(h.call("POST", "/api/cover/com7", png).status, 400);
+        // A well-formed id the index has never heard of writes nothing: covers
+        // are cached for books, not for whoever likes filling the disk.
+        assert_eq!(h.call("POST", "/api/cover/0123456789abcdef", png).status, 404);
+        assert!(!save_files(&h.root).covers.join("0123456789abcdef.png").exists());
         // A body that is not a data URL is refused rather than written as bytes.
         assert!(h.try_call("POST", &format!("/api/cover/{id}"), b"just some text").is_err());
     }
@@ -876,20 +923,22 @@ mod tests {
 
         let whole = h.call("GET", &format!("/media/{}", track.to_string_lossy()), b"");
         assert_eq!(whole.status, 200);
-        assert_eq!(whole.body, b"0123456789".to_vec());
         assert_eq!(whole.content_type, "audio/mpeg");
         // Advertised, or a player will not attempt to seek at all.
         assert!(whole.extra.iter().any(|(k, v)| k == "Accept-Ranges" && v == "bytes"));
+        // Streamed, not buffered: the body rides in the file handle.
+        assert!(whole.file.is_some());
+        assert_eq!(whole.into_body_bytes(), b"0123456789".to_vec());
 
         let mut headers = HashMap::new();
         headers.insert("range".to_string(), "bytes=2-5".to_string());
         let part = h.with_headers("GET", &format!("/media/{}", track.to_string_lossy()), b"", headers);
         assert_eq!(part.status, 206);
-        assert_eq!(part.body, b"2345".to_vec());
         assert!(part
             .extra
             .iter()
             .any(|(k, v)| k == "Content-Range" && v == "bytes 2-5/10"));
+        assert_eq!(part.into_body_bytes(), b"2345".to_vec());
 
         let mut past = HashMap::new();
         past.insert("range".to_string(), "bytes=99-200".to_string());

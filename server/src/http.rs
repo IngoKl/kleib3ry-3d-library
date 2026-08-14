@@ -13,8 +13,7 @@
 //! which is what the compose file does.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 
 /// A parsed request. The body is read eagerly, because every body this server
 /// takes is a JSON document a few hundred kilobytes at worst.
@@ -40,6 +39,10 @@ pub struct Response {
     pub status: u16,
     pub content_type: String,
     pub body: Vec<u8>,
+    /// A body streamed straight from disk — `(file, offset, length)` — instead
+    /// of `body`, so a multi-gigabyte tape is never held in memory. Chromium's
+    /// opening move for a video is `Range: bytes=0-`, which is the whole file.
+    pub file: Option<(std::fs::File, u64, u64)>,
     pub extra: Vec<(String, String)>,
 }
 
@@ -49,7 +52,39 @@ impl Response {
             status,
             content_type: content_type.to_string(),
             body,
+            file: None,
             extra: Vec::new(),
+        }
+    }
+
+    /// `length` bytes of `file` starting at `offset`, read at write time.
+    pub fn stream(
+        status: u16,
+        content_type: &str,
+        file: std::fs::File,
+        offset: u64,
+        length: u64,
+    ) -> Self {
+        Self {
+            status,
+            content_type: content_type.to_string(),
+            body: Vec::new(),
+            file: Some((file, offset, length)),
+            extra: Vec::new(),
+        }
+    }
+
+    /// The bytes the client would receive, materialised for tests.
+    #[cfg(test)]
+    pub fn into_body_bytes(self) -> Vec<u8> {
+        match self.file {
+            None => self.body,
+            Some((mut file, offset, length)) => {
+                file.seek(SeekFrom::Start(offset)).unwrap();
+                let mut bytes = vec![0u8; length as usize];
+                file.read_exact(&mut bytes).unwrap();
+                bytes
+            }
         }
     }
 
@@ -81,6 +116,8 @@ fn reason(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        409 => "Conflict",
+        411 => "Length Required",
         413 => "Payload Too Large",
         416 => "Range Not Satisfiable",
         500 => "Internal Server Error",
@@ -119,29 +156,51 @@ pub fn percent_decode(text: &str) -> String {
 /// megabyte; the layout of a large library is a few hundred kilobytes.
 const MAX_BODY: usize = 32 * 1024 * 1024;
 
-pub fn read_request(stream: &TcpStream) -> Option<Request> {
+/// Limits that make a hostile client boring: no browser sends a header line
+/// this long or this many headers. The third limit — a read timeout, so a
+/// drip-fed request cannot pin a thread forever — is set where the connection
+/// is accepted, because it belongs to the socket rather than to the parse.
+const MAX_HEADER_LINE: usize = 8 * 1024;
+const MAX_HEADERS: usize = 100;
+
+/// One line, with `read_line`'s unbounded append capped through `take`.
+/// `None` is an I/O error or a line over the cap; EOF is an empty string.
+fn bounded_line<R: Read>(reader: &mut BufReader<R>) -> Option<String> {
+    let mut line = String::new();
+    (&mut *reader).take(MAX_HEADER_LINE as u64 + 1).read_line(&mut line).ok()?;
+    (line.len() <= MAX_HEADER_LINE).then_some(line)
+}
+
+/// A parsed request, or the status code to refuse the connection with.
+pub fn read_request<R: Read>(stream: R) -> std::result::Result<Request, u16> {
     let mut reader = BufReader::new(stream);
 
-    let mut line = String::new();
-    if reader.read_line(&mut line).ok()? == 0 {
-        return None;
-    }
+    let line = bounded_line(&mut reader).ok_or(400u16)?;
     let mut parts = line.split_whitespace();
-    let method = parts.next()?.to_string();
-    let target = parts.next()?.to_string();
+    let method = parts.next().ok_or(400u16)?.to_string();
+    let target = parts.next().ok_or(400u16)?.to_string();
 
     let mut headers = HashMap::new();
     loop {
-        let mut header = String::new();
-        if reader.read_line(&mut header).ok()? == 0 {
+        let line = bounded_line(&mut reader).ok_or(400u16)?;
+        let line = line.trim_end();
+        if line.is_empty() {
             break;
         }
-        let header = header.trim_end();
-        if header.is_empty() {
-            break;
+        if headers.len() >= MAX_HEADERS {
+            return Err(400);
         }
-        if let Some((name, value)) = header.split_once(':') {
+        if let Some((name, value)) = line.split_once(':') {
             headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+        }
+    }
+
+    // A chunked body would read as empty below, and an "empty" POST /api/world
+    // would trip the write-once guard against the real document forever. This
+    // server reads Content-Length bodies only, so anything else is refused.
+    if let Some(encoding) = headers.get("transfer-encoding") {
+        if !encoding.eq_ignore_ascii_case("identity") {
+            return Err(411);
         }
     }
 
@@ -150,18 +209,18 @@ pub fn read_request(stream: &TcpStream) -> Option<Request> {
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
     if length > MAX_BODY {
-        return None;
+        return Err(413);
     }
     let mut body = vec![0u8; length];
     if length > 0 {
-        reader.read_exact(&mut body).ok()?;
+        reader.read_exact(&mut body).map_err(|_| 400u16)?;
     }
 
     // Vite fingerprints its assets, so a cache-busting query can arrive on one;
     // the path is what identifies the file either way.
     let path = target.split('?').next().unwrap_or("");
 
-    Some(Request {
+    Ok(Request {
         method,
         path: percent_decode(path),
         headers,
@@ -169,13 +228,27 @@ pub fn read_request(stream: &TcpStream) -> Option<Request> {
     })
 }
 
-pub fn write_response(mut stream: &TcpStream, response: Response) {
+pub fn write_response<W: Write>(stream: W, response: Response) {
+    write(stream, response, true)
+}
+
+/// The same status line and headers `write_response` would send — including
+/// the full Content-Length — with no body. What HEAD promises.
+pub fn write_head<W: Write>(stream: W, response: Response) {
+    write(stream, response, false)
+}
+
+fn write<W: Write>(mut stream: W, response: Response, include_body: bool) {
+    let content_length = match &response.file {
+        Some((_, _, length)) => *length,
+        None => response.body.len() as u64,
+    };
     let mut head = format!(
         "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n",
         response.status,
         reason(response.status),
         response.content_type,
-        response.body.len(),
+        content_length,
     );
     for (name, value) in &response.extra {
         head.push_str(&format!("{name}: {value}\r\n"));
@@ -184,8 +257,40 @@ pub fn write_response(mut stream: &TcpStream, response: Response) {
 
     // A broken pipe is a browser that navigated away mid-download, which is
     // normal and not worth a line of log.
-    let _ = stream.write_all(head.as_bytes());
-    let _ = stream.write_all(&response.body);
+    if stream.write_all(head.as_bytes()).is_err() {
+        return;
+    }
+    if include_body {
+        match response.file {
+            Some((mut file, offset, mut remaining)) => {
+                // Chunked from the open file, so the span is never in memory.
+                if file.seek(SeekFrom::Start(offset)).is_err() {
+                    return;
+                }
+                let mut chunk = [0u8; 64 * 1024];
+                while remaining > 0 {
+                    let want = chunk.len().min(remaining as usize);
+                    match file.read(&mut chunk[..want]) {
+                        // The file shrank underneath us; a short body is all
+                        // that can honestly be sent.
+                        Ok(0) => break,
+                        Ok(n) => {
+                            if stream.write_all(&chunk[..n]).is_err() {
+                                return;
+                            }
+                            remaining -= n as u64;
+                        }
+                        Err(_) => return,
+                    }
+                }
+            }
+            None => {
+                if stream.write_all(&response.body).is_err() {
+                    return;
+                }
+            }
+        }
+    }
     let _ = stream.flush();
 }
 
@@ -285,6 +390,73 @@ mod tests {
         // Over-long ends clamp, because that half is merely a hint.
         assert_eq!(parse_range("bytes=900-99999", 1000), Some((900, 999)));
         assert_eq!(parse_range("items=0-1", 1000), None);
+    }
+
+    #[test]
+    fn a_request_parses_with_its_headers_and_body() {
+        let raw = b"POST /api/layout?v=1 HTTP/1.1\r\nContent-Length: 4\r\nX-Thing: yes\r\n\r\nbody";
+        let request = read_request(&raw[..]).unwrap();
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.path, "/api/layout");
+        assert_eq!(request.body, b"body".to_vec());
+        assert_eq!(request.header("X-Thing"), Some("yes"));
+    }
+
+    #[test]
+    fn an_oversized_header_line_is_refused() {
+        // `read_line` appends without limit, so the cap is what stands between
+        // a hostile client and unbounded memory.
+        let raw = format!("GET /{} HTTP/1.1\r\n\r\n", "a".repeat(9_000));
+        assert_eq!(read_request(raw.as_bytes()).err(), Some(400));
+
+        let raw = format!("GET / HTTP/1.1\r\nX-Big: {}\r\n\r\n", "b".repeat(9_000));
+        assert_eq!(read_request(raw.as_bytes()).err(), Some(400));
+    }
+
+    #[test]
+    fn too_many_headers_are_refused() {
+        let mut raw = String::from("GET / HTTP/1.1\r\n");
+        for i in 0..150 {
+            raw.push_str(&format!("x-h-{i}: v\r\n"));
+        }
+        raw.push_str("\r\n");
+        assert_eq!(read_request(raw.as_bytes()).err(), Some(400));
+    }
+
+    #[test]
+    fn a_chunked_body_is_refused_rather_than_read_as_empty() {
+        // Reading it as empty once wrote an empty world document whose
+        // write-once guard then blocked the real one forever.
+        let raw = b"POST /api/world HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nbody\r\n0\r\n\r\n";
+        assert_eq!(read_request(&raw[..]).err(), Some(411));
+
+        // `identity` is the one encoding that means "no encoding".
+        let plain = b"POST /api/world HTTP/1.1\r\nTransfer-Encoding: identity\r\nContent-Length: 2\r\n\r\n{}";
+        assert_eq!(read_request(&plain[..]).unwrap().body, b"{}".to_vec());
+    }
+
+    #[test]
+    fn head_writes_the_same_head_and_no_body() {
+        let mut out = Vec::new();
+        write_head(&mut out, Response::new(200, "text/plain", b"hello".to_vec()));
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("Content-Length: 5"), "{text}");
+        assert!(text.ends_with("\r\n\r\n"), "a HEAD answer carried a body: {text}");
+    }
+
+    #[test]
+    fn a_streamed_file_range_goes_out_in_chunks_with_the_full_length_advertised() {
+        let path = std::env::temp_dir().join("kleib3ry-http-stream.bin");
+        std::fs::write(&path, b"0123456789").unwrap();
+        let file = std::fs::File::open(&path).unwrap();
+
+        let mut out = Vec::new();
+        write_response(&mut out, Response::stream(206, "video/mp4", file, 2, 4));
+        let text = String::from_utf8_lossy(&out);
+        assert!(text.contains("Content-Length: 4"), "{text}");
+        assert!(out.ends_with(b"2345"), "wrong bytes streamed");
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

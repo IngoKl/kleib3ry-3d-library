@@ -289,9 +289,11 @@ export function step(chip: Chip8) {
           return
         case 0x33:
           // Binary-coded decimal: the only way a CHIP-8 game prints a score.
-          chip.memory[chip.i] = Math.floor(vx / 100)
-          chip.memory[chip.i + 1] = Math.floor(vx / 10) % 10
-          chip.memory[chip.i + 2] = vx % 10
+          // Masked like FX55/FX65, so a store at the top of memory wraps
+          // instead of silently vanishing off the end of the array.
+          chip.memory[chip.i & 0xfff] = Math.floor(vx / 100)
+          chip.memory[(chip.i + 1) & 0xfff] = Math.floor(vx / 10) % 10
+          chip.memory[(chip.i + 2) & 0xfff] = vx % 10
           return
         case 0x55:
           for (let r = 0; r <= x; r++) chip.memory[(chip.i + r) & 0xfff] = chip.v[r] ?? 0

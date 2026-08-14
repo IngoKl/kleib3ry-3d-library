@@ -1194,18 +1194,26 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   // Polled from this side rather than with `waitForFunction`, for the reason
   // `settled` gives: a page timer is starved by the render loop here, and this
   // one was evaluated once in twenty seconds. The budget is generous because
-  // the ease is counted in frames and a frame here can be most of a second.
+  // the ease is counted in frames and a frame here can be most of a second —
+  // which is also why two equal readings only count once a frame has actually
+  // been rendered between them: the ease moves per *frame*, and two polls
+  // landing inside one long frame used to read as "at rest" mid-glide.
   let previous = ''
+  let previousFrame = -1
   let stopped = false
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
-    const at = await page.evaluate(() => window.__app.player())
-    const now = `${at.x.toFixed(3)}:${at.z.toFixed(3)}`
-    if (now === previous) {
+    const at = await page.evaluate(() => ({
+      player: window.__app.player(),
+      frames: window.__app.stats().frames,
+    }))
+    const now = `${at.player.x.toFixed(3)}:${at.player.z.toFixed(3)}`
+    if (now === previous && at.frames > previousFrame) {
       stopped = true
       break
     }
     previous = now
+    previousFrame = at.frames
     await page.waitForTimeout(400)
   }
   expect(stopped, 'the seated ease never came to rest').toBe(true)
@@ -1552,8 +1560,11 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
   // birds, dust) — and that is what the number tracks. What it rules out is a
   // shelved book costing anything at all — see the test below it, which is the
   // one that actually guards that.
+  // Raised from 640 when the cabin grew a kitchen's worth of appliances, a
+  // games corner, a front door and the camp across the lake — furniture, which
+  // is exactly what this number tracks.
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.drawCalls).toBeLessThan(640)
+  expect(stats.drawCalls).toBeLessThan(700)
 
   // Standing still costs nothing: no cell changes hands.
   const settled = near.reprinted
@@ -1860,11 +1871,19 @@ test('the marker draws on the whiteboard, and the board keeps it', async ({ page
   const aimed = await settled(page, () => window.__app.boardTarget() !== null, 8000)
   expect(aimed, 'never found the whiteboard with the marker in hand').toBe(true)
 
-  // Hold the button and sweep the crosshair: the line follows the head.
+  // Hold the button and sweep the crosshair: the line follows the head. The
+  // sweep waits for *frames*, not for slices of wall clock — the stroke gains
+  // a point per rendered frame, and on the software rasteriser a fixed sleep
+  // can span zero of them, which was a five-pose sweep recorded as one dot.
   await page.mouse.down()
   for (const yaw of [-0.12, -0.06, 0, 0.06, 0.12]) {
     await page.evaluate((y) => window.__app.look(Math.PI + y, 0), yaw)
-    await page.waitForTimeout(150)
+    const seen = await page.evaluate(() => window.__app.stats().frames)
+    await page.waitForFunction(
+      (was) => window.__app.stats().frames > was + 1,
+      seen,
+      { timeout: 60_000, polling: 100 },
+    )
   }
   await page.mouse.up()
 
@@ -1943,10 +1962,22 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
   }
 
   // Somewhere with plaster on it: the south wall between the window and the
-  // porch door, which is solid from the floor to the ceiling.
+  // porch door, which is solid from the floor to the ceiling. Waited for the
+  // *settled* aim, not the first non-null target: closing the book eases the
+  // camera back to your eyes over a few frames, and on the software rasteriser
+  // those frames take seconds — an E fired at the first hit pinned the page
+  // wherever the camera happened to be pointing mid-glide, and the last check
+  // of this test then looked for it at the aim it never landed on.
   await page.evaluate(() => window.__app.teleport(1.5, 3.2, Math.PI, 0))
   await page.evaluate(() => window.__app.look(Math.PI, 0))
-  const aimed = await settled(page, () => window.__app.pinTarget() !== null, 20_000)
+  const aimed = await settled(
+    page,
+    () => {
+      const target = window.__app.pinTarget()
+      return target !== null && Math.abs(target.x - 1.5) < 0.15
+    },
+    60_000,
+  )
   expect(aimed, 'a wall a stride away was not offered as somewhere to pin').toBe(true)
   await expect(page.getByTestId('held-sheet-card')).toBeVisible()
 
@@ -1965,7 +1996,7 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
 
   // And it comes back down into your hand, which is what makes moving one from a
   // wall to the whiteboard two presses of the same key.
-  const seen = await settled(page, () => window.__app.focusedPin() !== null, 8000)
+  const seen = await settled(page, () => window.__app.focusedPin() !== null, 30_000)
   expect(seen, 'the sheet on the wall was not offered').toBe(true)
   await page.keyboard.press('KeyE')
   const down = await settled(page, () => window.__app.pins().length === 0, 8000)

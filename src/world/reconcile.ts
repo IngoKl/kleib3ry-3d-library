@@ -180,6 +180,12 @@ export function reconcile(
   // one copy shelved and one boxed. First mention wins.
   const claimed = new Set<string>()
 
+  // A book lying out beats a row copy of the same id, for the same reason the
+  // loose entry beats a box below: "where you last put it down" is the
+  // placement a person made. Without this a layout listing an id in both
+  // rendered the book twice — once packed, once on the table.
+  const loose = new Set(Object.keys(saved?.loose ?? {}))
+
   for (const [key, ids] of Object.entries(saved?.rows ?? {})) {
     for (const id of ids) wasPlaced.add(id)
 
@@ -187,7 +193,7 @@ export function reconcile(
     // the case lost rows. Either way every book on it has lost its home.
     const parsed = parseRowKey(key)
     if (!parsed || !validRows.has(key)) {
-      const lost = ids.filter((id) => known.has(id) && !claimed.has(id))
+      const lost = ids.filter((id) => known.has(id) && !claimed.has(id) && !loose.has(id))
       for (const id of lost) claimed.add(id)
       displaced.push(...lost)
       continue
@@ -198,7 +204,7 @@ export function reconcile(
     const kept: string[] = []
     let used = 0
     for (const id of ids) {
-      if (!known.has(id) || claimed.has(id)) continue
+      if (!known.has(id) || claimed.has(id) || loose.has(id)) continue
       const size = dims(id)
       if (!size) continue
       claimed.add(id)

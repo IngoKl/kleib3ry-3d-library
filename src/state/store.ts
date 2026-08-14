@@ -609,6 +609,7 @@ export function roomHasKeyboard(): boolean {
     state.labelling === null &&
     !state.noting &&
     !state.annotating &&
+    !state.jumping &&
     !state.searching
   )
 }

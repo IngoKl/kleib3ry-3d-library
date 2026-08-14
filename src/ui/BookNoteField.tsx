@@ -39,7 +39,7 @@ export function BookNoteField() {
 
   return (
     <div className="field-card" data-testid="book-note-field">
-      <p className="field-label">note on this page</p>
+      <p className="field-label">Note on This Page</p>
       <input
         ref={input}
         value={text}
@@ -54,7 +54,7 @@ export function BookNoteField() {
         autoFocus
       />
       <p className="field-hint">
-        <kbd>enter</kbd> keep it · <kbd>esc</kbd> never mind
+        <kbd>Enter</kbd> keep it · <kbd>Esc</kbd> never mind
       </p>
     </div>
   )

@@ -235,12 +235,19 @@ export function Player() {
 
       // Holding a tape: the television takes it, the crate takes it back. Its
       // place in the crate comes from the folder, so putting it back is just
-      // letting go of it — exactly like filing a record.
+      // letting go of it — exactly like filing a record. The set's id rides
+      // along so only that screen lights: reading `playing` alone put the same
+      // picture on every television in the house.
       if (heldTape !== null) {
         if (focusedFixture) {
-          useVideoStore.getState().play(heldTape)
-          setHeldTape(null)
-          return
+          const piece = useWorldStore
+            .getState()
+            .world?.furniture.find((item) => item.id === focusedFixture)
+          if (piece?.kind === 'crt') {
+            useVideoStore.getState().play(heldTape, piece.id)
+            setHeldTape(null)
+            return
+          }
         }
         if (tapeCrateTarget) setHeldTape(null)
         return
@@ -455,7 +462,8 @@ export function Player() {
         // A television with a tape in it pauses and resumes; an empty one has
         // nothing to show, and deliberately does *not* help itself to the first
         // tape in the crate. Putting a tape in is a thing you do with your hands.
-        if (video.playing) video.play(video.playing)
+        // Only the set the tape is actually in: the other one is empty.
+        if (video.playing && video.crt === item.id) video.play(video.playing)
         return
       }
       // The cabinet: with a game in it, E steps you up to the controls and the
@@ -584,7 +592,7 @@ export function Player() {
             app.setHeldRecord(taken)
             return
           }
-          if (piece?.kind === 'crt' && video.playing) {
+          if (piece?.kind === 'crt' && video.playing && video.crt === piece.id) {
             const taken = video.playing
             video.stop()
             app.setHeldTape(taken)

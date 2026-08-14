@@ -255,7 +255,12 @@ export const DEFAULT_WORLD_TEXT = `{
         // plays whatever is in roms/. The stairwell hole ends at local z -0.8,
         // so everything here stands on solid boards.
         { "id": "arcade", "kind": "arcade", "at": [4.61, -1.9], "facing": 270 },
-        { "id": "roms", "kind": "rombox", "at": [3.85, -2.53], "facing": 180 }
+        { "id": "roms", "kind": "rombox", "at": [3.85, -2.53], "facing": 180 },
+
+        // Strung along the inside of the balustrade. Visible from the whole
+        // great room, so it is also the hearth end's night-light: the railing
+        // top is at 1.0 over the loft floor and the line hangs just above it.
+        { "id": "loft-lights", "kind": "fairylights", "at": [0, 2.55], "facing": 0, "y": 1.15, "size": [8.0, 0.16] }
       ]
     },
 
@@ -414,6 +419,11 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "kitchen-table", "kind": "table", "at": [0.0, -0.6], "facing": 0, "size": [1.1, 0.72] },
         { "id": "kitchen-chair-1", "kind": "diningchair", "at": [0.0, 0.15], "facing": 180 },
         { "id": "kitchen-chair-2", "kind": "diningchair", "at": [0.9, -0.6], "facing": 270 },
+        // A rug under the table and a clock over the counter: the kitchen was
+        // the one room with neither, and it read as a workroom for it. The rug
+        // is not solid, so the lanes to both doors stay walkable.
+        { "id": "kitchen-rug", "kind": "rug", "at": [0.0, -0.5], "facing": 0, "size": [1.7, 1.2] },
+        { "id": "kitchen-clock", "kind": "clock", "at": [-0.6, 1.66], "facing": 180, "y": 2.1, "size": [0.3, 0.3] },
         // On the east counter's north end, up out of the walkway — the floor
         // spot it used to hold is the lane between the table and the fridge.
         // The sink sits at the counter's other end, at about z = 0.14.
@@ -598,8 +608,10 @@ export const DEFAULT_WORLD_TEXT = `{
         // treads are decoration: the drop from the decking to the ground is
         // 24 cm, which is inside the step the walk controller will take
         // unaided, so the steps are what makes it look like somewhere to walk
-        // down rather than somewhere to fall off.
-        { "id": "porch-step", "kind": "step", "at": [1.8, 2.21], "facing": 0 },
+        // down rather than somewhere to fall off. Sized to the doorway — the
+        // railing panels own the wall either side of it, and a wider tread
+        // comes out through their aprons.
+        { "id": "porch-step", "kind": "step", "at": [1.8, 2.21], "facing": 0, "size": [1.1, 0.62] },
 
         // A little table by the steps, and the headlamp lying on it — where a
         // hand finds it on the way out into the dark. E puts it on; worn, not
@@ -652,7 +664,15 @@ export const DEFAULT_WORLD_TEXT = `{
         { "id": "lake-lamp", "kind": "floorlamp", "at": [-1.8, 0.9], "facing": 0 },
         { "id": "lake-plant", "kind": "plant", "at": [1.7, -1.7], "facing": 0, "height": 0.7 },
         { "id": "picture-6", "kind": "picture", "at": [-2.44, 1.2], "facing": 90, "y": 1.5, "size": [0.6, 0.8] },
-        { "id": "lake-pendant", "kind": "pendant", "at": [0, 0], "facing": 0, "y": 2.15 }
+        { "id": "lake-pendant", "kind": "pendant", "at": [0, 0], "facing": 0, "y": 2.15 },
+
+        // A second record crate, so more of music/ has somewhere to be — the
+        // deal slices the folder across every crate in the world — and so the
+        // walk round the lake has a ritual at the end of it: carry a record
+        // over, light the stove, put it on. On the south wall between the
+        // stove and the door, deck on top of the crate like the great room's.
+        { "id": "lake-records", "kind": "recordshelf", "at": [-0.1, 2.0], "facing": 180 },
+        { "id": "lake-deck", "kind": "recordplayer", "at": [-0.1, 1.93], "facing": 180, "y": 0.78 }
       ]
     },
 

@@ -61,8 +61,10 @@ export function occupied(x: number, z: number, keepOut: readonly Bounds[]): bool
   const r = lakeRadius(x, z)
   if (r < PATH.to) return true
   if (onTrail(x, z, TRAIL_WIDTH)) return true
-  // The sight-line from the north windows down to the water.
-  if (z < LAKE.viewFrom && Math.abs(x - LAKE.x) < LAKE.viewX) return true
+  // The sight-line from the north windows down to the water. It stops at the
+  // lake — the water keeps itself clear from there — so the tree line closes
+  // behind the far shore and the campfire burns against forest, not a plain.
+  if (z < LAKE.viewFrom && z > LAKE.z && Math.abs(x - LAKE.x) < LAKE.viewX) return true
   for (const box of keepOut) {
     if (x > box.minX && x < box.maxX && z > box.minZ && z < box.maxZ) return true
   }

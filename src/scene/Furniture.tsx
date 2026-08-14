@@ -357,39 +357,61 @@ function FairyLights({ width, sag, lit }: { width: number; sag: number; lit: boo
   // Normalised -1..1 across the span, so the shape is the same at any length.
   const dip = (t: number) => -sag * (1 - t * t)
 
+  // Merged: a string used to be ~36 flex-segment meshes plus a mesh per bulb —
+  // the single most draw-call-dense piece in the file, times every string in
+  // the map. The flex is one geometry, the bulbs one instanced mesh: two draws
+  // for the lot, the `Plant` foliage argument at greater length.
+  const flex = useMemo(() => {
+    const parts: THREE.BufferGeometry[] = []
+    const segments = bulbs * 3
+    for (let i = 0; i < segments - 1; i++) {
+      const t = (i / (segments - 1)) * 2 - 1
+      const next = ((i + 1) / (segments - 1)) * 2 - 1
+      const x = (t * width) / 2
+      const dx = ((next - t) * width) / 2
+      const dy = dip(next) - dip(t)
+      const piece = new THREE.BoxGeometry(Math.hypot(dx, dy), 0.005, 0.005)
+      piece.rotateZ(Math.atan2(dy, dx))
+      piece.translate(x + dx / 2, dip(t) + dy / 2, 0)
+      parts.push(piece)
+    }
+    const merged = mergeGeometries(parts, false)
+    parts.forEach((part) => part.dispose())
+    return merged
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulbs, width, sag])
+  useEffect(() => () => flex?.dispose(), [flex])
+
+  const bulbRef = useRef<THREE.InstancedMesh>(null)
+  useLayoutEffect(() => {
+    const mesh = bulbRef.current
+    if (!mesh) return
+    const matrix = new THREE.Matrix4()
+    for (let i = 0; i < bulbs; i++) {
+      const t = (i / (bulbs - 1)) * 2 - 1
+      matrix.makeTranslation((t * width) / 2, dip(t) - 0.035, 0)
+      mesh.setMatrixAt(i, matrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.computeBoundingSphere()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulbs, width, sag])
+
+  if (!flex) return null
   return (
     <group>
-      {Array.from({ length: bulbs * 3 }, (_, i) => {
-        const t = (i / (bulbs * 3 - 1)) * 2 - 1
-        const next = ((i + 1) / (bulbs * 3 - 1)) * 2 - 1
-        const x = (t * width) / 2
-        const dx = ((next - t) * width) / 2
-        const dy = dip(next) - dip(t)
-        return (
-          <mesh
-            key={`flex${i}`}
-            position={[x + dx / 2, dip(t) + dy / 2, 0]}
-            rotation-z={Math.atan2(dy, dx)}
-          >
-            <boxGeometry args={[Math.hypot(dx, dy), 0.005, 0.005]} />
-            <meshStandardMaterial color="#2f2a24" roughness={1} />
-          </mesh>
-        )
-      })}
-      {Array.from({ length: bulbs }, (_, i) => {
-        const t = (i / (bulbs - 1)) * 2 - 1
-        return (
-          <mesh key={`bulb${i}`} position={[(t * width) / 2, dip(t) - 0.035, 0]}>
-            <sphereGeometry args={[0.018, 8, 6]} />
-            <meshStandardMaterial
-              color={lit ? '#ffe6b0' : '#cdc4b2'}
-              emissive={lit ? '#ffcf82' : '#000000'}
-              emissiveIntensity={lit ? 1.4 : 0}
-              roughness={0.5}
-            />
-          </mesh>
-        )
-      })}
+      <mesh geometry={flex}>
+        <meshStandardMaterial color="#2f2a24" roughness={1} />
+      </mesh>
+      <instancedMesh key={bulbs} ref={bulbRef} args={[undefined, undefined, bulbs]}>
+        <sphereGeometry args={[0.018, 8, 6]} />
+        <meshStandardMaterial
+          color={lit ? '#ffe6b0' : '#cdc4b2'}
+          emissive={lit ? '#ffcf82' : '#000000'}
+          emissiveIntensity={lit ? 1.4 : 0}
+          roughness={0.5}
+        />
+      </instancedMesh>
     </group>
   )
 }
@@ -762,7 +784,55 @@ function CoffeeMaker({
           <PropModel kind="cup" full={false} />
         </group>
       )}
+      {/* Steam while it brews and while the pot stands hot: the chimney's puff
+          math at a tenth the scale. Mounted only then, so an idle machine
+          costs nothing at all. */}
+      {(brewing || potFull) && <Steam />}
     </group>
+  )
+}
+
+/** Three tiny puffs rising off the carafe. One draw call, only while hot. */
+function Steam() {
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const scratch = useMemo(
+    () => ({
+      matrix: new THREE.Matrix4(),
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      size: new THREE.Vector3(),
+    }),
+    [],
+  )
+
+  useFrame(({ clock }) => {
+    const node = mesh.current
+    if (!node) return
+    const t = clock.elapsedTime
+    for (let i = 0; i < 3; i++) {
+      const age = (t * 0.35 + i / 3) % 1
+      scratch.position.set(
+        Math.sin(t * 1.3 + i * 2.1) * 0.01 * age,
+        0.24 + age * 0.14,
+        0.04 + Math.cos(t * 1.1 + i * 1.7) * 0.008 * age,
+      )
+      // Grow on the way up, dwindle over the last third — the chimney's rule.
+      const dying = age > 0.7 ? (1 - age) / 0.3 : 1
+      scratch.matrix.compose(
+        scratch.position,
+        scratch.quaternion,
+        scratch.size.setScalar((0.008 + age * 0.022) * dying),
+      )
+      node.setMatrixAt(i, scratch.matrix)
+    }
+    node.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, 3]} frustumCulled={false}>
+      <sphereGeometry args={[1, 6, 5]} />
+      <meshBasicMaterial color="#eceae6" transparent opacity={0.3} depthWrite={false} />
+    </instancedMesh>
   )
 }
 
@@ -1971,7 +2041,9 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
   // `playing` alone put the same disc on the platter of every deck in the house.
   const playing = useMediaStore((s) => (s.deck === item.id ? s.playing : null))
   const paused = useMediaStore((s) => s.paused)
-  const tape = useVideoStore((s) => (item.kind === 'crt' ? s.playing : null))
+  // A tape is in one set at a time, the record player's rule: only that
+  // screen shows the picture.
+  const tape = useVideoStore((s) => (item.kind === 'crt' && s.crt === item.id ? s.playing : null))
   const romIn = useArcadeStore((s) => (item.kind === 'arcade' ? s.inserted : null))
   const brewing = useAppStore((s) => s.brewing === item.id)
   const potFull = useAppStore((s) =>
@@ -2252,12 +2324,19 @@ export function FurnitureLights() {
 
   return (
     <>
-      {world.lights.map((lamp) => {
+      {world.lights
+        // The campfire's light mounts only while it burns, like the
+        // television's glow: every point light is a term every lit fragment
+        // pays for even at zero intensity, and the campfire is dark almost
+        // always. Lighting it recompiles the shaders once, behind the far
+        // larger cost of walking to the camp.
+        .filter((lamp) => lamp.kind !== 'campfire' || (on[lamp.id] ?? lamp.defaultOn))
+        .map((lamp) => {
         const lit = on[lamp.id] ?? lamp.defaultOn
         const fire = lamp.kind === 'fireplace' || lamp.kind === 'campfire'
         const fairy = lamp.kind === 'fairylights'
         return (
-          <pointLight
+          <Lamp
             key={lamp.id}
             // Candela, falling off with the square of distance, so these are
             // larger than they look: at the 2 m from a pendant to the table
@@ -2265,7 +2344,8 @@ export function FurnitureLights() {
             // the fitting; distance is what carries a soft edge into the
             // corners. Fairy lights are dimmer and reach further, which makes
             // them decoration rather than lighting.
-            intensity={!lit ? 0 : fire || lamp.kind === 'pendant' ? 4.5 : fairy ? 1.8 : 2.8}
+            target={!lit ? 0 : fire || lamp.kind === 'pendant' ? 4.5 : fairy ? 1.8 : 2.8}
+            breathing={fire}
             position={[lamp.x, lamp.y, lamp.z]}
             distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : fairy ? 7 : 5.6}
             color={fire ? '#ff9346' : fairy ? '#ffcf82' : BULB}
@@ -2275,6 +2355,52 @@ export function FurnitureLights() {
       <CrtGlows world={world} />
     </>
   )
+}
+
+/**
+ * One lamp, eased rather than switched: a toggle stepping 0 → 2.8 in a single
+ * frame reads as a relay closing, a ~quarter-second ramp reads as a filament
+ * warming. One float write per frame during the fade only — the light itself
+ * stays mounted (see `FurnitureLights` on why unmounting recompiles shaders).
+ * A fire also breathes a slow ±7%: the mesh's flames are deliberately static
+ * (see `Fireplace`), but a light is below the corner-of-eye threshold.
+ */
+function Lamp({
+  target,
+  breathing,
+  position,
+  distance,
+  color,
+}: {
+  target: number
+  breathing: boolean
+  position: [number, number, number]
+  distance: number
+  color: string
+}) {
+  const light = useRef<THREE.PointLight>(null)
+  const primed = useRef(false)
+
+  useFrame(({ clock }, delta) => {
+    const node = light.current
+    if (!node) return
+    // First frame lands on the target: the room must not visibly warm up on load.
+    if (!primed.current) {
+      primed.current = true
+      node.intensity = target
+      return
+    }
+    const swing = breathing && target > 0 ? 1 + Math.sin(clock.elapsedTime * 1.7) * 0.07 : 1
+    const wanted = target * swing
+    const diff = wanted - node.intensity
+    if (Math.abs(diff) < 0.005) {
+      if (node.intensity !== wanted) node.intensity = wanted
+      return
+    }
+    node.intensity += diff * Math.min(1, delta * 9)
+  })
+
+  return <pointLight ref={light} position={position} distance={distance} color={color} />
 }
 
 /**
@@ -2291,16 +2417,14 @@ export function FurnitureLights() {
  */
 function CrtGlows({ world }: { world: { furniture: DerivedFurniture[] } }) {
   const loaded = useVideoStore((s) => s.playing !== null)
+  const crtId = useVideoStore((s) => s.crt)
   if (!loaded) return null
-  return (
-    <>
-      {world.furniture
-        .filter((item) => item.kind === 'crt')
-        .map((item) => (
-          <CrtGlow key={item.id} item={item} />
-        ))}
-    </>
-  )
+  // Only the set the tape is in glows; the others are dark glass. The first
+  // set stands in when nothing recorded which one (a tape started before the
+  // id was tracked), matching `sourceOf` in Sound.
+  const sets = world.furniture.filter((item) => item.kind === 'crt')
+  const lit = sets.find((item) => item.id === crtId) ?? sets[0]
+  return lit ? <CrtGlow key={lit.id} item={lit} /> : null
 }
 
 function CrtGlow({ item }: { item: DerivedFurniture }) {

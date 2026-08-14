@@ -40,6 +40,8 @@ pub enum Error {
     NotADirectory(String),
     #[error("bad image data: {0}")]
     BadImage(String),
+    #[error("a scan is already running")]
+    ScanInProgress,
 }
 
 /// The one core error the shell asks about by name, because it is not a failure
@@ -237,7 +239,12 @@ fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
     Ok(Some(dir))
 }
 
-use kleib3ry_core::stamp_of;
+use kleib3ry_core::{stamp_of, write_atomic};
+
+/// One scan at a time: two scans over one SQLite file race each other into a
+/// corrupt index, which is why the server refuses this too.
+#[derive(Default)]
+struct ScanGuard(std::sync::atomic::AtomicBool);
 
 // ---- commands ----------------------------------------------------------
 
@@ -246,15 +253,35 @@ fn get_library_root(app: AppHandle) -> Result<Option<String>> {
     Ok(Settings::load_from(&paths(&app)?.settings)?.library_root)
 }
 
+/// A library root is stored canonical: an existing directory, made absolute,
+/// so a relative path cannot quietly mean "relative to wherever the app
+/// happened to start".
+fn normalize_root(raw: &str) -> Result<String> {
+    let dir = PathBuf::from(raw);
+    if !dir.is_dir() {
+        return Err(Error::NotADirectory(raw.to_string()));
+    }
+    let real = dir
+        .canonicalize()
+        .map_err(|_| Error::NotADirectory(raw.to_string()))?;
+    // On Windows `canonicalize` yields a `\\?\C:\...` verbatim path, which the
+    // asset scope and the front end both display and match poorly. Strip it
+    // for plain drive paths; UNC paths keep theirs.
+    let text = real.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => Ok(rest.to_string()),
+        _ => Ok(text.into_owned()),
+    }
+}
+
 /// `None` clears the choice, which is also how a test harness puts the user's
 /// settings back the way it found them.
 #[tauri::command]
 fn set_library_root(app: AppHandle, path: Option<String>) -> Result<()> {
-    if let Some(path) = &path {
-        if !PathBuf::from(path).is_dir() {
-            return Err(Error::NotADirectory(path.clone()));
-        }
-    }
+    let path = match path {
+        Some(raw) => Some(normalize_root(&raw)?),
+        None => None,
+    };
     let file = paths(&app)?.settings;
     let mut settings = Settings::load_from(&file)?;
     settings.library_root = path;
@@ -285,7 +312,21 @@ fn list_books(app: AppHandle) -> Result<Vec<Book>> {
 /// Marked async, it goes to the runtime's worker instead and the UI keeps
 /// painting the progress it is being sent.
 #[tauri::command(async)]
-fn scan_library(app: AppHandle) -> Result<index::ScanSummary> {
+fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<index::ScanSummary> {
+    use std::sync::atomic::Ordering;
+    if guard.0.swap(true, Ordering::SeqCst) {
+        return Err(Error::ScanInProgress);
+    }
+    // A drop guard, so an error — or a panic escaping the scan — cannot leave
+    // the flag set and every later scan refused.
+    struct Release<'a>(&'a ScanGuard);
+    impl Drop for Release<'_> {
+        fn drop(&mut self) {
+            self.0 .0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _release = Release(&guard);
+
     let root = root_of(&app)?;
     let database = database(&app)?;
     let covers = allow_covers(&app)?;
@@ -421,11 +462,9 @@ fn get_layout(app: AppHandle) -> Result<Option<serde_json::Value>> {
 
 #[tauri::command]
 fn save_layout(app: AppHandle, layout: serde_json::Value) -> Result<()> {
-    let file = save_files(&app)?.layout;
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&file, serde_json::to_string_pretty(&layout)?)?;
+    // Atomic, so a crash mid-write cannot truncate the file that remembers
+    // where every book is.
+    write_atomic(&save_files(&app)?.layout, serde_json::to_string_pretty(&layout)?.as_bytes())?;
     Ok(())
 }
 
@@ -509,11 +548,7 @@ fn get_ambience(app: AppHandle) -> Result<Option<serde_json::Value>> {
 
 #[tauri::command]
 fn save_ambience(app: AppHandle, state: serde_json::Value) -> Result<()> {
-    let file = save_files(&app)?.ambience;
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&file, serde_json::to_string_pretty(&state)?)?;
+    write_atomic(&save_files(&app)?.ambience, serde_json::to_string_pretty(&state)?.as_bytes())?;
     Ok(())
 }
 
@@ -530,11 +565,7 @@ fn get_annotations(app: AppHandle) -> Result<Option<serde_json::Value>> {
 
 #[tauri::command]
 fn save_annotations(app: AppHandle, doc: serde_json::Value) -> Result<()> {
-    let file = save_files(&app)?.annotations;
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&file, serde_json::to_string_pretty(&doc)?)?;
+    write_atomic(&save_files(&app)?.annotations, serde_json::to_string_pretty(&doc)?.as_bytes())?;
     Ok(())
 }
 
@@ -554,6 +585,7 @@ fn export_annotations(app: AppHandle, markdown: String) -> Result<String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(ScanGuard::default())
         .invoke_handler(tauri::generate_handler![
             get_library_root,
             set_library_root,
@@ -609,6 +641,21 @@ mod tests {
         assert!(text.contains("libraryRoot"), "expected camelCase key, got: {text}");
 
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_library_root_must_exist_and_is_stored_canonical() {
+        let dir = std::env::temp_dir().join("kleib3ry-root-check");
+        fs::create_dir_all(&dir).unwrap();
+
+        let stored = normalize_root(&dir.to_string_lossy()).unwrap();
+        assert!(Path::new(&stored).is_absolute());
+        assert!(!stored.starts_with(r"\\?\"), "verbatim prefix leaked: {stored}");
+        assert!(Path::new(&stored).is_dir());
+
+        assert!(normalize_root("kleib3ry-definitely-not-a-real-directory").is_err());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

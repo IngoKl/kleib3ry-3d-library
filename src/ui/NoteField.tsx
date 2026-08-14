@@ -46,7 +46,7 @@ export function NoteField() {
 
   return (
     <div className="field-card" data-testid="note-field">
-      <p className="field-label">write a note</p>
+      <p className="field-label">Write a Note</p>
       <input
         ref={input}
         value={text}
@@ -61,7 +61,7 @@ export function NoteField() {
         autoFocus
       />
       <p className="field-hint">
-        <kbd>enter</kbd> take it · <kbd>esc</kbd> never mind · then <kbd>E</kbd> at a wall
+        <kbd>Enter</kbd> take it · <kbd>Esc</kbd> never mind · then <kbd>E</kbd> at a wall
       </p>
     </div>
   )

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { library } from '../services'
+import { eveningNow, useSettings } from './settings'
 import type { AmbienceState } from '../services/types'
 
 /**
@@ -78,9 +79,13 @@ export const useAmbienceStore = create<AmbienceStore>((set, get) => {
     load: async () => {
       try {
         const saved = await library.loadAmbience()
+        // "Match the Clock": an evening session arrives in an evening room.
+        // The derived value is not saved — the file keeps what was chosen by
+        // hand, and N still works for the rest of the session.
+        const match = useSettings.getState().matchClock
         set({
           on: saved?.on ?? {},
-          night: saved?.night ?? false,
+          night: match ? eveningNow() : (saved?.night ?? false),
           rain: saved?.rain ?? false,
           loaded: true,
         })

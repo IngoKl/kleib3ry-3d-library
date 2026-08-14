@@ -47,12 +47,26 @@ export class EpubError extends Error {
   }
 }
 
+/**
+ * Percent-decode where possible. A literal `%` in a name — legal in a zip
+ * entry, seen in the wild (`100%.xhtml`) — makes `decodeURIComponent` throw
+ * `URI malformed`; the raw string is then the better guess, not a book that
+ * refuses to open.
+ */
+function percentDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
+}
+
 /** Resolve `href` against the directory `base` sits in, the way a zip path works. */
 function resolve(base: string, href: string): string {
   const clean = href.split('#')[0]!.split('?')[0]!
-  if (clean.startsWith('/')) return decodeURIComponent(clean.slice(1))
+  if (clean.startsWith('/')) return percentDecode(clean.slice(1))
   const parts = base.split('/').slice(0, -1)
-  for (const piece of decodeURIComponent(clean).split('/')) {
+  for (const piece of percentDecode(clean).split('/')) {
     if (piece === '' || piece === '.') continue
     if (piece === '..') parts.pop()
     else parts.push(piece)
@@ -174,7 +188,7 @@ export async function parseEpub(bytes: Uint8Array): Promise<EpubBook> {
   const opfPath = container.querySelector('rootfile')?.getAttribute('full-path')
   if (!opfPath) throw new EpubError('its container names no package document')
 
-  const opfEntry = find(entries, decodeURIComponent(opfPath))
+  const opfEntry = find(entries, percentDecode(opfPath))
   if (!opfEntry) throw new EpubError(`its package document (${opfPath}) is missing from the archive`)
   const opf = parseXml(await readText(bytes, opfEntry), 'application/xml')
 
@@ -203,7 +217,7 @@ export async function parseEpub(bytes: Uint8Array): Promise<EpubBook> {
     // legitimate thing for an EPUB to have and nothing for this to do with.
     if (item.type && !/xhtml|html|xml/.test(item.type)) continue
 
-    const entry = find(entries, resolve(decodeURIComponent(opfPath), item.href))
+    const entry = find(entries, resolve(percentDecode(opfPath), item.href))
     if (!entry) continue
 
     let harvested: Block[]

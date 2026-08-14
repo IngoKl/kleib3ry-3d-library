@@ -252,7 +252,7 @@ export function SearchField() {
       </ul>
 
       <p className="terminal-foot">
-        <kbd>esc</kbd> Step away — it tells you where a thing is, and then you walk to it
+        <kbd>Esc</kbd> Step away — it tells you where a thing is, and then you walk to it
       </p>
     </div>
   )

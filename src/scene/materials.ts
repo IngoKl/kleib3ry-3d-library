@@ -142,3 +142,106 @@ export function makeFloorTexture(
   texture.repeat.set(width / FLOOR_TILE_M, depth / FLOOR_TILE_M)
   return texture
 }
+
+/**
+ * Limewash for the walls: near-white streaks and soft blotches, *multiplied*
+ * under the material's `color`, so `MATERIALS.wall` stays the one place the
+ * tint is decided. The walls are the largest surfaces indoors and were the
+ * only ones with no texture at all — flat fill is what read as CG, not the
+ * palette. One module-level texture: every room's shell shares one upload.
+ */
+let wallWash: THREE.CanvasTexture | null = null
+export function wallWashTexture(): THREE.CanvasTexture {
+  if (wallWash) return wallWash
+  const size = 512
+  const random = mulberry32(0x77a1)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  // A hair under white, so streaks can go lighter as well as darker.
+  ctx.fillStyle = '#f5f3ef'
+  ctx.fillRect(0, 0, size, size)
+
+  // Broad soft blotches: plaster is never one value across a whole wall.
+  for (let i = 0; i < 70; i++) {
+    const x = random() * size
+    const y = random() * size
+    const r = 40 + random() * 110
+    const tone = random() > 0.5 ? '255, 255, 255' : '210, 205, 196'
+    const blotch = ctx.createRadialGradient(x, y, 0, x, y, r)
+    blotch.addColorStop(0, `rgba(${tone}, 0.10)`)
+    blotch.addColorStop(1, `rgba(${tone}, 0)`)
+    ctx.fillStyle = blotch
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+
+  // Vertical brush streaks, low contrast: the drag of the wash, not boards.
+  ctx.globalAlpha = 0.05
+  for (let i = 0; i < 420; i++) {
+    const x = random() * size
+    const y = random() * size
+    const len = 30 + random() * 150
+    ctx.strokeStyle = random() > 0.5 ? '#ffffff' : '#c9c2b4'
+    ctx.lineWidth = 0.6 + random() * 1.6
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + (random() - 0.5) * 3, y + len)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  wallWash = new THREE.CanvasTexture(canvas)
+  wallWash.colorSpace = THREE.SRGBColorSpace
+  wallWash.wrapS = THREE.RepeatWrapping
+  wallWash.wrapT = THREE.RepeatWrapping
+  return wallWash
+}
+
+/**
+ * Mottle for the outdoor ground, the same multiplied-under-colour trick as the
+ * wall wash: two-tone grass patches in neutral greys, tiled every few metres.
+ * Without it the whole valley floor is one flat swatch — the billiard table
+ * that no amount of trees quite makes up for.
+ */
+let groundMottle: THREE.CanvasTexture | null = null
+export function groundMottleTexture(): THREE.CanvasTexture {
+  if (groundMottle) return groundMottle
+  const size = 256
+  const random = mulberry32(0x9e0f)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = '#f2f1ee'
+  ctx.fillRect(0, 0, size, size)
+
+  // Two sizes of patch: broad drifts, then small tufts over them.
+  for (let i = 0; i < 60; i++) {
+    const x = random() * size
+    const y = random() * size
+    const r = 18 + random() * 46
+    const tone = random() > 0.45 ? '255, 255, 255' : '205, 204, 196'
+    const patch = ctx.createRadialGradient(x, y, 0, x, y, r)
+    patch.addColorStop(0, `rgba(${tone}, 0.14)`)
+    patch.addColorStop(1, `rgba(${tone}, 0)`)
+    ctx.fillStyle = patch
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+  ctx.globalAlpha = 0.08
+  for (let i = 0; i < 900; i++) {
+    const x = random() * size
+    const y = random() * size
+    ctx.fillStyle = random() > 0.5 ? '#ffffff' : '#b9b8ae'
+    ctx.fillRect(x, y, 1 + random() * 2, 1 + random() * 2)
+  }
+  ctx.globalAlpha = 1
+
+  groundMottle = new THREE.CanvasTexture(canvas)
+  groundMottle.colorSpace = THREE.SRGBColorSpace
+  groundMottle.wrapS = THREE.RepeatWrapping
+  groundMottle.wrapT = THREE.RepeatWrapping
+  return groundMottle
+}

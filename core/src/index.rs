@@ -90,11 +90,15 @@ fn hex16(bytes: &[u8]) -> String {
     bytes.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
-fn modified_seconds(meta: &fs::Metadata) -> i64 {
+/// Milliseconds, matching `stamp_of`: whole seconds missed a same-length
+/// rewrite landing within one clock second. Rows stamped in seconds by older
+/// builds compare unequal and simply re-probe once — pre-launch, that is the
+/// entire migration.
+fn modified_millis(meta: &fs::Metadata) -> i64 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
+        .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
 
@@ -244,7 +248,7 @@ pub fn scan(
         };
         seen.push(id.clone());
 
-        let mtime = modified_seconds(&meta);
+        let mtime = modified_millis(&meta);
         if db::is_current(&conn, &id, meta.len(), mtime)? {
             // Unchanged content can still have moved; the stored path must
             // follow it or the book can never be opened again.
@@ -474,7 +478,7 @@ mod tests {
                     (
                         e.path().strip_prefix(root).unwrap().to_string_lossy().to_string(),
                         meta.len(),
-                        modified_seconds(&meta),
+                        modified_millis(&meta),
                     )
                 })
                 .collect();

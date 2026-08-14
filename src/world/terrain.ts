@@ -152,6 +152,20 @@ export const TRAIL: readonly (readonly [number, number])[] = [
   [-20.6, -2.2],
 ]
 
+/**
+ * The spur down to the camp: a few trodden metres from the walk round the
+ * water to the stone pad on the far shore. Its own polyline rather than more
+ * points on `TRAIL` — joined up, the renderer would draw a leg from the lake
+ * house straight across the water.
+ */
+export const CAMP_SPUR: readonly (readonly [number, number])[] = [
+  [-4.0, -58.6],
+  [-4.2, -62.8],
+]
+
+/** Every made path on the site: drawn by `Outside`, cleared by the forest. */
+export const TRAILS: readonly (readonly (readonly [number, number])[])[] = [TRAIL, CAMP_SPUR]
+
 /** How wide the trodden ground is. Two abreast, which is what a path is. */
 export const TRAIL_WIDTH = 1.6
 
@@ -171,12 +185,14 @@ function toSegment(
   return Math.hypot(x - (ax + dx * t), z - (az + dz * t))
 }
 
-/** True on the trodden ground, within `margin` of the centre line. */
+/** True on the trodden ground of any path, within `margin` of a centre line. */
 export function onTrail(x: number, z: number, margin = TRAIL_WIDTH / 2): boolean {
-  for (let i = 1; i < TRAIL.length; i++) {
-    const [ax, az] = TRAIL[i - 1]!
-    const [bx, bz] = TRAIL[i]!
-    if (toSegment(x, z, ax, az, bx, bz) <= margin) return true
+  for (const line of TRAILS) {
+    for (let i = 1; i < line.length; i++) {
+      const [ax, az] = line[i - 1]!
+      const [bx, bz] = line[i]!
+      if (toSegment(x, z, ax, az, bx, bz) <= margin) return true
+    }
   }
   return false
 }

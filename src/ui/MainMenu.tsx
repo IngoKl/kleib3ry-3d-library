@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { library } from '../services'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
+import { useAnnotationsStore } from '../state/annotations'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
@@ -37,10 +38,13 @@ export function MainMenu() {
 
   const [recent, setRecent] = useState<string[]>(() => recentLibraries())
   const [opening, setOpening] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
 
-  // A folder that opened is a folder worth offering next time.
+  // A folder that opened is a folder worth offering next time — but only where
+  // the driver can open one: remembering the container's mounted path would
+  // fill the list with entries no driver can act on.
   useEffect(() => {
-    if (!started || !libraryRoot) return
+    if (!started || !libraryRoot || !library.canPickFolder) return
     rememberLibrary(libraryRoot)
   }, [started, libraryRoot])
 
@@ -56,6 +60,7 @@ export function MainMenu() {
     const chosen = path ?? (await library.pickRoot().catch(() => null))
     if (!chosen) return
     setOpening(chosen)
+    setOpenError(null)
     try {
       await library.setRoot(chosen)
       useAppStore.setState({ libraryRoot: chosen })
@@ -64,8 +69,11 @@ export function MainMenu() {
       // Everything else that hangs off the folder. The lamps, the records, the
       // pictures and the tapes are all *that library's*, so opening a second one
       // without these leaves you standing in the new rooms with the old library's
-      // music on the shelf.
+      // music on the shelf — and the annotations are that library's too, or the
+      // first bookmark you toggle writes the old library's marginalia over the
+      // new one's file.
       await Promise.all([
+        useAnnotationsStore.getState().load(),
         useAmbienceStore.getState().load(),
         useMediaStore.getState().load(),
         useVideoStore.getState().load(),
@@ -78,6 +86,10 @@ export function MainMenu() {
       warmCovers(useLibraryStore.getState().books)
       rememberLibrary(chosen)
       setRecent(recentLibraries())
+    } catch (error) {
+      // A recent path that no longer exists, or IPC refusing the folder: the
+      // menu says so instead of a button that silently does nothing.
+      setOpenError(`Could not open ${chosen}: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setOpening(null)
     }
@@ -107,8 +119,12 @@ export function MainMenu() {
         </p>
         {worldError && <p className="note warn">{worldError}</p>}
         {libraryError && <p className="note warn">{libraryError}</p>}
+        {openError && <p className="note warn">{openError}</p>}
 
-        {recent.length > 0 && (
+        {/* Only where the driver can actually switch folders: in hosted mode the
+            root is the mounted folder, and a list of buttons whose click can only
+            throw is worse than no list. */}
+        {library.canPickFolder && recent.length > 0 && (
           <>
             <p className="controls-heading">Recently Open</p>
             <ul className="menu-recent">

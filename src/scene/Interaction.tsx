@@ -682,12 +682,25 @@ export function Interaction() {
 
     // A chair still takes you with your hands full: sitting down with the book
     // you mean to read is what the chair is for.
-    let chair: { distance: number; id: string } | null = null
+    let chair: { distance: number; id: string; hit: THREE.Intersection } | null = null
     const sittable = sceneRefs.seats
     if (sittable && store.seat === null) {
       const hit = raycaster.intersectObject(sittable, true)[0]
       const id = furnitureIdOf(hit)
-      if (hit && id) chair = { distance: hit.distance, id }
+      if (hit && id) chair = { distance: hit.distance, id, hit }
+    }
+
+    // A bench or a bed is both a seat and a surface, and it renders once, in
+    // the seats group — so its surface half is read off the *seat* hit: aimed
+    // at the top, the book is laid down; aimed at the side, you sit.
+    let seatTop: { distance: number; hit: THREE.Intersection; id: string } | null = null
+    if (chair) {
+      const seatId = chair.id
+      const piece = world.furniture.find((item) => item.id === seatId)
+      if (piece?.surface && chair.hit.normal !== undefined && chair.hit.normal.y > 0.5) {
+        seatTop = chair
+        chair = null
+      }
     }
 
     const crates = sceneRefs.boxes
@@ -742,12 +755,15 @@ export function Interaction() {
     // putting the book down, not shelving it. Only an upward-facing hit counts
     // — the side of a counter is not somewhere a book can go.
     const upward = topHit?.normal !== undefined && topHit.normal.y > 0.5
-    if (topHit && topId && upward && (!nearest || topHit.distance < nearest.distance)) {
+    let top =
+      topHit && topId && upward ? { distance: topHit.distance, hit: topHit, id: topId } : null
+    if (seatTop && (!top || seatTop.distance < top.distance)) top = seatTop
+    if (top && (!nearest || top.distance < nearest.distance)) {
       store.setSurfaceTarget({
-        furnitureId: topId,
-        x: topHit.point.x,
-        y: topHit.point.y,
-        z: topHit.point.z,
+        furnitureId: top.id,
+        x: top.hit.point.x,
+        y: top.hit.point.y,
+        z: top.hit.point.z,
       })
       store.setShelfTarget(null)
       return
