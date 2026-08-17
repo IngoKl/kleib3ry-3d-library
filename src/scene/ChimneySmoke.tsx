@@ -34,7 +34,15 @@ const SMOKE_COLOUR = colorCorners({
   nightRain: '#33383f',
 })
 
-type Stack = { id: string; defaultOn: boolean; x: number; z: number; top: number }
+type Stack = {
+  id: string
+  defaultOn: boolean
+  x: number
+  z: number
+  /** The ceiling of the room the fire is in: where the masonry may start. */
+  base: number
+  top: number
+}
 type Puff = { stack: number; phase: number; speed: number; wobble: number; side: number }
 
 export function ChimneySmoke() {
@@ -42,7 +50,10 @@ export function ChimneySmoke() {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshBasicMaterial>(null)
 
-  /** One stack per fireplace, topped just above its room's wall plate. */
+  /**
+   * One stack per fireplace: from its room's ceiling to just above the wall
+   * plate, which is high enough to clear the slope of the roof it comes out of.
+   */
   const stacks = useMemo<Stack[]>(() => {
     if (!world) return []
     return world.lights
@@ -56,6 +67,7 @@ export function ChimneySmoke() {
             defaultOn: lamp.defaultOn,
             x: lamp.x,
             z: lamp.z,
+            base: room.elevation + room.height,
             top: room.elevation + room.height + 0.85,
           },
         ]
@@ -139,8 +151,16 @@ export function ChimneySmoke() {
   const masonry = useMemo(() => {
     if (stacks.length === 0) return null
     const parts = stacks.flatMap((stack) => {
-      const shaft = new THREE.BoxGeometry(0.44, 1.1, 0.44)
-      shaft.translate(stack.x, stack.top - 0.55, stack.z)
+      // From the ceiling up, rather than a fixed length down from the top: a
+      // fixed 1.1 m hung a quarter of a metre *below* the ceiling of every room
+      // with a fire in it, which in the cabin is a block of brick in the loft,
+      // through the top of a bookcase. Lifted off the ceiling plane by a
+      // centimetre as well — a box whose bottom face is exactly in that plane
+      // is two surfaces at one height, and they shimmer against each other.
+      const bottom = stack.base + 0.01
+      const height = Math.max(0.2, stack.top - bottom)
+      const shaft = new THREE.BoxGeometry(0.44, height, 0.44)
+      shaft.translate(stack.x, bottom + height / 2, stack.z)
       // A cap wider than the shaft and a short crown over it: the silhouette
       // that says chimney rather than post, read mostly from the trail.
       const cap = new THREE.BoxGeometry(0.56, 0.07, 0.56)

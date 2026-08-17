@@ -22,11 +22,24 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 type OpenEntry = { doc: Promise<PDFDocumentProxy>; refs: number }
 const documents = new Map<string, OpenEntry>()
 
-export function openDocument(id: string): Promise<PDFDocumentProxy> {
+/**
+ * A hold on an open document, and the only way to let one go.
+ *
+ * Releasing is bound to the entry it opened rather than to the book's id, and
+ * is idempotent. Both matter. A failed open drops its entry from the map, so an
+ * id-keyed release could arrive after somebody else had opened the same book
+ * and take *their* reference — one holder's cleanup destroying the document the
+ * reader is still reading, which shows up as a page that renders blank the next
+ * time it is asked for. That is the sort of thing that only happens to a book
+ * you have just added, because that is when a cover render and a read overlap.
+ */
+export type Held = { doc: Promise<PDFDocumentProxy>; release: () => void }
+
+export function openDocument(id: string): Held {
   const existing = documents.get(id)
   if (existing) {
     existing.refs += 1
-    return existing.doc
+    return { doc: existing.doc, release: releaser(id, existing) }
   }
 
   const entry: OpenEntry = {
@@ -47,18 +60,24 @@ export function openDocument(id: string): Promise<PDFDocumentProxy> {
   entry.doc.catch(() => {
     if (documents.get(id) === entry) documents.delete(id)
   })
-  return entry.doc
+  return { doc: entry.doc, release: releaser(id, entry) }
 }
 
-export function closeDocument(id: string) {
-  const entry = documents.get(id)
-  if (!entry) return
-  entry.refs -= 1
-  if (entry.refs > 0) return
-  documents.delete(id)
-  // Destroying the loading task, not `cleanup`: cleanup keeps the worker-side
-  // document (and the file bytes) alive, which is the leak this exists to close.
-  void entry.doc.then((doc) => doc.loadingTask.destroy()).catch(() => {})
+function releaser(id: string, entry: OpenEntry): () => void {
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    entry.refs -= 1
+    if (entry.refs > 0) return
+    // Only if this entry is still the one under that id: a failed open has
+    // already taken itself out, and whatever is there now belongs to somebody
+    // else.
+    if (documents.get(id) === entry) documents.delete(id)
+    // Destroying the loading task, not `cleanup`: cleanup keeps the worker-side
+    // document (and the file bytes) alive, which is the leak this exists to close.
+    void entry.doc.then((doc) => doc.loadingTask.destroy()).catch(() => {})
+  }
 }
 
 /** One page at a time: concurrent renders on one document thrash the worker. */
@@ -98,10 +117,10 @@ export async function renderPage(
 }
 
 export async function pageCount(id: string): Promise<number> {
-  const doc = await openDocument(id)
+  const held = openDocument(id)
   try {
-    return doc.numPages
+    return (await held.doc).numPages
   } finally {
-    closeDocument(id)
+    held.release()
   }
 }

@@ -10,10 +10,8 @@
 
 ## Bugs
 
-- X
+- XXX
 
 ## Features
 
-- Make the world a bit bigger and add a stream (like small river) going to the lake so that we have some water on both sides of the houses
-- Give the first floor (where the sofa/tv is) a window too
-- Add a folding chair and a folding table (stored on the porch) I can carry with me
+- XXX

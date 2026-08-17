@@ -2,7 +2,7 @@ import { library } from '../services'
 import type { IndexedBook } from '../services/types'
 import { EpubError, parseEpub } from './epub'
 import { PAGE_ASPECT, layOutEpub, renderEpubPage, type EpubLayout } from './epubPages'
-import { closeDocument, openDocument, renderPage } from './pdf'
+import { openDocument, renderPage } from './pdf'
 
 /**
  * What the reader actually reads.
@@ -32,8 +32,8 @@ export type PageSource = {
 }
 
 async function pdfSource(id: string): Promise<PageSource> {
-  const doc = await openDocument(id)
-  let closed = false
+  const held = openDocument(id)
+  const doc = await held.doc
   const first = await doc.getPage(1)
   const view = first.getViewport({ scale: 1 })
   first.cleanup()
@@ -43,13 +43,10 @@ async function pdfSource(id: string): Promise<PageSource> {
     aspect: view.width / view.height,
     render: (page, targetHeightPx, maxTextureSize) =>
       renderPage(doc, page, targetHeightPx, maxTextureSize),
-    close: () => {
-      // Guarded because the reader's cleanup and a cancelled open can both
-      // reach here, and the document is reference counted.
-      if (closed) return
-      closed = true
-      closeDocument(id)
-    },
+    // The reader's cleanup and a cancelled open can both reach here, and the
+    // document is reference counted — `release` is idempotent, and lets go of
+    // this hold rather than of whatever is open under that id now.
+    close: () => held.release(),
   }
 }
 
