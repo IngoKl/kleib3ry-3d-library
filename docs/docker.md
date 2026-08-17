@@ -68,7 +68,7 @@ server writes into your mounted folder, and a uid that does not own it fails on
 first run with a permission error nobody can act on. Pass your own instead:
 
 ```bash
-docker run --rm -p 8080:8080 \
+docker run --rm -p 127.0.0.1:8080:8080 \
   --user "$(id -u):$(id -g)" \
   -v /path/to/your/library:/library \
   kleib3ry
@@ -88,7 +88,12 @@ GID=1000
   would let a browser walk the server's disk. `canPickFolder` is false here and
   the panel's button is disabled rather than broken.
 - **It has no TLS and no authentication.** One library, one household, a network
-  you trust. Anything more exposed wants a reverse proxy doing both.
+  you trust. Anything more exposed wants a reverse proxy doing both. Which is why
+  every `docker run` on this page publishes to `127.0.0.1:8080` rather than to
+  `8080`: Docker publishes a port by writing its own firewall rules, so a bare
+  `-p 8080:8080` reaches the whole network whatever the host's firewall says.
+  Dropping the address is how you open it to the house, and worth doing on
+  purpose rather than by copying a line.
 - **It has no idea who is looking at it.** The shelving, bookmarks and reading
   positions are files in the library folder, not per-viewer state. Two browsers
   open at once are two writers of the same document, last save wins — fine for a
@@ -96,6 +101,19 @@ GID=1000
 
 The reasoning behind all three is in
 [modes.md](modes.md#what-hosted-mode-is-not).
+
+## What the Browser Has to Be
+
+The bundle is built for `chrome110`, and the EPUB reader unzips books with the
+platform's own `DecompressionStream('deflate-raw')` rather than shipping a zip
+library. That sets the floor: **Chrome 103+, Edge 103+, Safari 16.4+, Firefox
+113+**. Anything older loads the room and then cannot open an EPUB — a PDF still
+reads, since pdf.js does its own decompression.
+
+One thing that is not a browser requirement but looks like one: an EPUB is set in
+type against the fonts that machine has, so the same book paginates slightly
+differently on a machine without Georgia. See
+[library-folder.md](library-folder.md#a-page-number-is-per-machine).
 
 ## What the Browser Is Allowed to Read
 

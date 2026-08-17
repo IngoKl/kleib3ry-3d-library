@@ -51,6 +51,14 @@ Not part of the gate but useful beside it: `npm run scan -- <folder>` indexes a
 library folder's `books/` from the command line, with no app running — see
 [library-folder.md](library-folder.md#scanning-from-the-command-line).
 
+CI runs the same six things on every push and pull request, in
+[.github/workflows/verify.yml](../.github/workflows/verify.yml), split so the
+half-hour Playwright job runs _beside_ the two-minute one rather than behind it.
+The desktop shell is clippy'd and tested on a Windows runner, since `src-tauri`
+wants GTK and WebKit on Linux — which is the whole reason `core/` was carved out
+of it — and the container image is built to prove the three stages still
+assemble.
+
 Beyond the gate (needs a build first; Windows-only):
 
 ```bash

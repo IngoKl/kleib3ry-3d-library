@@ -1751,7 +1751,8 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
     }
 
     return [join(tread), join(side)]
-  }, [steps, run, rise, width, treadDepth, stepRise])
+    // `rise` is not here because `stepRise` is derived from it and changes with it.
+  }, [steps, run, width, treadDepth, stepRise])
 
   useEffect(
     () => () => {

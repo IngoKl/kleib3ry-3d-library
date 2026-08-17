@@ -11,6 +11,15 @@ import type { Block, BlockKind, EpubBook } from './epub'
  * matters: page 200 is page 200 on any monitor, in any window, next session.
  * Laying out per texture size would make a bookmark mean something different
  * every time.
+ *
+ * That guarantee is per *machine*, not per library folder. Measuring and drawing
+ * both go through `fontFor`, so they can never disagree with each other — but
+ * they agree about whatever font that machine resolved the stack to, and a
+ * machine without Georgia sets the same book slightly differently. Since
+ * `annotations.json` records page numbers rather than offsets, a bookmark made
+ * on one machine can land a page out on another. Bundling a face as a data URI
+ * would close it, at the cost of carrying a font in the bundle; for now it is
+ * written down in docs/library-folder.md instead.
  */
 
 /** The page, in units. Roughly a hardback's proportions. */

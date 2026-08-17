@@ -24,7 +24,7 @@ right. [docs/README.md](docs/README.md) indexes the rest —
 because the world document is a published interface;
 [docs/modes.md](docs/modes.md) and [docs/docker.md](docs/docker.md) for the
 hosted mode; [docs/development.md](docs/development.md) for how the tests are
-arranged and what the frame budget is; [docs/known-bugs-ideas.md](docs/known-bugs-ideas.md)
+arranged and what the frame budget is; [docs/bugs-ideas.md](docs/bugs-ideas.md)
 for the open list.
 
 The root [README.md](README.md) is the project's front page and is deliberately

@@ -24,15 +24,20 @@ Thumbs.db
 !.vscode/settings.json
 .idea/
 
+# Written by `npm run assets`, all of it. Nothing here is committed: the
+# generator is the source, and a stale copy in git would shadow a fresh one.
 public/standard_fonts/
 public/cmaps/
 public/sample-book.pdf
+public/sample-book.epub
 public/roms/
 
 # Docker build context leftovers
 .docker-build/
 
-# Demo data
+# Demo data. The index, the cover cache and the layout *are* committed, so the
+# demo arrives with its books already on shelves; everything the app writes as
+# you play with it is not, or reading a demo book would dirty the tree.
 demo-data/demo-library/.library/ambience.json
 demo-data/demo-library/.library/library.json
 demo-data/demo-library/.library/annotations.json

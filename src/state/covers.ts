@@ -157,6 +157,54 @@ const urgent: IndexedBook[] = []
 const background: IndexedBook[] = []
 /** Claimed the moment a book is queued, so nothing is ever fetched twice. */
 const claimed = new Set<string>()
+
+/**
+ * How many books' cover artwork to keep.
+ *
+ * `warmCovers` deliberately walks the *whole* catalogue, and every entry is a
+ * decoded image plus the string that found it — which for a PDF whose render
+ * could not be saved is the base64 data URL itself. Without a cap a large
+ * library ends its sweep holding all of it for the session.
+ *
+ * `images` is a `Map`, so its iteration order is insertion order; `peekCoverImage`
+ * re-inserts on a hit, which makes the front of the map the least recently drawn
+ * and the eviction "whatever is furthest from where you are standing".
+ */
+const MAX_CACHED = 600
+
+/** Drop one book from every cache at once, including its claim, so it can come back. */
+function forget(id: string) {
+  images.delete(id)
+  resolved.delete(id)
+  colours.delete(id)
+  claimed.delete(id)
+}
+
+/** Record a decoded cover, evicting the least recently drawn to stay under the cap. */
+function remember(id: string, image: HTMLImageElement | null) {
+  images.set(id, image)
+  while (images.size > MAX_CACHED) {
+    const oldest = images.keys().next().value
+    if (oldest === undefined || oldest === id) break
+    forget(oldest)
+  }
+}
+
+/**
+ * Empty every cache. Called when the library folder changes: ids are content
+ * hashes, so nothing would be *wrong* about keeping the last library's covers,
+ * but they are megabytes about books that are no longer on any shelf.
+ */
+export function forgetCovers() {
+  images.clear()
+  resolved.clear()
+  colours.clear()
+  claimed.clear()
+  pending.clear()
+  colourJobs.clear()
+  urgent.length = 0
+  background.length = 0
+}
 let inFlight = 0
 const MAX_IN_FLIGHT = 2
 /**
@@ -171,7 +219,15 @@ const MAX_IN_FLIGHT = 2
 const BACKGROUND_GAP_MS = 90
 
 export function peekCoverImage(id: string): HTMLImageElement | null | undefined {
-  return images.get(id)
+  const image = images.get(id)
+  // Re-inserted on a hit so the map stays ordered least-recently-drawn first,
+  // which is what `remember` evicts from. Called per visible book per frame; a
+  // delete and a set on a `Map` is nothing next to the draw it feeds.
+  if (image !== undefined) {
+    images.delete(id)
+    images.set(id, image)
+  }
+  return image
 }
 
 /** Called when a cover finishes, so whoever drew the book can redraw it. */
@@ -201,7 +257,7 @@ function pump() {
       } catch {
         image = null
       }
-      images.set(book.id, image)
+      remember(book.id, image)
       if (image) colours.set(book.id, sample(image))
       inFlight -= 1
       for (const listener of onCoverReady) listener(book.id)
@@ -215,9 +271,9 @@ function pump() {
  * Queue a book's cover, ahead of the background sweep.
  *
  * Safe to call every frame: the claim is taken when the book is queued rather
- * than when it finishes. Releasing on start would let a book in flight
- * was in neither the queue nor the results, so a shelf in view would re-queue
- * the same rasterisation several times a second.
+ * than when it finishes. Claiming on start instead would leave a book in flight
+ * in neither the queue nor the results, so a shelf in view would re-queue the
+ * same rasterisation several times a second.
  */
 export function coverImageFor(book: IndexedBook) {
   if (claimed.has(book.id)) {

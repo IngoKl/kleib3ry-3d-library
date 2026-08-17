@@ -80,6 +80,13 @@ export function openZip(bytes: Uint8Array): Map<string, ZipEntry> {
 /** The bytes of one entry, decompressed. */
 export async function readEntry(bytes: Uint8Array, entry: ZipEntry): Promise<Uint8Array> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  // The offset came out of the central directory unchecked. A truncated archive
+  // points it past the end, where `DataView` would throw a `RangeError` — which
+  // reaches the reader as a stack rather than as the sentence this file writes
+  // for every other way an archive can be wrong.
+  if (entry.header + 30 > bytes.length) {
+    throw new ZipError(`${entry.name}: its local header is past the end of the file`)
+  }
   if (view.getUint32(entry.header, true) !== LOCAL_SIGNATURE) {
     throw new ZipError(`${entry.name}: its local header is not where the directory says`)
   }

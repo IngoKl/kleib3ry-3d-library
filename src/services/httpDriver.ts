@@ -77,6 +77,15 @@ async function send(path: string, method: string, body: BodyInit, type: string):
 
 let progressCallback: ((progress: ScanProgress) => void) | null = null
 let poller: ReturnType<typeof setInterval> | undefined
+/**
+ * Whether the scan being polled for has actually been seen running.
+ *
+ * The poller starts before the POST that begins the scan, so the first tick can
+ * land while the server is still between accepting the request and marking
+ * itself busy. Without this, that tick reads the default progress — not running
+ * — and the poller switches itself off for the rest of the scan.
+ */
+let seenRunning = false
 
 /**
  * Poll for the duration of a scan and then stop.
@@ -87,11 +96,13 @@ let poller: ReturnType<typeof setInterval> | undefined
  */
 function watchProgress() {
   clearInterval(poller)
+  seenRunning = false
   poller = setInterval(() => {
     void fetch(`${API}/scan/progress`)
       .then((response) => (response.ok ? response.json() : null))
       .then((update: (ScanProgress & { running: boolean }) | null) => {
         if (!update) return
+        if (update.running) seenRunning = true
         if (update.total > 0) {
           progressCallback?.({
             done: update.done,
@@ -99,7 +110,9 @@ function watchProgress() {
             current: update.current,
           })
         }
-        if (!update.running) {
+        // Only once it has been running: "not running" before the scan has
+        // started is the server not having got to the POST yet, not the end.
+        if (seenRunning && !update.running) {
           clearInterval(poller)
           poller = undefined
         }

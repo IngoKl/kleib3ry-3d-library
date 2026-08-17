@@ -418,24 +418,11 @@ fn write_json_file(path: &Path, body: &[u8]) -> std::result::Result<(), String> 
         .map_err(oops)
 }
 
-/// Windows refuses — or worse, aliases to a device — these as file names, so
-/// an id spelling one is unusable on any machine the library might sync to.
-fn is_reserved_name(id: &str) -> bool {
-    let upper = id.to_ascii_uppercase();
-    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || (upper.len() == 4
-            && (upper.starts_with("COM") || upper.starts_with("LPT"))
-            && matches!(upper.as_bytes()[3], b'1'..=b'9'))
-}
-
 fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handler {
     // The id becomes a file name in the covers directory and arrives from a
-    // browser. `join` follows `..` and absolute paths, so anything that is not
-    // a plain name would write outside the cache.
-    if id.is_empty()
-        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        || is_reserved_name(id)
-    {
+    // browser. `is_cover_id` is in core because the desktop shell writes covers
+    // through the same guard — see `catalog::is_cover_id`.
+    if !kleib3ry_core::catalog::is_cover_id(id) {
         return Ok(Response::text(400, "not a cover id"));
     }
     // Only a book the index knows may have a cover cached; anything else fills

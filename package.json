@@ -2,7 +2,14 @@
   "name": "kleib3ry",
   "version": "0.1.0",
   "description": "kleib3ry — a 3D personal library: read your own PDFs and EPUBs in a room you design.",
-  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IngoKl/library.git"
+  },
+  "homepage": "https://github.com/IngoKl/library#readme",
+  "bugs": {
+    "url": "https://github.com/IngoKl/library/issues"
+  },
   "scripts": {
     "test": "playwright test",
     "dev": "vite",

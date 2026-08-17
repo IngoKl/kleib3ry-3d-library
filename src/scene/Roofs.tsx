@@ -249,9 +249,12 @@ function fasciaOf(roof: DerivedRoof): THREE.BufferGeometry[] {
  * room shells make for merging, and for the same payoff: two draw calls for
  * every roof in the library.
  */
+/** A stable stand-in for "no world yet", so the memo below is not rebuilt per render. */
+const NO_ROOFS: DerivedRoof[] = []
+
 export function Roofs() {
   const world = useWorldStore((s) => s.world)
-  const roofs = world?.roofs ?? []
+  const roofs = world?.roofs ?? NO_ROOFS
 
   const geometry = useMemo(() => {
     const collect = (parts: THREE.BufferGeometry[]) => {

@@ -19,3 +19,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+===============================================================================
+
+THE DEMO LIBRARY IS NOT COVERED BY THE ABOVE
+
+The MIT grant covers this project's own source, documentation and assets. It
+does not cover the books, music, artwork and video under `demo-data/`, which
+are other people's work, included so the app can be tried without a library of
+your own. Each is credited with its own licence in
+demo-data/demo-library/README.md.
+
+If you are reusing this project, the safe move is to delete `demo-data/` and
+point the app at your own folder. Nothing in the application depends on it.

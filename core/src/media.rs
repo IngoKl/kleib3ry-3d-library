@@ -150,7 +150,9 @@ fn folder_names(path: &Path, root: &Path) -> (Option<String>, Option<String>) {
 
     match parts.len() {
         0 => (None, None),
-        1 => (Some(parts[0].clone()), None),
+        // One folder deep is the album — `music/Wild Is the Wind/04.mp3` — not the
+        // artist, or an untagged single-level folder would be credited as a person.
+        1 => (None, Some(parts[0].clone())),
         n => (Some(parts[n - 2].clone()), Some(parts[n - 1].clone())),
     }
 }
@@ -298,6 +300,21 @@ mod tests {
         assert_eq!(tracks[0].artist.as_deref(), Some("Nina Simone"));
         assert_eq!(tracks[0].album.as_deref(), Some("Wild Is the Wind"));
         assert_eq!(tracks[0].format, "mp3");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// One folder deep is an album, not a person. Credited as the artist, an
+    /// untagged `music/Wild Is the Wind/` would put a record title where a name goes.
+    #[test]
+    fn a_single_folder_is_the_album_rather_than_the_artist() {
+        let dir = temp_dir("one-folder");
+        fs::create_dir_all(dir.join("music/Wild Is the Wind")).unwrap();
+        fs::write(dir.join("music/Wild Is the Wind/04_four_women.mp3"), b"not really an mp3").unwrap();
+
+        let tracks = list_tracks(&dir);
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].album.as_deref(), Some("Wild Is the Wind"));
+        assert_eq!(tracks[0].artist, None);
         let _ = fs::remove_dir_all(&dir);
     }
 

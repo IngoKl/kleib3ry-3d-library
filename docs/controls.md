@@ -41,8 +41,9 @@ your hand.
   brook.
 - **`Backspace`** — break down an empty box. Flattened spares wait on the stack
   in the kitchen, and `E` takes one.
-- **`,`** **`.`** — riffle down through the box you are looking at. The mouse
-  wheel does it too.
+- **`,`** **`.`** — riffle down through the box you are looking at. **`[`** and
+  **`]`** do the same, for layouts where the comma and full stop need AltGr. The
+  mouse wheel works too.
 - **`L`** — write a label on the bookcase you are aiming at.
 - **`T`** — write a note to pin up, then `E` at whatever wall you want it on.
 
@@ -51,7 +52,7 @@ your hand.
 - **`E`** — take one out of a crate; then put a record on a deck or a tape in
   the television, file it in any crate, or set a record down on a table.
 - **`,`** **`.`** — flick through the crate you are looking at, a sleeve at a
-  time. The mouse wheel does it too.
+  time. **`[`** and **`]`** do the same. The mouse wheel works too.
 - **`F`** — take the record back off the deck, or the tape back out of the
   television.
 - **`Q`** — send it back to the crate the folder deals it into.

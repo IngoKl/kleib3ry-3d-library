@@ -22,6 +22,29 @@ type Result<T> = std::result::Result<T, Error>;
 /// rather than whatever the directory listing happened to yield.
 pub const COVER_EXTENSIONS: [&str; 5] = ["jpg", "png", "gif", "webp", "svg"];
 
+/// Windows refuses — or worse, aliases to a device — these as file names, so an
+/// id spelling one is unusable on any machine the library might sync to.
+fn is_reserved_name(id: &str) -> bool {
+    let upper = id.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (upper.len() == 4
+            && (upper.starts_with("COM") || upper.starts_with("LPT"))
+            && matches!(upper.as_bytes()[3], b'1'..=b'9'))
+}
+
+/// Whether an id may become a file name in the cover cache.
+///
+/// A rendered cover's id arrives from the WebView — over IPC on the desktop, in
+/// a URL on the server — and `Path::join` follows `..` and absolute paths, so
+/// anything that is not a plain name would write outside the cache. Here rather
+/// than in either shell because both need exactly this check and a guard that
+/// exists twice is a guard that can come to mean two things.
+pub fn is_cover_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && !is_reserved_name(id)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
@@ -517,6 +540,27 @@ mod tests {
         let outside = Path::new("/elsewhere/loose.pdf");
         let stored = relative_path(root, outside);
         assert_eq!(root.join(&stored), outside);
+    }
+
+    /// The guard both shells write a cover through. Traversal, absolute paths and
+    /// the Windows device names all have to be refused in one place, not two.
+    #[test]
+    fn a_cover_id_is_a_plain_name_and_nothing_else() {
+        assert!(is_cover_id("239516aa5c3083e3"));
+        assert!(is_cover_id("a-b_c"));
+
+        assert!(!is_cover_id(""));
+        assert!(!is_cover_id("../escape"));
+        assert!(!is_cover_id("with/slash"));
+        assert!(!is_cover_id("with.dot"));
+        // Reserved on Windows, in any casing, with or without an extension to come.
+        for reserved in ["CON", "con", "NUL", "com1", "LPT9"] {
+            assert!(!is_cover_id(reserved), "{reserved} was accepted");
+        }
+        // Only the four-character forms are reserved; these are ordinary names.
+        assert!(is_cover_id("COM"));
+        assert!(is_cover_id("COM10"));
+        assert!(is_cover_id("COM0"));
     }
 
     /// A hand edit with a typo in it must not cost you the index.

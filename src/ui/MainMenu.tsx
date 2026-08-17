@@ -8,7 +8,7 @@ import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
 import { useArcadeStore } from '../state/arcade'
 import { useWorldStore } from '../state/world'
-import { warmCovers } from '../state/covers'
+import { forgetCovers, warmCovers } from '../state/covers'
 import { teleport } from '../state/player'
 import { forgetLibrary, recentLibraries, rememberLibrary } from '../state/settings'
 
@@ -81,6 +81,10 @@ export function MainMenu() {
     if (!chosen) return
     setOpening(chosen)
     setOpenError(null)
+    // The cover caches are keyed by content hash, so the last library's artwork
+    // would not be *wrong* — it would just be megabytes about books that are no
+    // longer on any shelf, held for the rest of the session.
+    if (chosen !== libraryRoot) forgetCovers()
     try {
       await library.setRoot(chosen)
       useAppStore.setState({ libraryRoot: chosen })

@@ -378,11 +378,18 @@ fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<S
     // The id becomes a file name inside the covers directory. It is normally a
     // hex hash, but it arrives from the WebView, and `PathBuf::join` follows
     // `..` and absolute paths — so anything that is not a plain name is a
-    // write outside the cache and gets refused.
-    if id.is_empty()
-        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
+    // write outside the cache and gets refused. The same guard the server
+    // applies, which is why it lives in core rather than in either shell.
+    if !kleib3ry_core::catalog::is_cover_id(&id) {
         return Err(Error::BadImage(format!("not a cover id: {id}")));
+    }
+    // And only a book the index knows may have a cover cached, or the cache
+    // fills with orphans one call at a time. Skipped when there is no library
+    // folder yet, because then there is no index to ask and no books either.
+    if let Ok(index) = index_file(&app) {
+        if !Catalog::load(&index)?.contains(&id) {
+            return Err(Error::Core(kleib3ry_core::Error::UnknownBook(id)));
+        }
     }
     let payload = data_url
         .split_once(";base64,")

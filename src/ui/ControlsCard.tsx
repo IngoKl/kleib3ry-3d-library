@@ -25,7 +25,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['F'], 'Draw the book under the crosshair out to see its cover'],
       [['R'], 'Read the book in your hand — PDF or EPUB'],
       [['G'], 'Empty the box you are looking at onto the nearest shelves'],
-      [[',', '.'], 'Browse the pile in a box (the wheel works too)'],
+      [[',', '.', '[', ']'], 'Browse the pile in a box (the wheel works too)'],
       [['X'], 'Carry a box, or the folding chair or table; again to set it down'],
       [['⌫'], 'Break down an empty box — spares wait on the stack in the kitchen, E takes one'],
       [['L'], 'Write a label on the bookcase you are aiming at'],
@@ -36,7 +36,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     title: 'Records and Tapes',
     rows: [
       [['E'], 'Take one out of a crate; then put it on a deck or in the set, file it in any crate, or set a record down on a table'],
-      [[',', '.'], 'Flick through the crate you are looking at, a sleeve at a time (the wheel works too)'],
+      [[',', '.', '[', ']'], 'Flick through the crate you are looking at, a sleeve at a time (the wheel works too)'],
       [['F'], 'Take the record back off the deck, or the tape back out of the set'],
       [['Q'], 'Send it back to the crate the folder deals it into'],
     ],

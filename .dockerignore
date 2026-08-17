@@ -27,6 +27,9 @@ tests/screenshots
 .idea
 docs
 assets
+# 28 MB of books, records and video that no build stage reads. A library folder
+# is something you *mount*; there is no reason to send one to the daemon.
+demo-data
 *.md
 Dockerfile
 docker-compose.yml

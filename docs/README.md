@@ -30,7 +30,7 @@ Start wherever your question is.
 
 ## What Is Next
 
-- **[known-bugs-ideas.md](known-bugs-ideas.md)** — the running list of known
+- **[bugs-ideas.md](bugs-ideas.md)** — the running list of known
   bugs and what to build next.
 
 ---

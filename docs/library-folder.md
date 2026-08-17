@@ -447,6 +447,24 @@ The app can also write the whole thing out as prose: **Export Annotations** in
 the settings panel produces `annotations.md` — a Markdown digest ordered by
 title — beside this file on the desktop, or as a download in the container.
 
+### A Page Number Is Per Machine
+
+For a PDF this is exact: page 45 is the page the publisher printed 45 on, and it
+is the same everywhere.
+
+For an **EPUB** it is not quite. An EPUB has no printed pages, so the reader sets
+one — the same pagination "go to page" uses — and it sets it in whatever font
+that machine resolved `Georgia, "Iowan Old Style", "Times New Roman", serif` to.
+Within one machine it is completely stable: pagination is computed once at open
+time in abstract units, so page 200 is page 200 on any monitor, in any window,
+next session. Across machines it can shift by a page or so, because a machine
+without Georgia is measuring a different typeface.
+
+Which matters here because this file is meant to travel with the folder. Carry a
+library between a Windows desktop and a Linux-hosted container and an EPUB
+bookmark may land a page out. The books, the shelving and everything in
+`books.json` are unaffected — they are keyed by content hash, not by layout.
+
 ## `ambience.json` — The Lamps, the Hour and the Weather
 
 Also written by the app, and deliberately tiny:
