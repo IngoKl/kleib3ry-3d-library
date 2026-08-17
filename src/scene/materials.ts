@@ -2,16 +2,14 @@ import * as THREE from 'three'
 import { mulberry32 } from '../lib/rng'
 
 /**
- * Surfaces shared by every room. Sizes and positions come from the world
- * document; what a floor or a wall *is* does not, because that is a decision
- * about what a library looks like rather than about your library.
+ * Surfaces shared by every room. Sizes and positions come from the document;
+ * what a floor or a wall is does not, because that is a decision about what a
+ * library looks like rather than about your library.
  */
 export const MATERIALS = {
   /**
-   * Limewashed boards rather than plaster: this is a cabin, not a gallery.
-   * Deliberately a shade deeper and warmer than a paint-chip cream — the pale
-   * flat beige it replaced read as office partition, not as timber with wash
-   * on it.
+   * Limewashed boards rather than plaster: this is a cabin, not a gallery. A
+   * shade deeper and warmer than a paint-chip cream, which reads as partition.
    */
   wall: '#d8c4a3',
   /** Skirting in wood, not trim-paint: the wall meets the floor in timber. */
@@ -21,9 +19,8 @@ export const MATERIALS = {
   carcass: '#8a6039',
   stone: '#948b7c',
   /**
-   * Cedar shingles gone grey, which is what a roof in the woods is after one
-   * winter. Deliberately much darker than the walls: a roof the colour of its
-   * timber makes the whole building one blur from the far side of the lake.
+   * Cedar gone grey, which is what a roof in the woods is after a winter. Much
+   * darker than the walls, or the building is one blur from across the lake.
    */
   shingle: '#4b4740',
   /** The boards you see under the eaves, looking up from outside. */
@@ -36,12 +33,9 @@ const FLOOR_TILE_M = 2.4
 const PLANK_WIDTH_M = 0.15
 
 /**
- * The three floors a room can have, as base colour plus how far the boards vary.
- *
- * Decking is the same drawing with a wider board, a greyer tone and a gap
- * between the boards, because that is genuinely what the difference looks like
- * from standing height — and a porch that reads as indoor flooring undoes the
- * point of having gone outside.
+ * The three floors, as base colour plus how far the boards vary. Decking is the
+ * same drawing with a wider, greyer board and a gap between them, which is what
+ * the difference looks like from standing height.
  */
 const FINISHES = {
   boards: { r: 146, g: 101, b: 58, plank: PLANK_WIDTH_M, seam: 'rgba(40, 24, 12, 0.5)' },
@@ -53,10 +47,7 @@ const FINISHES = {
 
 export type FloorFinishName = keyof typeof FINISHES
 
-/**
- * Oak planks, drawn once into a canvas rather than shipped as an asset: it
- * keeps the repo text-only and the parameters legible.
- */
+/** Drawn into a canvas rather than shipped, which keeps the repo text-only. */
 export function makeFloorTexture(
   width: number,
   depth: number,
@@ -135,11 +126,9 @@ export function makeFloorTexture(
 }
 
 /**
- * Limewash for the walls: near-white streaks and soft blotches, *multiplied*
- * under the material's `color`, so `MATERIALS.wall` stays the one place the
- * tint is decided. The walls are the largest surfaces indoors and were the
- * only ones with no texture at all — flat fill is what read as CG, not the
- * palette. One module-level texture: every room's shell shares one upload.
+ * Near-white streaks multiplied under the material's `color`, so `MATERIALS.wall`
+ * stays the one place the tint is decided. Walls are the largest surfaces
+ * indoors, and flat fill is what reads as CG. One texture for every room.
  */
 let wallWash: THREE.CanvasTexture | null = null
 export function wallWashTexture(): THREE.CanvasTexture {
@@ -191,10 +180,8 @@ export function wallWashTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Mottle for the outdoor ground, the same multiplied-under-colour trick as the
- * wall wash: two-tone grass patches in neutral greys, tiled every few metres.
- * Without it the whole valley floor is one flat swatch — the billiard table
- * that no amount of trees quite makes up for.
+ * The wall wash's trick for the ground: two-tone grass in neutral greys, tiled.
+ * Without it the valley floor is a billiard table no amount of trees makes up for.
  */
 let groundMottle: THREE.CanvasTexture | null = null
 export function groundMottleTexture(): THREE.CanvasTexture {
@@ -238,11 +225,9 @@ export function groundMottleTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Grain for the furniture: the floor's stroke pass at a fraction of the
- * density, near-white and multiplied under each piece's own colour like the
- * wall wash. Faces of merged boxes each sample the whole tile at their own
- * scale, so the contrast stays low enough to read as tone, never as planks
- * pointing the wrong way.
+ * The floor's stroke pass at a fraction of the density, multiplied under each
+ * piece's colour. Merged boxes sample the whole tile at their own scale, so the
+ * contrast stays low enough to read as tone rather than as planks askew.
  */
 let woodGrain: THREE.CanvasTexture | null = null
 export function woodGrainTexture(): THREE.CanvasTexture {
@@ -292,9 +277,8 @@ export function woodGrainTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Weave for the upholstery: a low-contrast crosshatch under the cloth
- * colours. The threads are two pixels wide on purpose — at reading distance
- * they resolve into tooth rather than gingham.
+ * A low-contrast crosshatch under the cloth colours. Two-pixel threads on
+ * purpose: at reading distance they resolve into tooth rather than gingham.
  */
 let clothWeave: THREE.CanvasTexture | null = null
 export function clothWeaveTexture(): THREE.CanvasTexture {
@@ -341,9 +325,8 @@ export function clothWeaveTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Masonry courses for the hearth: joint lines and mottle under
- * `MATERIALS.stone`. A hint, not brickwork — the geometry stays slabs, and at
- * this contrast the joints read only where the light rakes.
+ * Joint lines and mottle under `MATERIALS.stone`. A hint, not brickwork: the
+ * geometry stays slabs, and the joints read only where the light rakes.
  */
 let stoneHint: THREE.CanvasTexture | null = null
 export function stoneHintTexture(): THREE.CanvasTexture {
@@ -400,9 +383,8 @@ export function stoneHintTexture(): THREE.CanvasTexture {
 }
 
 /**
- * The blob under a chair: white centre fading to black, read as an alphaMap —
- * so one texture serves every contact shadow at any radius, and the material's
- * own opacity is the only knob.
+ * A white centre fading to black, read as an alphaMap, so one texture serves
+ * every contact shadow at any radius and opacity is the only knob.
  */
 let contactShadow: THREE.CanvasTexture | null = null
 export function contactShadowTexture(): THREE.CanvasTexture {

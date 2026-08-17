@@ -17,10 +17,9 @@ import type {
 } from './types'
 
 /**
- * One persistent subscription with a swappable callback, rather than a listen
- * per scan: `listen` resolves asynchronously, and a scan started before the
- * subscription landed lost its first progress events — on a small library, all
- * of them. `scan` awaits the registration instead.
+ * One persistent subscription with a swappable callback rather than a listen per
+ * scan: `listen` resolves asynchronously, so a scan started before it landed
+ * lost its first progress events — on a small library, all of them.
  */
 let scanCallback: ((progress: ScanProgress) => void) | null = null
 let scanSubscription: Promise<unknown> | null = null

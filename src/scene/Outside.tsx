@@ -45,21 +45,13 @@ import { useAmbienceStore } from '../state/ambience'
 import { useWorldStore } from '../state/world'
 
 /**
- * What is out there.
+ * What is out there: ground, a lake to the north, a few hundred conifers, and
+ * hills behind them. All generated from seeds and drawn in about two dozen
+ * instanced draw calls, so the outdoors never competes with the books.
  *
- * The alternative is a flat blue box in the windows standing in for daylight,
- * which is fine until you build a cabin and the whole point is the view. So:
- * ground, a lake to the north, a few hundred conifers, and hills behind them.
- *
- * It is all generated from seeds and drawn in a handful of instanced meshes —
- * about two dozen draw calls for the entire outdoors, dressing included —
- * because none of it should ever compete with the books for frame budget.
- *
- * None of it is only scenery: the ground is walkable, so where the lake and
- * the trees are is something the walk controller needs too. Both live in
- * `world/terrain.ts` and `world/forest.ts`, and this module reads them rather
- * than inventing them — a shoreline you can see in one place and stand in in
- * another is the bug that arrangement prevents.
+ * None of it is only scenery — the ground is walkable, so the lake and the
+ * trees come from `world/terrain.ts` and `world/forest.ts` rather than being
+ * invented here, and what you see is what you can stand on.
  */
 
 const TRUNK = '#4a3826'
@@ -69,10 +61,9 @@ const PINE_NEEDLES = ['#2c4234', '#31493c', '#263c2e']
 const BIRCH_LEAVES = ['#5f7d40', '#6f8d4a', '#527239', '#7d9451']
 
 /**
- * The canopies swaying: a few centimetres of lean, rising with height so the
- * base stays planted, phased off each instance's root so the forest moves as
- * hundreds of trees rather than one. Injected after `begin_vertex`, where
- * `transformed` is still in the unit canopy's local space.
+ * A few centimetres of lean rising with height, so the base stays planted, and
+ * phased per instance so the forest moves as many trees rather than one.
+ * Injected after `begin_vertex`, where `transformed` is still canopy-local.
  */
 const SWAY_GLSL = /* glsl */ `
 {
@@ -85,10 +76,7 @@ const SWAY_GLSL = /* glsl */ `
 }
 `
 
-/**
- * One instanced mesh per part: every trunk in one draw call, then one call per
- * species of canopy. Four calls for four hundred trees.
- */
+/** Every trunk in one draw call, then one per species of canopy: four for four hundred trees. */
 function Forest({ trees }: { trees: Tree[] }) {
   const trunks = useRef<THREE.InstancedMesh>(null)
   const firs = useRef<THREE.InstancedMesh>(null)
@@ -170,9 +158,8 @@ function Forest({ trees }: { trees: Tree[] }) {
     const scale = new THREE.Vector3()
     const colour = new THREE.Color()
 
-    // Per-tree squash and shade, seeded through the yaw the tree already
-    // carries so trunk and canopy agree without another field — an ellipse and
-    // a touch of light are what break "the same tree stamped 420 times".
+    // Seeded through the yaw each tree already carries, so trunk and canopy
+    // agree without another field, and no two read as the same stamp.
     const squash = (tree: Tree) => 1 + 0.12 * Math.sin(tree.yaw * 5)
     const shade = (tree: Tree) => 0.92 + 0.16 * (0.5 + 0.5 * Math.sin(tree.yaw * 9.3))
 
@@ -247,18 +234,14 @@ function Forest({ trees }: { trees: Tree[] }) {
 }
 
 /**
- * The ground disc with a swell on its rim.
- *
- * Flat across everything that walks or stands — `terrainAt` refuses steps past
- * 96 m and the forest grows to about 100, so displacement is pinned to zero
- * through both — then rising into a low undulation towards the rim, which is
- * what stops the horizon under the mist reading as the edge of a perfect
- * circle. Collision is untouched: the swell starts where you cannot go.
+ * The ground disc, flat across everything that walks or stands and rising into a
+ * low swell towards the rim, so the horizon under the mist does not read as the
+ * edge of a perfect circle. Collision is untouched: the swell starts where you
+ * cannot go.
  */
 function groundGeometry(segments = 48): THREE.BufferGeometry {
-  // Flat out to the walk, and for a few metres past it where the last trees
-  // stand; the swell is entirely beyond both, so growing the valley is a matter
-  // of the two radii and nothing here has to be re-tuned by hand.
+  // Flat past the walk and the last trees, so growing the valley is a matter of
+  // the two radii and nothing here is re-tuned by hand.
   const flat = WALK_RADIUS + 10
   const rings = [WALK_RADIUS, ...[0, 1, 2, 3, 4].map((i) => flat + ((GROUND_RADIUS - flat) * i) / 4)]
   const smooth = (t: number) => t * t * (3 - 2 * t)
@@ -307,14 +290,9 @@ function groundGeometry(segments = 48): THREE.BufferGeometry {
 
 /**
  * One sheet of the lake, as a triangle fan round the shoreline the walk
- * controller refuses steps at.
- *
- * Built from `lakePoint` rather than from a scaled circle because the outline
- * has a wobble on it now: a circle geometry scaled to the ellipse would draw
- * the compass-drawing lake while `lakeRadius` walked you to the organic one,
- * and the two disagreeing at the water's edge is exactly the bug the terrain
- * module exists to prevent. `r` is in shoreline units — 1 is the water,
- * `SHORE_EDGE` is the sand under it.
+ * controller refuses steps at. Built from `lakePoint` rather than a scaled
+ * circle, or the drawn outline and the walked one disagree at the water's edge.
+ * `r` is in shoreline units: 1 is the water, `SHORE_EDGE` the sand under it.
  */
 function lakeSheet(r: number, segments = 96): THREE.BufferGeometry {
   const positions = new Float32Array((segments + 1) * 3)
@@ -350,12 +328,9 @@ function lakeSheet(r: number, segments = 96): THREE.BufferGeometry {
 }
 
 /**
- * A tileable normal map for the water, synthesised rather than shipped.
- *
- * A handful of integer-frequency waves summed over the tile — integer so the
- * edges meet — then differentiated into normals. Scrolling this across the lake
- * is what turns a static sheet into water; the amplitude of the effect lives in
- * `normalScale`, which the frame loop raises when it rains.
+ * A tileable normal map for the water, synthesised rather than shipped: a few
+ * integer-frequency waves — integer so the edges meet — differentiated into
+ * normals. Scrolling it is what turns a static sheet into water.
  */
 function makeWaterNormals(size = 128): THREE.CanvasTexture {
   const waves: readonly (readonly [number, number, number, number])[] = [
@@ -399,9 +374,8 @@ function makeWaterNormals(size = 128): THREE.CanvasTexture {
 }
 
 /**
- * The gradient's stops at each corner of the weather, top of the dome first.
- * Every corner has the same four offsets so a stop can be lerped against its
- * opposite number as day fades to night or the rain comes over.
+ * The gradient's stops per weather corner, top of the dome first. Every corner
+ * shares the four offsets, so a stop lerps against its opposite number.
  */
 const SKY_OFFSETS = [0, 0.45, 0.72, 1] as const
 const SKY_STOPS = [
@@ -411,22 +385,16 @@ const SKY_STOPS = [
   colorCorners({ day: '#e8e2d4', dayRain: '#adb2b0', night: '#12141c', nightRain: '#191c22' }),
 ]
 
-/**
- * Where each stop leans during the golden hour, strongest at the horizon —
- * dusk lives where the sun is going down, and the zenith stays cool.
- */
+/** Where each stop leans at golden hour: strongest at the horizon, cool at the zenith. */
 const GOLDEN_SKY = ['#5a5f8a', '#c08a68', '#e8a05c', '#e8955a'].map((c) => new THREE.Color(c))
 const GOLDEN_SKY_STRENGTH = [0.15, 0.3, 0.55, 0.7] as const
 
 
 /**
- * The stars, as a point cloud on the inside of the dome rather than pixels in
- * the sky canvas. The canvas is 256 px stretched over the whole horizon, so a
- * star painted into it smeared into a dash; a point stays a couple of pixels
- * wherever on the dome it sits, and each one twinkles on its own phase. Faded
- * in with the dark and back out under cloud, because what a rainy night takes
- * off a clear one is the stars, not more brightness — and the whole cloud is
- * hidden by day, so it costs nothing while the sun is up.
+ * A point cloud on the inside of the dome rather than pixels in the sky canvas,
+ * which is 256 px stretched over the horizon and smears a star into a dash. Each
+ * twinkles on its own phase, fading out under cloud — what a rainy night takes
+ * off a clear one is the stars — and hidden entirely by day.
  */
 const STAR_COUNT = 750
 
@@ -562,11 +530,9 @@ function Stars() {
 }
 
 /**
- * A sky dome rather than a flat clear colour, so there is a horizon to see the
- * hills against. Drawn on the inside of a sphere with a gradient baked into a
- * small canvas — cheaper than a shader and easier to argue with. The canvas is
- * repainted per frame *only while the ambience is fading*, so day into night is
- * a dusk rather than a cut; a settled sky costs nothing.
+ * A dome rather than a flat clear colour, so there is a horizon to see the hills
+ * against, with the gradient baked into a small canvas — cheaper than a shader.
+ * Repainted only while the ambience is fading, so a settled sky costs nothing.
  */
 function Sky() {
   const night = useAmbienceStore((s) => s.night)
@@ -683,16 +649,10 @@ function Sky() {
 }
 
 /**
- * The trail between the two buildings: worn earth, laid on top of the grass.
- *
- * One quad per leg plus a disc at each bend, merged into a single geometry. The
- * discs are what make a corner read as a corner rather than as two planks with a
- * notch bitten out of the inside of the turn.
- *
- * Drawn a centimetre over the ground for the same reason the beach is: three
- * sheets stacked centimetres apart beats cutting a hole in a circle you can walk
- * on. It is scenery only — the ground under it is walkable because it is ground,
- * not because there is a path on it.
+ * Worn earth laid over the grass: a quad per leg plus a disc at each bend,
+ * merged, because two quads alone leave a notch bitten out of the turn. Drawn a
+ * centimetre over the ground, like the beach, rather than cut into it. Scenery
+ * only — the ground under it is walkable because it is ground.
  */
 function Trail() {
   const geometry = useMemo(() => {
@@ -737,13 +697,9 @@ function Trail() {
 }
 
 /**
- * One sheet of the brook: the ribbon its centre line sweeps out, widened by
- * `extra` — 0 for the water, a little more for the gravel under it.
- *
- * A quad per leg and a disc at each bend, exactly like the trail, because a
- * corner made of two quads alone has a notch bitten out of the inside of the
- * turn. The width comes from `streamWidth`, so what is drawn is the same brook
- * the walk controller refuses to step into.
+ * The ribbon the brook's centre line sweeps out, widened by `extra` — 0 for the
+ * water, more for the gravel. Built like the trail, and off `streamWidth`, so
+ * what is drawn is the brook the walk controller refuses to step into.
  */
 function streamSheet(extra: number): THREE.BufferGeometry {
   const lengths = [0]
@@ -808,12 +764,9 @@ function streamSheet(extra: number): THREE.BufferGeometry {
 }
 
 /**
- * The plank over the brook: a deck with a rail either side, one merged
- * geometry for however many crossings the valley has.
- *
- * Built from the same `BRIDGES` the walk controller stands you on, turned to
- * the flow rather than to a compass point, because a bridge that is not square
- * to the water is a bridge with a corner in it.
+ * A deck with a rail either side, one merged geometry for every crossing. Built
+ * from the same `BRIDGES` the walk controller stands you on and turned to the
+ * flow, because a bridge not square to the water is a bridge with a corner in it.
  */
 function bridgeGeometry(): THREE.BufferGeometry | null {
   const parts: THREE.BufferGeometry[] = []
@@ -857,13 +810,9 @@ function bridgeGeometry(): THREE.BufferGeometry | null {
 }
 
 /**
- * The brook, and the plank over it.
- *
- * The same three-sheet trick the beach uses — gravel over the grass, water over
- * the gravel — rather than a channel cut into a disc you have to be able to walk
- * on. It shares the lake's material, so the water running in is the water it
- * runs into: one scrolling ripple, and it goes grey in the rain with everything
- * else without a second thing to remember.
+ * The brook and its plank, built with the beach's three-sheet trick rather than
+ * a channel cut into the ground. It shares the lake's material, so the water
+ * running in is the water it runs into, and the rain greys both at once.
  */
 function Stream({ water }: { water: THREE.Material }) {
   const bed = useMemo(() => streamSheet(0.5), [])
@@ -971,13 +920,9 @@ const REED_GREENS = ['#5d7038', '#6c7d3e', '#8a8a4e', '#7a6f3d']
 const PAD_GREENS = ['#3e6034', '#48703c', '#365a30']
 
 /**
- * The water's edge dressed: rocks half in the shallows, clumps of reeds, and
- * lily pads drifting near the shore.
- *
- * Everything sits in shoreline units off `lakePoint`, so it follows the
- * wobbled outline the same way the beach does. It all stands at or inside the
- * waterline — where the walk controller already refuses to go — which is why
- * none of it needs a collider. Three instanced meshes, three draw calls.
+ * Rocks, reeds and lily pads, placed in shoreline units off `lakePoint` so they
+ * follow the wobbled outline as the beach does. All of it stands at or inside
+ * the waterline, where the walk already refuses to go, so none needs a collider.
  */
 function Shoreline() {
   const rocks = useRef<THREE.InstancedMesh>(null)
@@ -1081,13 +1026,9 @@ function Shoreline() {
 }
 
 /**
- * Boulders and stumps scattered through the forest — the ground floor of the
- * tree line, so the woods read as a place rather than as cones on a lawn.
- *
- * Grown with the same `occupied` test as the trees, so nothing lands on the
- * shore path, the trail, the view corridor or a building. Small enough to step
- * over, which is why they are scenery rather than solids — the trunks are the
- * things you walk into out here.
+ * The tree line's ground floor, so the woods read as a place rather than cones
+ * on a lawn. Grown with the trees' own `occupied` test, and small enough to step
+ * over — the trunks are the only things you walk into out here.
  */
 function Erratics({ keepOut }: { keepOut: readonly Bounds[] }) {
   const boulders = useRef<THREE.InstancedMesh>(null)
@@ -1161,12 +1102,9 @@ function Erratics({ keepOut }: { keepOut: readonly Bounds[] }) {
 }
 
 /**
- * A few birds circling over the lake by day.
- *
- * Each is two dark triangles making a gull's "V", flapped by scaling the V
- * flat and open again — which at a hundred metres is exactly what a wingbeat
- * looks like, and costs one instanced draw call for the flock. They fade out
- * with dusk and with rain rather than blinking off.
+ * Two dark triangles making a gull's "V", flapped by scaling it flat and open —
+ * at a hundred metres that is exactly what a wingbeat looks like, and the flock
+ * is one instanced draw call. They fade with dusk and rain rather than blinking off.
  */
 const FLOCK: readonly { radius: number; height: number; speed: number; phase: number }[] = [
   { radius: 0.42, height: 7.5, speed: 0.14, phase: 0.0 },
@@ -1284,10 +1222,8 @@ const WATER_ROUGHNESS = { day: 0.12, dayRain: 0.62, night: 0.1, nightRain: 0.62 
 const WATER_METALNESS = { day: 0.55, dayRain: 0.2, night: 0.6, nightRain: 0.2 }
 
 /**
- * A bank of mist where the ground runs out: an open cylinder round the edge of
- * the world wearing a vertical fade, coloured to whatever the fog is. It is
- * what makes the horizon a soft line of atmosphere rather than the rim of a
- * disc — the geometric edge is still there, but nobody ever sees it.
+ * An open cylinder round the edge of the world wearing a vertical fade, coloured
+ * to the fog. The geometric edge is still there; nobody ever sees it.
  */
 function MistRing() {
   const material = useRef<THREE.MeshBasicMaterial>(null)
@@ -1361,10 +1297,8 @@ export function Outside() {
   const ripples = useMemo(() => makeWaterNormals(), [])
   useEffect(() => () => ripples.dispose(), [ripples])
 
-  // One material for every body of water in the valley, made here rather than
-  // declared inside the lake's mesh: the brook is the same water, and sharing
-  // it is what keeps the two the same colour, the same weather and the same
-  // ripple without a second thing to advance per frame.
+  // One material for every body of water in the valley, so the lake and the
+  // brook share a colour, a weather and a ripple with nothing extra to advance.
   const waterMaterial = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -1387,11 +1321,8 @@ export function Outside() {
   }, [])
 
   /**
-   * The one place the ambience blend advances, plus everything this component
-   * colours by it: the clear colour, the fog and the lake. Advancing and
-   * reading in the same component keeps the sky and the ground the same
-   * evening; the other readers (`Sky`, the lights) are at most a frame behind,
-   * which nothing can see.
+   * The one place the ambience blend advances, and everything coloured by it:
+   * clear colour, fog and lake. Other readers are at most a frame behind.
    */
   useFrame(({ clock }, delta) => {
     advanceAmbience(night, rain, delta)
@@ -1415,9 +1346,8 @@ export function Outside() {
     waterMaterial.normalScale.set(chop, chop)
   })
 
-  // The same trunks the walk controller collides with. Grown in `deriveWorld`
-  // rather than here, which is what stops the forest you can see and the forest
-  // you can bump into drifting apart.
+  // Grown in `deriveWorld` rather than here, so the forest you see and the one
+  // you bump into cannot drift apart.
   const trees = world?.trees ?? []
 
   // The water and the sand, cut once from the walkable outline.

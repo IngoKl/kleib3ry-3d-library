@@ -3,26 +3,20 @@ import { STEP_UP, floorAt, type DerivedWorld, type Solid } from '../world/derive
 import { shelfColliders } from '../world/shelf'
 
 /**
- * Walking, in a building with more than one floor.
+ * Walking in a building with more than one floor. The sliding maths is the
+ * axis-separated AABB in `collision.ts`; what a loft adds is a second question —
+ * what am I standing on, and is it within a step of what I was on.
  *
- * The sliding maths is the axis-separated AABB in `collision.ts` — no physics
- * engine, no wasm, so no `wasm-unsafe-eval` in the desktop CSP. What a loft
- * adds is a second question beyond "did I hit something": *what am I standing
- * on*, and is it within a step of what I was standing on.
- *
- * Answered here rather than in the controller so it can be tested without a
- * browser. One check prevents both failure modes — walking off the loft into
- * thin air, and walking *up* a wall because the floor above was in range. A
- * staircase allows a bigger climb by being a floor that ramps.
+ * Answered here rather than in the controller so it tests without a browser. One
+ * check prevents both walking off the loft and walking up a wall; a staircase
+ * allows a bigger climb by being a floor that ramps.
  */
 export type Stance = Point & { floor: number }
 
 /**
- * Everything a body can hit: the derived walls and furniture, the bookcase
- * carcasses, and whichever doors are shut. Door state is ambience, which the
- * static derivation does not know, so callers rebuild on a toggle — an edit,
- * not a frame cost. One list, so the player, a thrown book and anything else
- * that collides agree about what is solid.
+ * Everything a body can hit. Door state is ambience, which the static derivation
+ * does not know, so callers rebuild on a toggle — an edit, not a frame cost. One
+ * list, so the player and a thrown book agree about what is solid.
  */
 export function worldSolids(world: DerivedWorld, ambienceOn: Record<string, boolean>): Solid[] {
   const doors = world.furniture
@@ -56,12 +50,9 @@ function landing(world: DerivedWorld, to: Point, floor: number): number | null {
 }
 
 /**
- * One step of walking: slide along whatever is in the way, then refuse any part
- * of the move that would leave you standing on nothing.
- *
- * The two axes are retried separately for the same reason `resolveMove` tries
- * them separately — walking along the edge of a stairwell should slide you
- * along it rather than stopping you dead.
+ * Slide along whatever is in the way, then refuse any part of the move that
+ * would leave you standing on nothing. The axes retry separately, as in
+ * `resolveMove`: a stairwell edge should slide you along rather than stop you.
  */
 export function stepPlayer(
   world: DerivedWorld,
@@ -88,11 +79,9 @@ export function stepPlayer(
 }
 
 /**
- * Put someone down at a position that may be anywhere — a spawn point, or a
- * test teleporting across the room. There is no previous floor to step from, so
- * the highest floor within a step of `near` wins; failing that, whatever floor
- * is there at all, so a teleport into the loft lands on the loft rather than
- * falling back to nothing.
+ * Put someone down anywhere — a spawn point, or a test teleporting. With no
+ * previous floor, the highest within a step of `near` wins, then whatever floor
+ * is there at all, so a teleport into the loft lands on the loft.
  */
 export function groundAt(world: DerivedWorld, x: number, z: number, near = 0): number {
   return floorAt(world, x, z, near) ?? floorAt(world, x, z, Infinity) ?? 0

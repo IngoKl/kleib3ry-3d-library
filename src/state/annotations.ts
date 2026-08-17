@@ -5,15 +5,11 @@ import { pageToSpread, spreadToPage } from '../data/pageNumbers'
 import { useLibraryStore } from './library'
 
 /**
- * Bookmarks, notes and ink, in `.library/annotations.json`.
- *
- * Their own file, apart from the layout, and meant to be read without the app:
- * it speaks 1-based page numbers rather than spreads, and every entry carries
- * its book's title and author so it stays legible after the book leaves the
- * index. Entries are never pruned — a rescan must not drop somebody's words.
- *
- * The reader thinks in spreads, so the conversion happens at the file boundary:
- * spread-indexed in memory, page-numbered on disk.
+ * Bookmarks, notes and ink, in their own file and meant to be read without the
+ * app: 1-based page numbers, and every entry carrying its book's title and
+ * author so it survives leaving the index. Nothing is ever pruned — a rescan
+ * must not drop somebody's words. The reader thinks in spreads, so the
+ * conversion happens at the file boundary.
  */
 
 const SAVE_DEBOUNCE_MS = 400
@@ -30,10 +26,7 @@ type AnnotationsStore = {
   notes: Record<string, BookNote[]>
   /** Book id -> page -> ink drawn on it, in page space, oldest stroke first. */
   drawings: Record<string, Record<number, BoardStroke[]>>
-  /**
-   * Title and author as last written to the file, so a book the index has
-   * lost keeps its name in it. Refreshed from the index for live books.
-   */
+  /** As last written, so a book the index has lost keeps its name in the file. */
   meta: Record<string, { title: string; author: string | null }>
   loaded: boolean
   load: () => Promise<void>

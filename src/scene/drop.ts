@@ -2,14 +2,10 @@ import type { BookDimensions } from '../data/dimensions'
 import { supportAt, type DerivedWorld } from '../world/derive'
 
 /**
- * Books falling, and being kicked about the floor.
- *
- * Gravity, a support height and a shove — not a physics engine: a wasm runtime
- * would cost the desktop CSP its `wasm-unsafe-eval` exemption, and a solver is
- * far more than a dropped book needs.
- *
- * The one place a book's position is a stored number rather than derived from
- * an ordering (compare `shelving.ts` and `boxes.ts`).
+ * Books falling and being kicked about: gravity, a support height and a shove,
+ * not a physics engine — a wasm runtime would cost the desktop CSP its
+ * `wasm-unsafe-eval` exemption. The one place a book's position is stored rather
+ * than derived from an ordering.
  */
 
 export type Body = {
@@ -44,10 +40,9 @@ export type Support = (x: number, z: number, from: number) => number
 export type Blocked = (x: number, y: number, z: number) => boolean
 
 /**
- * Bodies thrown this frame, waiting for the renderer to adopt them. The store's
- * placement is only a point, with nowhere to carry a velocity — without this a
- * throw arrives in `LooseBooks` indistinguishable from a resting placement and
- * is seeded asleep in mid-air.
+ * Bodies thrown this frame, waiting to be adopted. A stored placement is only a
+ * point with nowhere to carry a velocity, so without this a throw arrives
+ * indistinguishable from a resting placement and is seeded asleep in mid-air.
  */
 const launched = new Map<string, Body>()
 
@@ -66,17 +61,15 @@ export const supportFrom = (world: DerivedWorld): Support => (x, z, from) =>
   supportAt(world, x, z, from)
 
 /**
- * The simulation's own clock. A fixed step, with a slow frame running several,
- * so gravity is not a function of the frame rate — the tests run at a frame or
- * two a second. Catch-up is capped so a long stall makes a book fall a fifth of
- * a second rather than teleport through a table in one step.
+ * A fixed step, with a slow frame running several, so gravity is not a function
+ * of frame rate — the tests run at a frame or two a second. Catch-up is capped,
+ * or a long stall teleports a book through a table in one step.
  */
 const FIXED_STEP = 1 / 90
 const MAX_CATCH_UP = 0.2
 
 /**
- * One frame of falling, however long that frame was. `thickness` is how far the
- * book's centre sits above what it lies on. A resting body is returned
+ * One frame of falling, however long it was. A resting body is returned
  * untouched, so a room full of settled books costs nothing.
  */
 export function stepBody(
@@ -118,9 +111,8 @@ function advance(
   next.yaw += next.spin * step
   next.spin *= Math.max(0, 1 - 3 * step)
 
-  // A step into something solid is refused sideways: the book sheds its travel
-  // and drops where it hit. A body already inside something — released pressed
-  // against a bookcase — is let fly clear rather than pinned where it spawned.
+  // A step into something solid is refused sideways and the book drops where it
+  // hit. One released already inside something is let fly clear instead.
   if (blocked && blocked(next.x, next.y, next.z) && !blocked(body.x, body.y, body.z)) {
     next.x = body.x
     next.z = body.z

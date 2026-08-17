@@ -2,22 +2,15 @@ import * as THREE from 'three'
 import { CELL_REGIONS, type SpineAtlas } from './spineAtlas'
 
 /**
- * The one book mesh: a unit cube that reads its artwork out of an atlas cell.
- *
- * Shared by the books on the shelves and the books in the boxes, which are the
- * same object seen from two angles — standing up with the spine out, or lying
- * flat with the cover up. Both are instanced, both sample one texture, and both
- * therefore cost one draw call for the whole pile.
+ * The one book mesh: a unit cube reading its artwork out of an atlas cell.
+ * Shared by the shelves and the boxes, which are the same object seen from two
+ * angles, so each costs one draw call for the whole pile.
  */
 
 /**
- * A unit cube whose *spine* face carries the atlas cell and whose other faces
- * take a single plain point from inside that same cell.
- *
- * The spine is the +Z face — books stand with their thickness along X and their
- * depth into the shelf along Z — and it is the only face you can see once a
- * book has neighbours. Mapping the rest to one cloth-coloured texel keeps them
- * looking like cloth instead of like five more copies of the title.
+ * The spine face carries the atlas cell; the others take one plain point from
+ * inside it. The spine is the only face visible once a book has neighbours, and
+ * a single cloth-coloured texel keeps the rest from being copies of the title.
  */
 export function makeBookGeometry(): THREE.BufferGeometry {
   const geometry = new THREE.BoxGeometry(1, 1, 1)
@@ -48,9 +41,8 @@ export function makeBookGeometry(): THREE.BufferGeometry {
 }
 
 /**
- * The atlas is sampled through a per-instance rectangle, which three has no
- * built-in for — so `map` is set to get the uv plumbing and the sampling is
- * then replaced with one that uses our own varying.
+ * Three has no built-in for a per-instance UV rectangle, so `map` is set for the
+ * uv plumbing and the sampling replaced with one using our own varying.
  */
 export function makeBookMaterial(atlas: SpineAtlas): THREE.MeshStandardMaterial {
   const created = new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0 })

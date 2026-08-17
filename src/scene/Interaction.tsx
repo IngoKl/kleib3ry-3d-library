@@ -14,9 +14,9 @@ import { useWorldStore } from '../state/world'
 const REACH = 2.6
 
 /**
- * The single per-frame raycast that drives everything you can point at. What it
- * offers depends on what is in your hands. It runs at 30 Hz: with a thousand-odd
- * instances this is the most expensive thing in the loop.
+ * The single raycast that drives everything you can point at, offering different
+ * things depending on what is in your hands. At 30 Hz, because with a
+ * thousand-odd instances it is the most expensive thing in the loop.
  */
 
 /** Furniture id off a hit anywhere in a piece's several meshes. */
@@ -51,9 +51,8 @@ function propIdOf(hit: THREE.Intersection | undefined): string | null {
 const UPRIGHT = 0.55
 
 /**
- * Somewhere to stick a sheet, from a hit on a wall or a whiteboard. Only a
- * near-vertical face counts, and the *normal* decides which way the sheet faces
- * — so this works for any wall a document invents.
+ * Somewhere to stick a sheet. Only a near-vertical face counts, and the normal
+ * decides its facing, so this works for any wall a document invents.
  */
 function pinFrom(hit: THREE.Intersection | undefined): {
   x: number
@@ -62,9 +61,8 @@ function pinFrom(hit: THREE.Intersection | undefined): {
   yaw: number
 } | null {
   if (!hit || !hit.normal) return null
-  // A raycast hands back the normal in the *hit object's* own space. A
-  // whiteboard is a turned group, so it must be taken to world space or a sheet
-  // pinned to one faces into the plaster.
+  // The normal comes back in the hit object's own space, and a whiteboard is a
+  // turned group — so without this a sheet pinned to one faces the plaster.
   const normal = hit.normal.clone().transformDirection(hit.object.matrixWorld)
   if (Math.abs(normal.y) > 1 - UPRIGHT) return null
   return {
@@ -150,16 +148,11 @@ export function Interaction() {
     raycaster.setFromCamera(centre, camera)
     raycaster.far = REACH
 
-    // Cleared up front rather than in each of the six branches below: with your
-    // hands full of a record, a tape, a sheet or a book, the cat is not on
-    // offer, and only the empty-handed branch turns it back on.
+    // Cleared up front rather than in each branch below: with your hands full
+    // the cat is not on offer, and only the empty-handed branch turns it on.
     store.setFocusedCat(false)
 
-    /**
-     * Holding a record: the deck takes it, a crate files it, a table takes it
-     * down flat. Nothing else is offered — the sleeve fills the hand a book
-     * would need.
-     */
+    /** The deck, a crate, or a table. Nothing else: the sleeve fills the hand a book needs. */
     if (store.heldRecord !== null) {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
@@ -185,9 +178,8 @@ export function Interaction() {
         if (hit && id && kindOf(id) === 'recordplayer') deck = { distance: hit.distance, id }
       }
 
-      // A crate files it; any other top takes it lying down. Both come off the
-      // same hit, because a crate *is* a surface — which is what lets a record
-      // player stand on one.
+      // Both come off the same hit, because a crate is a surface — which is
+      // what lets a record player stand on one.
       let crate: { distance: number; id: string } | null = null
       let top: { distance: number; hit: THREE.Intersection; id: string } | null = null
       const tops = sceneRefs.surfaces
@@ -225,12 +217,9 @@ export function Interaction() {
     store.setCrateTarget(null)
 
     /**
-     * Holding the marker: whiteboards, and nothing else.
-     *
-     * The board is not a *target* the way a shelf is — you draw by holding the
-     * mouse button and moving your head, which `Drawing.tsx` reads directly. This
-     * is only what tells the HUD there is something in front of you to write on,
-     * and what `G` wipes.
+     * Whiteboards, and nothing else. The board is not a target the way a shelf
+     * is — `Drawing.tsx` reads the mouse directly — so this only tells the HUD
+     * there is something to write on, and gives `G` something to wipe.
      */
     if (store.heldMarker !== null) {
       store.setFocusedBook(null)
@@ -258,11 +247,7 @@ export function Interaction() {
     }
     store.setBoardTarget(null)
 
-    /**
-     * Holding a tape: the television takes it, the crate takes it back. Nothing
-     * else is offered, which is the same rule the sleeve in your hand follows —
-     * a cassette fills the hand a book would need.
-     */
+    /** The television or the crate. Nothing else, on the sleeve's rule. */
     if (store.heldTape !== null) {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
@@ -312,11 +297,7 @@ export function Interaction() {
     }
     store.setTapeCrateTarget(null)
 
-    /**
-     * Holding a cartridge: the arcade machine takes it, the ROM box takes it
-     * back or swaps it for the next one. Both are fixtures, so one hit answers
-     * for either and E asks the kind.
-     */
+    /** The machine or the box. Both are fixtures, so one hit answers for either. */
     if (store.heldRom !== null) {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
@@ -345,9 +326,8 @@ export function Interaction() {
     }
 
     /**
-     * Holding a cup, a can or a takeaway box: somewhere to set it down, the
-     * bin, and — with the empty cup — the machine that refills it. A chair
-     * still takes you: sitting down with the coffee is what the coffee is for.
+     * Somewhere to set it down, the bin, and — with the empty cup — the machine
+     * that refills it. A chair still takes you: that is what the coffee is for.
      */
     if (store.heldProp !== null) {
       store.setFocusedBook(null)
@@ -372,10 +352,9 @@ export function Interaction() {
         const hit = raycaster.intersectObject(operable, true)[0]
         const id = furnitureIdOf(hit)
         const kind = kindOf(id)
-        // Only the *empty* cup wants the machine: aiming a full one at it
-        // falls through to the counter, which is where a full cup goes. The
-        // door answers too — carrying the takeaway in through a shut door
-        // must not need a free hand.
+        // Only the empty cup wants the machine; a full one falls through to
+        // the counter. The door answers too, or carrying the takeaway in
+        // through a shut one would need a free hand.
         const wants =
           kind === 'bin' ||
           kind === 'door' ||
@@ -419,12 +398,9 @@ export function Interaction() {
     }
 
     /**
-     * Holding a sheet: somewhere to put it, and nothing else.
-     *
-     * Walls, whiteboards, *and* the sheets already up — pointing at a page on the
-     * board and pressing E should put yours next to it rather than reading as a
-     * miss, so a hit on a pinned sheet is offered as a place on the surface just
-     * behind it.
+     * Walls, whiteboards, and the sheets already up: pointing at a page on the
+     * board should put yours beside it rather than read as a miss, so a hit on
+     * a pinned sheet offers the surface just behind it.
      */
     if (store.heldPin !== null) {
       // The full slate, like every other held-* branch: a leftover seat or
@@ -510,18 +486,16 @@ export function Interaction() {
       if (pet) {
         const hit = raycaster.intersectObject(pet, true)[0]
         if (hit) {
-          // …and only if there is no wall in the way. Nothing else here tests
-          // for an occluder, because nothing else moves into the next room on
-          // its own.
+          // …and only with no wall in the way. Nothing else tests for an
+          // occluder, because nothing else moves into the next room on its own.
           const shells = sceneRefs.walls
           const wall = shells ? raycaster.intersectObject(shells, true)[0] : undefined
           if (!wall || wall.distance > hit.distance) animal = { distance: hit.distance }
         }
       }
 
-      // Whichever is nearer: a book on a shelf, or one in a box. A book in a
-      // box carries that box with it, so looking into a pile offers both the
-      // one book (E) and the boxful (G) without having to find the cardboard.
+      // A book in a box carries that box with it, so looking into a pile
+      // offers both the one book and the boxful without hunting for cardboard.
       let best: { distance: number; id: string; inBox?: string } | null = null
       let seat: { distance: number; id: string } | null = null
       let box: { distance: number; id: string } | null = null
@@ -619,10 +593,8 @@ export function Interaction() {
         if (hit && id) prop = { distance: hit.distance, id }
       }
 
-      // One hit on the tops answers two questions: whether this is a record
-      // crate — which riffles, sleeves in the way or not — and, wearing the
-      // headlamp, whether a bare tabletop offers to take it off your head. That
-      // is the one empty-handed use the crosshair has for a surface.
+      // One hit answers two questions: whether this is a crate to riffle, and
+      // — wearing the headlamp — whether a bare tabletop will take it.
       const tops = sceneRefs.surfaces
       const topHit = tops ? raycaster.intersectObject(tops, true)[0] : undefined
       const topId = furnitureIdOf(topHit)
@@ -636,9 +608,8 @@ export function Interaction() {
         }
       }
 
-      // The cat, if it is genuinely the thing in front of you. It goes first
-      // because it is the only candidate that moves on its own, and reaching
-      // past a cat for the book behind it is a thing you can do by waiting.
+      // First, because it is the only candidate that moves on its own — and
+      // reaching past a cat for the book behind it is a matter of waiting.
       const catAt = animal?.distance ?? Infinity
       if (
         Number.isFinite(catAt) &&
@@ -699,17 +670,15 @@ export function Interaction() {
         const cardboard = box && (!best || box.distance < best.distance) ? box.id : null
         store.setFocusedBox(best?.inBox ?? cardboard)
 
-        // The folding table: it is a surface like any other and so has no
-        // question of its own on the crosshair, which is exactly why the one
-        // thing it *can* be asked has to be offered from here.
+        // A folding table is a surface like any other, so the one question it
+        // can be asked on its own has to be offered from here.
         store.setFocusedPortable(
           topHit && topId && (!best || topHit.distance < best.distance) ? portableOf(topId) : null,
         )
 
-        // A record, a tape, a lamp and a prop are only offered when nothing
-        // readable is nearer, so reaching past a crate for a book cannot start
-        // the music. They exclude each other symmetrically: guarding only one
-        // hands E to whatever is behind it.
+        // These are offered only when nothing readable is nearer, so reaching
+        // past a crate for a book cannot start the music. Symmetrically:
+        // guarding only one hands E to whatever is behind it.
         const nearer = (candidate: { distance: number } | null) =>
           candidate !== null && (!best || candidate.distance < best.distance)
         const closest = (candidate: { distance: number } | null, others: ({ distance: number } | null)[]) =>
@@ -722,10 +691,9 @@ export function Interaction() {
         store.setFocusedFixture(closest(fixture, [record, tape, prop]) ? fixture!.id : null)
         store.setFocusedProp(closest(prop, [fixture, record, tape]) ? prop!.id : null)
 
-        // The crate the sleeve is filed in, or — with no sleeve in the way — the
-        // crate itself, so `,` and `.` riffle through it either way. Held to the
-        // same "nothing else is nearer" test as everything else here, because it
-        // puts a card up: the deck standing on a crate must not raise two.
+        // The crate a sleeve is filed in, or the crate itself, so `,` and `.`
+        // riffle either way. Held to the same nearness test, because it puts a
+        // card up: a deck standing on a crate must not raise two.
         store.setFocusedCrate(
           sleeve ? filedIn : closest(cabinet, [fixture, tape, prop, seat, box]) ? cabinet!.id : null,
         )
@@ -770,9 +738,8 @@ export function Interaction() {
       if (hit && id) chair = { distance: hit.distance, id, hit }
     }
 
-    // A bench or a bed is both a seat and a surface, and it renders once, in
-    // the seats group — so its surface half is read off the *seat* hit: aimed
-    // at the top, the book is laid down; aimed at the side, you sit.
+    // A bench renders once, in the seats group, so its surface half is read off
+    // the seat hit: aimed at the top the book is laid down, at the side you sit.
     let seatTop: { distance: number; hit: THREE.Intersection; id: string } | null = null
     if (chair) {
       const seatId = chair.id
@@ -804,9 +771,8 @@ export function Interaction() {
       }
     }
 
-    // The chair, if it is plainly what you are aiming at. A bench is also a
-    // surface, and on a tie the surface wins — a book laid on a bench beats
-    // sitting on it with the book still in hand.
+    // On a tie the surface wins: a book laid on a bench beats sitting on it
+    // with the book still in hand.
     if (
       chair &&
       (!boxHit || chair.distance < boxHit.distance) &&
@@ -831,9 +797,8 @@ export function Interaction() {
     }
     store.setBoxTarget(null)
 
-    // The same for a table: closer than the bookcase behind it means you are
-    // putting the book down, not shelving it. Only an upward-facing hit counts
-    // — the side of a counter is not somewhere a book can go.
+    // Closer than the bookcase behind it means putting the book down, not
+    // shelving. Upward-facing only: the side of a counter takes nothing.
     const upward = topHit?.normal !== undefined && topHit.normal.y > 0.5
     let top =
       topHit && topId && upward ? { distance: topHit.distance, hit: topHit, id: topId } : null
@@ -867,10 +832,9 @@ export function Interaction() {
       return
     }
 
-    // Whether the held book would actually go in — the same test `shelve`
-    // applies, carried on the target so the card and the ghost can warn
-    // instead of leaving E silently dead on a full row. Re-summed only when
-    // the row, the book, or the shelving changes, not sixty times a second.
+    // `shelve`'s own test, carried on the target so the card and the ghost can
+    // warn rather than leaving E silently dead on a full row. Re-summed only
+    // when the row, the book or the shelving changes.
     const { rows, dims } = useLibraryStore.getState()
     const at = rowKey(shelf.id, row)
     const fit = fitCache.current

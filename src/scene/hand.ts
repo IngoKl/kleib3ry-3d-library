@@ -2,16 +2,11 @@ import * as THREE from 'three'
 import { approach } from '../lib/ease'
 
 /**
- * The frame a held thing is carried in — the camera's, a moment late.
- *
- * A book, record, tape or sheet rides the camera per frame rather than being
- * parented to it. Copying the camera's orientation exactly reads as painted on
- * the screen rather than held, so the hand keeps its own orientation and eases
- * towards the camera's; offsets are measured in *that* frame, so a turn swings
- * what you carry out a little and lets it settle back.
- *
- * `RATE` is a fifth of a second of settle. Slower reads as underwater; faster
- * is not visible at all.
+ * The frame a held thing is carried in: the camera's, a moment late. Copying the
+ * camera exactly reads as painted on the screen rather than held, so the hand
+ * eases towards it and offsets are measured in that frame — a turn swings what
+ * you carry out a little and lets it settle back. `RATE` is a fifth of a second:
+ * slower reads as underwater, faster is not visible at all.
  */
 const RATE = 14
 

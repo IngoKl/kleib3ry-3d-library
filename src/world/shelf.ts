@@ -2,14 +2,9 @@ import { aabbFromCentre } from '../scene/collision'
 import type { DerivedShelf, Solid } from './derive'
 
 /**
- * The bookcase itself. Its *proportions* are fixed — a bookcase is a bookcase —
- * while where it stands and how many shelves it holds come from the world
- * document, because those are the things worth deciding per library.
- *
- * The carcass grew with the books. A spine is read at two or three metres
- * across a room, and at the old scale the printed title was a few pixels tall
- * even with a whole atlas cell to itself; making the books physically larger is
- * the only thing that actually buys legibility, and the case has to hold them.
+ * The bookcase. Proportions are fixed; where it stands and how many shelves it
+ * holds come from the document. Everything is about a quarter over life size,
+ * because a spine read from across a room is only legible if the book is big.
  */
 export const SHELF = {
   width: 1.0,
@@ -28,9 +23,8 @@ const LOWEST_SURFACE = SHELF.plinth + SHELF.board
 const USABLE_HEIGHT = SHELF.height - SHELF.board - LOWEST_SURFACE
 
 /**
- * Compartment geometry for a case with `rows` shelves. A four-row case has
- * taller compartments than a six-row one; everything downstream — packing,
- * aiming, the carcass mesh — asks here rather than assuming five.
+ * Compartment geometry for a case with `rows` shelves. Packing, aiming and the
+ * carcass mesh all ask here rather than assuming a row count.
  */
 export function rowMetrics(rows: number) {
   const rowHeight = (USABLE_HEIGHT - (rows - 1) * SHELF.board) / rows
@@ -55,10 +49,7 @@ export function rowFromLocalY(localY: number, rows: number): number | null {
 /** Usable width inside one compartment. */
 export const INTERIOR_WIDTH = SHELF.width - 2 * SHELF.panel
 
-/**
- * A bookcase blocks you on the floor it stands on, and only there — a case in
- * the loft is not a wall in the living room below it.
- */
+/** A case blocks you only on its own floor: one in the loft is not a wall below. */
 export function shelfColliders(shelves: readonly DerivedShelf[]): Solid[] {
   return shelves.map((shelf) => ({
     ...aabbFromCentre(shelf.x, shelf.z, SHELF.width, SHELF.depth, shelf.rotationY),

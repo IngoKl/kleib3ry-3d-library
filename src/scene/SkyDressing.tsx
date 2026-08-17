@@ -8,21 +8,18 @@ import { GROUND_RADIUS, LAKE, WATER_Y } from '../world/terrain'
 import { useSettings } from '../state/settings'
 
 /**
- * The rest of the sky: the sun's glow by day, a few banks of cloud, and the
- * moon's glint on the lake by night. Its own module rather than more of `Sky`
- * because none of it touches the gradient canvas — each piece is a quad or an
- * instanced sheet faded by the same ambience blend. Three draw calls, and the
- * night pieces gate themselves off entirely by day (and vice versa).
+ * The rest of the sky: the sun's glow, a few banks of cloud, the moon's glint on
+ * the lake. Its own module because none of it touches the gradient canvas — each
+ * piece is a quad faded by the ambience blend, and each gates itself off.
  */
 
 const SUN_CORE = new THREE.Color('#ffffff')
 const SUN_SUNSET = new THREE.Color('#ff9a4d')
 
 /**
- * The sun as a bloom rather than a disc: a hard-edged circle at this distance
- * reads as a sticker, and the glow is what windows and water actually get from
- * it. It reddens with `goldenWarmth`, so the dusk the sky gradient passes
- * through has a source hanging in it.
+ * A bloom rather than a disc: a hard-edged circle reads as a sticker, and the
+ * glow is what windows and water get from it. Reddens with `goldenWarmth`, so
+ * the dusk the sky passes through has a source hanging in it.
  */
 export function SunGlow() {
   const material = useRef<THREE.MeshBasicMaterial>(null)
@@ -105,11 +102,9 @@ const angleGap = (a: number, b: number) => {
 }
 
 /**
- * A handful of cloud banks on the dome, greying over in rain and near-black at
- * night. One instanced mesh of quads faced at the centre, matrices baked once;
- * the whole group creeps round the sky slower than anyone can watch. They are
- * seeded clear of the sun's and moon's azimuths, so neither disc ever rises
- * behind a permanent cloud.
+ * Cloud banks on the dome, greying in rain and near-black at night. One
+ * instanced mesh with its matrices baked once, creeping round slower than anyone
+ * watches, seeded clear of both azimuths so neither disc rises behind a cloud.
  */
 export function CloudBank() {
   const low = useSettings((s) => s.lowPerformance)
@@ -186,10 +181,9 @@ export function CloudBank() {
 }
 
 /**
- * The moon's glint: a streak of cool light lying on the water, long axis aimed
- * at the moon, breathing slightly. Additive — it is light on the lake, not a
- * decal — and fog-free, because fogged additive would lay a grey rectangle on
- * the water instead.
+ * A streak of cool light on the water, aimed at the moon. Additive, because it
+ * is light rather than a decal, and fog-free: fogged additive lays a grey
+ * rectangle on the lake.
  */
 export function MoonGlint() {
   const material = useRef<THREE.MeshBasicMaterial>(null)

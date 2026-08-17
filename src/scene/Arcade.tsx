@@ -9,31 +9,23 @@ import { roomHasKeyboard, useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
 /**
- * The machine behind the cabinet: the clock, the keypad and the beeper.
- *
- * One machine for the whole app however many cabinets a document declares, so a
- * second cabinet shows the same game. `Furniture.tsx` only *paints* the
- * cabinet; everything that advances state lives here, so an unmounted cabinet
- * cannot pause the game.
- *
- * It runs whenever a cartridge is in, not only while you stand at it.
+ * The machine behind the cabinet: the clock, the keypad and the beeper. One
+ * machine however many cabinets a document declares, so a second shows the same
+ * game. `Furniture.tsx` only paints the cabinet, so an unmounted one cannot
+ * pause anything, and it runs whenever a cartridge is in.
  */
 
 /** The CHIP-8 timers tick at 60 Hz wherever the machine runs. */
 const TICK = 1 / 60
 /**
- * Instructions per tick. The original VIP managed about eleven; games written
- * for modern interpreters assume several times that, and Pong at eleven is
- * treacle. As with the fall in `drop.ts`, a slow frame runs several ticks and
- * a stall is capped rather than caught up in full.
+ * The original VIP managed about eleven; games written for modern interpreters
+ * assume several times that, and Pong at eleven is treacle. Like `drop.ts`, a
+ * slow frame runs several ticks and a stall is capped rather than caught up.
  */
 const CYCLES_PER_TICK = 32
 const MAX_CATCH_UP = 0.25
 
-/**
- * The usual mapping of the CHIP-8 pad onto the left of a keyboard: the 4×4
- * grid 123C/456D/789E/A0BF lands on 1234/QWER/ASDF/ZXCV.
- */
+/** The usual mapping: the pad's 123C/456D/789E/A0BF onto 1234/QWER/ASDF/ZXCV. */
 const KEYPAD: Record<string, number> = {
   Digit1: 0x1,
   Digit2: 0x2,
@@ -62,11 +54,9 @@ const BEEP_GAIN = 0.03
 const SPEAKER = 1.2
 
 /**
- * The beeper: one square-wave oscillator, running silent until the sound timer
- * says otherwise. `level` is 0 to 1 — the master volume by the distance to the
- * cabinet, so the attract mode sits in the room instead of in your ear. Every
- * failure — no AudioContext, a context that will not start — falls back to
- * silence rather than throwing, the rain's rule.
+ * One square-wave oscillator, silent until the sound timer says otherwise.
+ * `level` is the master volume by distance, so attract mode sits in the room
+ * rather than in your ear. Falls back to silence on any failure, the rain's rule.
  */
 function setBeep(level: number) {
   try {
@@ -109,9 +99,8 @@ export function ArcadeSystem() {
     [world],
   )
 
-  // The keypad, taken and given back with the mode. Held keys are the point of
-  // a game pad, so there is no `e.repeat` guard here — repeats are simply
-  // writes of `true` over `true` — and `keyup` is what actually releases.
+  // Held keys are the point of a game pad, so there is no `e.repeat` guard:
+  // repeats write `true` over `true`, and `keyup` is what releases.
   useEffect(() => {
     if (mode !== 'play') return
 

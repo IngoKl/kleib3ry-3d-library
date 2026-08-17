@@ -6,9 +6,8 @@ import { PropModel } from './Props'
 import { useAppStore } from '../state/store'
 
 /**
- * The cup, can or box currently in hand, riding the camera the way the held
- * record does — low and to the right, where a hand that is mostly carrying
- * something else would keep it.
+ * Riding the camera like the held record, low and to the right — where a hand
+ * mostly carrying something else would keep it.
  */
 export function HeldProp() {
   const group = useRef<THREE.Group>(null)

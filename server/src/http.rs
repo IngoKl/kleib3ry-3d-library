@@ -1,23 +1,18 @@
 //! Just enough HTTP/1.1 to serve one library to one household.
 //!
-//! No web framework: the whole surface is a dozen routes, a static directory
-//! and byte ranges, and avoiding a TLS stack and async runtime keeps the
-//! container to a static binary and a `dist/` folder.
+//! No web framework: a dozen routes, a static directory and byte ranges, and
+//! skipping a TLS stack and async runtime keeps the container to one binary.
 //!
-//! Deliberately absent: TLS, chunked request bodies, HTTP/2, keep-alive. A
-//! connection serves one request and closes, which costs a handshake per asset
-//! and is invisible over loopback or a LAN. Anything facing the open internet
-//! wants a reverse proxy in front, as the compose file sets up.
+//! Deliberately absent: TLS, chunked bodies, HTTP/2, keep-alive. A connection
+//! serves one request and closes, which is invisible over a LAN. Anything
+//! facing the internet wants a reverse proxy in front.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 
-/// A parsed request. The body is read eagerly, because every body this server
-/// takes is a JSON document a few hundred kilobytes at worst.
-///
-/// There is no query string on it, because no route has one: everything the
-/// front end asks for is named by its path, which is what makes the route table
-/// readable next to `LibraryService`.
+/// A parsed request. The body is read eagerly — every body here is a JSON
+/// document, a few hundred kilobytes at worst. No query string, because no route
+/// has one: everything is named by its path.
 pub struct Request {
     pub method: String,
     /// Path only, already percent-decoded, with any query string discarded.
@@ -36,9 +31,8 @@ pub struct Response {
     pub status: u16,
     pub content_type: String,
     pub body: Vec<u8>,
-    /// A body streamed straight from disk — `(file, offset, length)` — instead
-    /// of `body`, so a multi-gigabyte tape is never held in memory. Chromium's
-    /// opening move for a video is `Range: bytes=0-`, which is the whole file.
+    /// `(file, offset, length)` instead of `body`, so a multi-gigabyte tape is
+    /// never held in memory — Chromium opens a video with `Range: bytes=0-`.
     pub file: Option<(std::fs::File, u64, u64)>,
     pub extra: Vec<(String, String)>,
 }
@@ -122,11 +116,9 @@ fn reason(status: u16) -> &'static str {
     }
 }
 
-/// Percent-decoding, which is the only part of a URL this needs to understand.
-///
-/// Bytes rather than characters, then `from_utf8_lossy`: a path is a sequence of
-/// bytes on every filesystem that matters, and a `%C3%A4` in a filename has to
-/// come back out as the two bytes it went in as.
+/// Percent-decoding, the only part of a URL this needs to understand. Bytes
+/// rather than characters, so a `%C3%A4` in a filename comes back out as the two
+/// bytes it went in as.
 pub fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -148,15 +140,13 @@ pub fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// A body larger than this is refused. The biggest thing anybody legitimately
-/// posts is a rendered cover as a base64 data URL, which is well under a
-/// megabyte; the layout of a large library is a few hundred kilobytes.
+/// A body larger than this is refused. The biggest legitimate post is a rendered
+/// cover as a base64 data URL, well under a megabyte.
 const MAX_BODY: usize = 32 * 1024 * 1024;
 
-/// Limits that make a hostile client boring: no browser sends a header line
-/// this long or this many headers. The third limit — a read timeout, so a
-/// drip-fed request cannot pin a thread forever — is set where the connection
-/// is accepted, because it belongs to the socket rather than to the parse.
+/// Limits that make a hostile client boring; no browser comes near them. The
+/// read timeout that stops a drip-fed request pinning a thread belongs to the
+/// socket, so it is set where the connection is accepted.
 const MAX_HEADER_LINE: usize = 8 * 1024;
 const MAX_HEADERS: usize = 100;
 
@@ -193,8 +183,7 @@ pub fn read_request<R: Read>(stream: R) -> std::result::Result<Request, u16> {
     }
 
     // A chunked body would read as empty below, and an "empty" POST /api/world
-    // would trip the write-once guard against the real document forever. This
-    // server reads Content-Length bodies only, so anything else is refused.
+    // would trip the write-once guard forever. Content-Length only.
     if let Some(encoding) = headers.get("transfer-encoding") {
         if !encoding.eq_ignore_ascii_case("identity") {
             return Err(411);
@@ -291,12 +280,9 @@ fn write<W: Write>(mut stream: W, response: Response, include_body: bool) {
     let _ = stream.flush();
 }
 
-/// A `Range: bytes=a-b` header, resolved against a known length.
-///
-/// This is what makes a tape seekable. Chromium will play a video served as a
-/// plain 200, but dragging its position bar sends a range request and gives up
-/// if it gets the whole file back — so a television with no seeking is exactly
-/// what leaving this out looks like.
+/// A `Range: bytes=a-b` header, resolved against a known length — what makes a
+/// tape seekable. Chromium plays a video served as a plain 200, but dragging the
+/// position bar sends a range request and gives up on getting the whole file.
 pub fn parse_range(header: &str, length: u64) -> Option<(u64, u64)> {
     let spec = header.trim().strip_prefix("bytes=")?;
     // Only a single range. Multipart ranges are legal and nothing asks for them.

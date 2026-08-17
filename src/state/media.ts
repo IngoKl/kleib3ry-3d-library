@@ -5,11 +5,9 @@ import type { IndexedArtwork, IndexedTrack } from '../services/types'
 import { useAppStore } from './store'
 
 /**
- * The two folders that are not books: `music/` and `artwork/`.
- *
- * Playback is one `HTMLAudioElement`. It streams rather than decoding the whole
- * file, starts on the keypress that asked for it, and has no AudioContext to be
- * suspended; the scene still places it in the room — see `audioRig.ts`.
+ * The two folders that are not books. Playback is one `HTMLAudioElement`: it
+ * streams rather than decoding the file, starts on the keypress that asked for
+ * it, and has no AudioContext to be suspended. See `audioRig.ts` for placement.
  */
 
 type MediaState = {
@@ -21,12 +19,8 @@ type MediaState = {
   playing: string | null
   paused: boolean
   /**
-   * Which record player it is on, by furniture id.
-   *
-   * There can be more than one deck in a building — the cabin has one in the
-   * great room and one in the bathroom — and they share the single audio
-   * element, so this is what tells the scene where in the house the music is
-   * coming from. Null until something has been put on.
+   * Which deck it is on. A building may have several sharing the single audio
+   * element, so this is what tells the scene where the music comes from.
    */
   deck: string | null
   /** Why the last attempt to play failed, for the HUD. */
@@ -50,21 +44,17 @@ function audio(): HTMLAudioElement {
   if (!element) {
     element = new Audio()
     element.preload = 'none'
-    // Web Audio draws frames of a media element through a graph, and an element
-    // fetched cross-origin without this taints it — which fails silently, as
-    // silence. The same reason the `<video>` element sets it.
+    // Without this, an element fetched cross-origin taints the graph — which
+    // fails silently, as silence. The `<video>` element sets it for the same reason.
     element.crossOrigin = 'anonymous'
   }
   return element
 }
 
 /**
- * The one element the deck plays through, for the scene to place in the room.
- *
- * Exported alongside `setVolume` rather than instead of it: the store owns *what*
- * is playing, and the scene owns *where you are standing relative to it*. Handing
- * the scene the element is what lets it do the second without the store having to
- * know that rooms exist.
+ * The one element the deck plays through. The store owns what is playing and the
+ * scene owns where you stand relative to it, so handing over the element lets
+ * the scene do its half without the store knowing rooms exist.
  */
 export const musicElement = audio
 
@@ -101,9 +91,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     const player = audio()
     if (deck !== undefined) set({ deck })
 
-    // The record already on the deck: lift the needle, or put it back down.
-    // The store's flag rather than the element's, because during the lift's
-    // fade the element has not paused yet.
+    // Lift the needle, or put it back down. The store's flag rather than the
+    // element's, because during the fade the element has not paused yet.
     if (get().playing === id) {
       if (get().paused) {
         fader.cancelFade(player)
@@ -124,10 +113,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     player.currentTime = 0
     player.onended = () => get().next()
     set({ playing: id, paused: false, error: null })
-    // A placeholder record in the browser build points at nothing. Say so in
-    // the panel rather than throwing an unhandled rejection into the console —
-    // and take the record off the deck again, or the HUD shows it spinning
-    // forever on a playback that never started.
+    // A placeholder record points at nothing: say so in the panel rather than
+    // throwing, and take it off the deck, or the HUD spins it forever.
     void player.play().catch((e) => {
       if (get().playing !== id) return
       player.removeAttribute('src')
@@ -160,10 +147,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     // under the pause fade, and its ending must not start the next side.
     if (get().paused) return
     const { tracks, playing } = get()
-    // In folder order, but only what the room can actually reach: the crates
-    // deal every record somewhere, so a record no crate holds — a library with
-    // nowhere to file one — is not a side that can come on next. The one on the
-    // deck counts, wherever it came from.
+    // In folder order, but only what the room can reach: a record no crate
+    // holds cannot be the next side. The one on the deck counts regardless.
     const crates = useAppStore.getState().recordCrates
     const inRoom = tracks.filter(
       (track) => crates[track.id] !== undefined || track.id === playing,
@@ -171,9 +156,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     if (inRoom.length === 0) return
     const at = inRoom.findIndex((track) => track.id === playing)
     const following = inRoom[(at + 1) % inRoom.length]
-    // No deck passed: a side playing on by itself stays on the deck it is on.
-    // The lone record in the room does not restart itself either — `play` with
-    // what is already on would lift the needle rather than drop it again.
+    // No deck passed: a side playing on by itself stays where it is. The lone
+    // record does not restart either — `play` on it would lift the needle.
     if (following && following.id !== playing) get().play(following.id)
   },
 

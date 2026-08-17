@@ -3,16 +3,10 @@ import { library } from '../services'
 import { useAppStore } from '../state/store'
 
 /**
- * The telephone: what you are ordering, and — for a paper — which one.
- *
- * Two steps in one card rather than two cards, because they are one decision
- * made twice: the menu, then the arXiv id. Both take the keyboard the way a
- * shelf label does, and both hand it back on `Esc`.
- *
- * The id is not validated here. What counts as an arXiv id is the core's
- * business (`core/src/paper.rs` accepts a bare id, an `arXiv:` citation, or the
- * URL of either page), and a second opinion in the front end would be a second
- * thing to keep in step with it.
+ * What you are ordering, and for a paper which one. Two steps in one card,
+ * because they are one decision made twice; both take the keyboard like a shelf
+ * label and hand it back on `Esc`. The id is not validated here — what counts as
+ * an arXiv id is `core/src/paper.rs`'s business.
  */
 export function PhoneCard() {
   const phoning = useAppStore((s) => s.phoning)
@@ -51,9 +45,8 @@ export function PhoneCard() {
         onKeyDown={(e) => {
           e.stopPropagation()
           if (!'12'.includes(e.key) && e.key !== 'Escape') return
-          // Swallowed rather than merely handled: the field this opens focuses
-          // itself, and without this the same keystroke arrives in it as a
-          // character — every paper ordered by key came out as "2" + the id.
+          // Swallowed rather than handled: the field this opens focuses itself,
+          // so the same keystroke would otherwise arrive in it as a character.
           e.preventDefault()
           if (e.key === '1') order()
           if (e.key === '2' && library.canFetchPapers) setPhoning('paper')

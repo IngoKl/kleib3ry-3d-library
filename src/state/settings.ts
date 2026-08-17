@@ -1,20 +1,14 @@
 import { create } from 'zustand'
 
 /**
- * Settings: the things that are about *this machine and this person*, rather
- * than about the library.
+ * Things about this machine and this person rather than about the library, which
+ * is why they are not in the library folder: whether your GPU carries a shadow
+ * pass has no business in a folder you might sync elsewhere. In `localStorage`,
+ * keyed by the app, and available before any driver has been asked a question —
+ * the main menu needs it, and the menu comes up before the world does.
  *
- * Which is exactly why they are not in the library folder. Whether your GPU can
- * carry a shadow pass, whether you like seeing your own legs, how loud the
- * record player is — none of that belongs in a folder you might sync to another
- * computer or hand to somebody else. It goes in `localStorage`, keyed by the
- * app rather than by the library, and it is available before any driver has
- * been asked a question: the main menu needs it, and the main menu comes up
- * before the world does.
- *
- * The room's own state — which lamps are on, whether it is night, whether it is
- * raining — is deliberately *not* here. That is a fact about the library and
- * lives in `ambience.json` beside it.
+ * The room's own state — lamps, night, weather — is deliberately not here; that
+ * is a fact about the library and lives in `ambience.json`.
  */
 
 export type ShadowQuality = 'off' | 'low' | 'high'
@@ -29,37 +23,26 @@ const RECENT_LIMIT = 6
 
 export type Settings = {
   /**
-   * Everything that costs frames, off at once.
-   *
-   * One switch rather than six, because the person reaching for it is not
-   * tuning a renderer — they have a laptop with an integrated GPU and the room
-   * is stuttering. What it actually turns off is written down at each use site;
-   * the rule is that nothing it changes may alter where anything *is*, so a
-   * library looks the same shape on both settings.
+   * Everything that costs frames, off at once: one switch rather than six,
+   * because whoever reaches for it is not tuning a renderer. Nothing it changes
+   * may alter where anything is, so a library keeps its shape on both settings.
    */
   lowPerformance: boolean
   /**
-   * How many pixels are drawn per pixel of window — the most expensive number
-   * in the app. Keep the cap at 1: a high-DPI panel at 2 is four times the
-   * fragments, and those machines disproportionately have integrated GPUs.
-   * Values below 1 are a genuine blur, offered because a soft 30 fps beats a
-   * sharp 5.
+   * Pixels drawn per pixel of window, the most expensive number in the app. Keep
+   * the cap at 1: a high-DPI panel at 2 is four times the fragments. Below 1 is
+   * a genuine blur, offered because a soft 30 fps beats a sharp 5.
    */
   resolutionScale: number
   /**
-   * The sun's shadow map: off, or its resolution. `low` is 1024 and is the
-   * default, because the pass is charged for the whole site either way — see
-   * `Lighting`, where the frustum is now tied to where you are standing rather
-   * than to the bounding box of every room in the document.
+   * The sun's shadow map: off, or its resolution. `low` is 1024 and the default,
+   * since `Lighting` ties the frustum to where you stand rather than the document.
    */
   shadowQuality: 'off' | 'low' | 'high'
   /**
-   * How many lamps may light the room at once.
-   *
-   * Three.js has no per-object light culling: every point light in the scene is
-   * a term in every lit fragment's shader, whether it is next to you or in
-   * another building. The default map declares nearly forty. This is the size
-   * of the pool that stands in for them — see `scene/lightPool.ts`.
+   * How many lamps may light the room at once. Three.js has no per-object light
+   * culling, so every point light costs every lit fragment; this is the size of
+   * the pool standing in for the forty a map may declare.
    */
   lightBudget: number
   /** Whether you can see your own body when you look down. */
@@ -68,47 +51,37 @@ export type Settings = {
   volume: number
   /** How loud the rain is, on top of the master volume. 0 silences it. */
   rainVolume: number
-  /**
-   * The room's small noises — the fire's crackle, the cat's purr, the dust on
-   * a record — on top of the master volume. 0 silences them.
-   */
+  /** The room's small noises, on top of the master volume. 0 silences them. */
   ambientVolume: number
   /**
-   * Whether sound is placed in the room — quieter from the kitchen, and off to
-   * your left when the deck is. Off falls back to one volume everywhere, which
-   * is what a browser does and what some audio stacks are happier with.
+   * Whether sound is placed in the room. Off falls back to one volume
+   * everywhere, which some audio stacks are happier with.
    */
   positionalAudio: boolean
   /** Mouse sensitivity, as a multiplier on the base rate. */
   sensitivity: number
   /**
-   * Whether newly scanned books are boxed one folder per box, so a first scan
-   * arrives pre-sorted by the folders under `books/`. A preference about how
-   * *you* sort rather than a fact about the room, which is why it sits here
-   * beside the mouse and not in the library folder.
+   * Whether a scan boxes one folder per box, so it arrives pre-sorted. A
+   * preference about how you sort rather than a fact about the room.
    */
   boxPerFolder: boolean
   /**
-   * Whether night in the room follows this machine's clock, so an evening
-   * session arrives in an evening room. Here rather than in `ambience.json`
-   * because the timezone is a machine fact — the same library opened on
-   * another continent should follow *that* machine's evening.
+   * Whether night follows this machine's clock. Here rather than in
+   * `ambience.json` because a timezone is a machine fact: the same library
+   * opened on another continent should follow that machine's evening.
    */
   matchClock: boolean
   /**
-   * Whether a row with room in it leans back on the side panel the way a real
-   * part-empty shelf does. Taste, not tidiness: some people want the shelf they
-   * arranged to stand plumb. It changes how a row *looks*, never what is in it
-   * or how much fits — see `packRow`.
+   * Whether a part-empty row leans back the way a real one does. Taste, not
+   * tidiness — and it changes how a row looks, never what fits. See `packRow`.
    */
   booksLean: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   lowPerformance: false,
-  // Deliberately not 2. A quarter over one pixel per pixel is the point where
-  // the spine text stops looking soft; the rest of the way to 2 costs 60% more
-  // fragments for a difference you have to go looking for.
+  // Deliberately not 2: a quarter over one pixel per pixel is where spine text
+  // stops looking soft, and the rest costs 60% more fragments for very little.
   resolutionScale: 1.25,
   shadowQuality: 'low',
   lightBudget: 8,
@@ -124,13 +97,9 @@ export const DEFAULT_SETTINGS: Settings = {
 }
 
 /**
- * The three dials as the renderer should actually read them.
- *
- * Low Performance Mode stays what it always was — everything that costs frames,
- * off at once — and is now expressed as a *floor* over the dials rather than as
- * a separate branch at each use site. One switch still works for the person who
- * is not tuning a renderer; the dials are there for the person who is, and the
- * two can never disagree because the floor always wins.
+ * The three dials as the renderer should read them. Low Performance Mode is
+ * expressed as a floor over the dials rather than a branch at each use site, so
+ * the switch and the dials can never disagree: the floor always wins.
  */
 export function effectiveQuality(s: Settings): {
   resolutionScale: number
@@ -163,9 +132,8 @@ function read(): Settings {
     const stored = localStorage.getItem(KEY)
     if (!stored) return { ...DEFAULT_SETTINGS }
     const parsed = JSON.parse(stored) as Partial<Settings>
-    // Field by field rather than a spread of whatever was in there: a settings
-    // file written by a newer build must not be able to introduce a key this
-    // one will then write back and act on.
+    // Field by field rather than a spread: a file written by a newer build must
+    // not introduce a key this one then writes back and acts on.
     return {
       lowPerformance: parsed.lowPerformance ?? DEFAULT_SETTINGS.lowPerformance,
       resolutionScale: clamp(parsed.resolutionScale ?? DEFAULT_SETTINGS.resolutionScale, 0.5, 2),

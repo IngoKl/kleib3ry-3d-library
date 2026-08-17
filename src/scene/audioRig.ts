@@ -1,11 +1,8 @@
 /**
- * Sound placed in the room: quieter from the next room, and off to the side the
- * thing making it stands on.
- *
- * The `<audio>` element is still what plays — see `state/media.ts`. This routes
- * its output through a `PannerNode` when a context can be had, and attenuates
- * `element.volume` by distance when one cannot. Every Web Audio failure mode
- * lands on that fallback rather than on silence.
+ * Sound placed in the room: quieter from next door, and off to the side the
+ * source stands on. The `<audio>` element still plays; this routes it through a
+ * `PannerNode` when a context can be had and attenuates `element.volume` when
+ * one cannot, so every Web Audio failure lands on the fallback, not on silence.
  */
 
 type Rig = {
@@ -23,12 +20,9 @@ let unavailable = false
 export type Listener = { x: number; y: number; z: number; yaw: number }
 
 /**
- * Distance falloff for the fallback path, and the shape the panner is given.
- *
- * Inverse-square would be right in a field and wrong in a cabin: at the far end
- * of the great room a record would be inaudible, when in fact you can hear it
- * from the kitchen. This is gentler, and bottoms out rather than reaching zero —
- * a record playing two rooms away should be a thing you can tell is on.
+ * Inverse-square is right in a field and wrong in a cabin, where a record is
+ * audible from the kitchen. This is gentler, and bottoms out rather than
+ * reaching zero: one playing two rooms away should be something you can tell.
  */
 const REFERENCE = 2.4
 const FLOOR = 0.08
@@ -67,19 +61,16 @@ function rigFor(element: HTMLMediaElement): Rig | null {
     if (context.state === 'suspended') void context.resume().catch(() => {})
     return rig
   } catch {
-    // Once `createMediaElementSource` has been called the element's own output
-    // is gone, so a failure *after* that point would be silence. It throws
-    // before rerouting anything, which is why this is safe to attempt at all.
+    // `createMediaElementSource` takes the element's own output, so a failure
+    // after it is silence — it throws before rerouting, which makes this safe.
     unavailable = true
     return null
   }
 }
 
 /**
- * Put one source in the room.
- *
- * `at` is where the thing making the noise is; null plays it flat at the master
- * volume, which is the right answer for a world that has not loaded yet.
+ * `at` is where the noise is made; null plays it flat at the master volume,
+ * which is the right answer for a world that has not loaded yet.
  */
 export function placeSound(
   element: HTMLMediaElement,
@@ -90,9 +81,8 @@ export function placeSound(
 ) {
   if (!positional || !at) {
     const rig = rigs.get(element)
-    // A rig that already exists cannot be undone — the element's direct output
-    // is gone — so "not positional" is served by putting the source at the
-    // listener's ear rather than by trying to tear the graph down.
+    // An existing rig cannot be undone, so "not positional" is served by
+    // putting the source at the listener's ear rather than tearing it down.
     if (rig) {
       set(rig.panner.positionX, listener.x, rig.context)
       set(rig.panner.positionY, listener.y, rig.context)
@@ -135,12 +125,9 @@ export function placeSound(
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
 
 /**
- * Ramp rather than assign.
- *
- * A step change on an audio parameter is a click, and a listener that teleports
- * — which the test surface does, and which a live reload can do — would produce
- * one on every frame of the move. 40 ms is under the threshold of noticing and
- * over the threshold of clicking.
+ * A step change on an audio parameter is a click, and a teleporting listener
+ * would make one every frame. 40 ms is under the threshold of noticing and over
+ * the threshold of clicking.
  */
 function set(param: AudioParam, value: number, context: AudioContext) {
   try {

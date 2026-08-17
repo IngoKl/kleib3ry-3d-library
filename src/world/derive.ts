@@ -12,14 +12,12 @@ import type {
 } from './schema'
 
 /**
- * Turning the world document into the things the scene and the walk controller
- * actually need: wall panels with holes cut in them, floor slabs with the
- * stairwell taken out, shelf transforms, colliders, and the height of the floor
- * under any point.
+ * The world document turned into what the scene and the walk controller need:
+ * wall panels with their openings cut out, floor slabs minus the stairwell,
+ * shelf transforms, colliders, and the floor height under any point.
  *
- * All of it is derived — nothing here is stored — so an edit to `library.json`
- * is a full recompute rather than a patch. That is what makes live reload safe:
- * there is no incremental path that can drift from the file.
+ * Nothing here is stored, so an edit is a full recompute rather than a patch —
+ * which is what makes live reload safe: no incremental path can drift.
  */
 
 /** Metres. Walls are drawn *outward* from the room's floor bounds. */
@@ -28,16 +26,12 @@ export const SKIRTING = { height: 0.11, depth: 0.02 }
 /** How thick a floor slab is. It is also the ceiling of whatever is beneath it. */
 export const FLOOR_SLAB = 0.22
 
-/**
- * Two rooms are joined by placing them `2 * WALL` apart, so their wall slabs sit
- * flush against each other and a door in both walls makes a short doorway.
- */
+/** Rooms placed this far apart have flush wall slabs, so two doors make one doorway. */
 export const ROOM_GAP = 2 * WALL
 
 /**
- * Footprint and height per furniture kind, and whether you bump into it.
- * `surface` is the height a book can be put down at, as a fraction of the
- * piece's height, or 0 for anything that takes none.
+ * Footprint, height and solidity per kind. `surface` is where a book can be put
+ * down, as a fraction of the piece's height, or 0 for anything that takes none.
  */
 export const FURNITURE_SIZE: Record<
   FurnitureKind,
@@ -55,21 +49,17 @@ export const FURNITURE_SIZE: Record<
   desk: { width: 1.5, depth: 0.72, height: 0.75, solid: true, surface: true },
   // A surface, so a book can be left on the covers — where books end up.
   bed: { width: 1.5, depth: 2.05, height: 0.55, solid: true, surface: true },
-  // The two you can pick up and carry off. Light enough to want to: a slat
-  // chair and a trestle table, both narrower than the porch door they live
-  // beside. They are ordinary furniture in every other respect — you sit on the
-  // one and put a book down on the other — and that is the point of them.
+  // The two you can carry off, both narrower than the porch door they live
+  // beside. Ordinary furniture in every other respect, which is the point.
   foldingchair: { width: 0.46, depth: 0.5, height: 0.88, solid: true, surface: false },
   foldingtable: { width: 0.86, depth: 0.58, height: 0.7, solid: true, surface: true },
   box: { width: 0.52, depth: 0.4, height: 0.36, solid: true, surface: false },
-  // Flattened boxes leaning against a wall, waiting to be made up. E takes one
-  // — see `spawnBox` — which is how a room gets more boxes than the document
-  // put in it.
+  // Flattened boxes waiting to be made up. E takes one (see `spawnBox`), which
+  // is how a room gets more boxes than the document put in it.
   boxstack: { width: 0.6, depth: 0.3, height: 0.62, solid: true, surface: false },
   recordshelf: { width: 0.9, depth: 0.36, height: 0.78, solid: true, surface: true },
-  // Long, shallow and open-topped: the tapes stand in it spine-out, and it has
-  // to be lower than they are tall or a box of tapes shows you nothing but its
-  // own sides. A tape is 23 cm, so 22 leaves the labels standing proud.
+  // Lower than a tape is tall (23 cm), or the crate shows nothing but its own
+  // sides; 22 leaves the labels standing proud.
   tapecrate: { width: 0.56, depth: 0.22, height: 0.22, solid: true, surface: true },
   kitchencounter: { width: 1.8, depth: 0.62, height: 0.92, solid: true, surface: true },
   // A surface, so the deck in the bathroom has somewhere honest to stand and a
@@ -82,9 +72,8 @@ export const FURNITURE_SIZE: Record<
   // is, and solid because it stands on the floor on its own stand.
   crt: { width: 0.6, depth: 0.56, height: 0.52, solid: true, surface: false },
   coffeemaker: { width: 0.24, depth: 0.28, height: 0.36, solid: false, surface: false },
-  // The catalogue terminal: a monitor on a box, with a keyboard in front of it.
-  // Not solid — it stands on a desk, and a collider on a desk is a collider you
-  // walk into standing beside the desk.
+  // Not solid: it stands on a desk, and a collider up there is one you walk
+  // into while standing beside the desk.
   computer: { width: 0.46, depth: 0.44, height: 0.44, solid: false, surface: false },
   // A pad of notes. Small enough that its footprint is only ever used to work
   // out where the crosshair has to be pointing.
@@ -98,9 +87,8 @@ export const FURNITURE_SIZE: Record<
   bin: { width: 0.34, depth: 0.34, height: 0.42, solid: true, surface: false },
   // The headlamp, lying wherever `y` puts it — on the porch table, by default.
   headlamp: { width: 0.16, depth: 0.14, height: 0.08, solid: false, surface: false },
-  // A hinged leaf standing in a doorway. Not solid *here*: whether it blocks
-  // depends on whether it is shut, which is ambience state — the walk
-  // controller adds a collider for a closed one itself.
+  // Not solid here: whether it blocks depends on whether it is shut, which is
+  // ambience state, so the walk controller adds that collider itself.
   door: { width: 1.0, depth: 0.1, height: 2.02, solid: false, surface: false },
   // An A-frame shelter. Solid: canvas is not something to walk through.
   tent: { width: 1.9, depth: 2.2, height: 1.5, solid: true, surface: false },
@@ -108,9 +96,8 @@ export const FURNITURE_SIZE: Record<
   // An upright cabinet: person-height, deep enough to house a tube, and solid
   // because it stands on the floor and you walk up to its front.
   arcade: { width: 0.72, depth: 0.78, height: 1.75, solid: true, surface: false },
-  // The crate of game cartridges beside it. Low, so it never hides the wall
-  // behind it. Not a surface: it is open-topped, and it is an appliance — a
-  // piece in both the fixtures and the surfaces group would be drawn twice.
+  // Not a surface: it is open-topped, and a piece in both the fixtures and the
+  // surfaces group would be drawn twice.
   rombox: { width: 0.5, depth: 0.34, height: 0.46, solid: true, surface: false },
   fireplace: { width: 1.2, depth: 0.5, height: 1.5, solid: true, surface: false },
   floorlamp: { width: 0.36, depth: 0.36, height: 1.66, solid: true, surface: false },
@@ -126,16 +113,14 @@ export const FURNITURE_SIZE: Record<
   whiteboard: { width: 1.8, depth: 0.06, height: 1.1, solid: false, surface: false },
   clock: { width: 0.34, depth: 0.06, height: 0.34, solid: false, surface: false },
   stairs: { width: 1.0, depth: 3.0, height: 2.6, solid: false, surface: false },
-  // A pair of treads hanging off the edge of a deck. Not solid: the whole point
-  // is to walk down it, and the walk controller reads the *floor*, not the
-  // joinery — a 24 cm drop is inside `STEP_UP` and needs no ramp.
+  // Not solid: the point is to walk down it, and the controller reads the
+  // floor rather than the joinery — a 24 cm drop is inside `STEP_UP`.
   step: { width: 1.4, depth: 0.62, height: 0.24, solid: false, surface: false },
 }
 
 /**
- * Furniture that hangs on a wall. Three things follow: `size` is width by
- * *height*, `y` is the centre rather than the base, and depth comes from the
- * kind rather than the document.
+ * Wall-hung furniture: `size` is width by height, `y` is the centre rather than
+ * the base, and depth comes from the kind rather than the document.
  */
 export const WALL_MOUNTED = new Set<FurnitureKind>([
   'picture',
@@ -155,12 +140,9 @@ export const SITTABLE = new Set<FurnitureKind>([
 ])
 
 /**
- * Furniture `X` picks up and carries off. A moving box is not on the list: it
- * has its own verbs and its own `X` handling.
- *
- * A carried piece is stored like a shoved box, as a `FurnitureOverride` in
- * `books.json` — the document says where it lives, the override where you left
- * it.
+ * Furniture `X` carries off — not a moving box, which has its own verbs. Stored
+ * as a `FurnitureOverride`: the document says where a piece lives, the override
+ * where you left it.
  */
 export const PORTABLE = new Set<FurnitureKind>(['foldingchair', 'foldingtable'])
 
@@ -207,10 +189,9 @@ export type Panel = {
 }
 
 /**
- * A collider with a vertical extent. The sliding maths still runs on the 2D
- * `Aabb` in `collision.ts`, but with a loft over the living room "is there a
- * wall here" depends on which floor you stand on — so solids carry a top and a
- * bottom, and the controller flattens the ones at its own height.
+ * A collider with a vertical extent. Sliding still runs on the 2D `Aabb`, but
+ * with a loft over the living room "is there a wall here" depends on which
+ * floor you stand on, so the controller flattens the ones at its own height.
  */
 export type Solid = Aabb & { bottom: number; top: number }
 
@@ -268,9 +249,8 @@ const openingsOn = (room: RoomSpec, wall: Wall): Opening[] =>
 export const wallsOf = (room: RoomSpec): Wall[] => room.walls
 
 /**
- * One wall, as the boxes left over once its openings are cut out: full-height
- * piers between openings, plus the apron below a window and the lintel above
- * anything that does not reach the ceiling.
+ * One wall as the boxes left once its openings are cut out: piers between them,
+ * plus the apron below a window and the lintel above anything short of the ceiling.
  */
 export function wallPanels(room: RoomSpec, wall: Wall): Panel[] {
   if (!room.walls.includes(wall)) return []
@@ -318,10 +298,7 @@ export function windowPanes(room: RoomSpec): Panel[] {
     .map(({ panel }) => panel)
 }
 
-/**
- * Where a room's openings are, and whether anything is in them. For anything
- * that needs to know how open a room is — chiefly the rain you can hear.
- */
+/** Where a room's openings are, and whether anything is in them — chiefly for the rain. */
 export type OpeningSpot = {
   x: number
   y: number
@@ -345,9 +322,8 @@ export function openingSpots(room: RoomSpec): OpeningSpot[] {
 export const WALLS: readonly Wall[] = ['north', 'south', 'east', 'west']
 
 /**
- * Colliders for this room's walls: the whole length, minus the doors. Only
- * openings you could walk through are subtracted — a window's apron is a
- * waist-high wall, which is also what makes a loft balustrade work.
+ * Wall colliders: the whole length minus the doors. Only openings you could
+ * walk through are subtracted, which is also what makes a balustrade work.
  */
 export function wallSolids(room: RoomSpec): Solid[] {
   const boxes: Solid[] = []
@@ -426,20 +402,11 @@ const holeBounds = (room: RoomSpec, hole: FloorHole): Bounds => ({
 /**
  * The room's floor, as rectangles with its stairwells missing.
  *
- * A loft needs a hole for the stair to come up through, and a floor is exactly
- * the sort of thing that must not be approximated: you stand on it.
- *
- * The floor runs out to the *outside* of each wall the room actually builds,
- * rather than stopping at the room's inner face, because a wall stands on the
- * floor rather than beside it. That is not a detail: two rooms are joined by
- * placing them `2 * WALL` apart, so without it there is a 24 cm strip of
- * nothing in every doorway in the building — which the walk controller reads,
- * correctly, as a hole to refuse to step into.
- *
- * Only under walls it builds, though. A porch butted flush against the cabin
- * has no north wall of its own, and a floor that ran out under one anyway would
- * be a second slab at exactly the height of the cabin's, in the open, fighting
- * it for every pixel.
+ * It runs out to the outside of each wall the room builds, because a wall
+ * stands on the floor rather than beside it — without that there is a 24 cm
+ * strip of nothing in every doorway, which the controller refuses to step into.
+ * Only under walls it builds, though, or a flush-butted porch lays a second
+ * slab at the cabin's height and the two fight for every pixel.
  */
 export function floorSlabs(room: RoomSpec): Slab[] {
   const inner = roomBounds(room)
@@ -465,13 +432,10 @@ const inside = (b: Bounds, x: number, z: number) =>
 // ---- roofs --------------------------------------------------------------
 
 /**
- * A roof, resolved to the two heights and one footprint the renderer needs.
- *
- * The plane passes through the eaves at the *top of the walls* and rises from
- * there, never below — which is what keeps a porch roof from cutting through
- * the porch ceiling it is supposed to sit on. The overhang is the one part that
- * dips under the eaves line, and it does that outside the walls where there is
- * nothing to intersect.
+ * A roof, resolved to the two heights and one footprint the renderer needs. The
+ * plane passes through the eaves at the top of the walls and only rises, so it
+ * cannot cut through the ceiling below; the overhang is the one part that dips
+ * under that line, outside the walls where there is nothing to intersect.
  */
 export type DerivedRoof = {
   roomId: string
@@ -495,10 +459,7 @@ export type DerivedRoof = {
 const areaOf = (room: RoomSpec) => room.size[0] * room.size[1]
 const topOf = (room: RoomSpec) => room.elevation + room.height
 
-/**
- * The highest point a room's own roof can reach. What the overhang rule has to
- * clear: a neighbour's slope rises far above its wall plate.
- */
+/** The highest a room's roof reaches — what the overhang rule has to clear. */
 function roofTopOf(room: RoomSpec): number {
   const top = topOf(room)
   if (room.roof.kind === 'none' || room.roof.kind === 'flat') return top
@@ -516,32 +477,20 @@ const overlapsInPlan = (a: RoomSpec, b: RoomSpec): boolean => {
 }
 
 /**
- * How far a suppressed eave stops *short* of the wall it leans on.
- *
- * Not flush: flush puts the slab's cut end exactly in the plane of the
- * neighbour's wall face, and two surfaces in one plane shimmer against each
- * other as you move — the porch roof's end fighting the great room's south
- * wall, seen from inside the room. A couple of centimetres buries the cut end
- * inside the wall slab, which is 12 cm thick, so nothing shows from either side.
+ * How far a suppressed eave stops short of the wall it leans on. Flush would put
+ * its cut end in the plane of the neighbour's wall face, and coplanar surfaces
+ * shimmer; a couple of centimetres buries it in the 12 cm slab instead.
  */
 const JOINT = 0.02
 
 /**
- * How far the eaves stand out on one side — which is the nominal overhang,
- * unless there is a building in the way.
+ * How far the eaves stand out on one side: the nominal overhang, unless a
+ * building is in the way. Growing a footprint uniformly when one side is a joint
+ * rather than an edge puts a roof through its neighbour's wall.
  *
- * A roof does not overhang into the wall it leans on. Without this the porch's
- * shed roof reached 45 cm *through* the cabin's south wall and came out at head
- * height over the great room, and the kitchen's gable end did the same through
- * the east wall. Both are the same mistake: growing a footprint uniformly when
- * one of its sides is a joint rather than an edge.
- *
- * "In the way" is a neighbour whose *roof* reaches at least as high as these
- * eaves and whose wall runs along this side. The roof, not the walls: the
- * bathroom's walls stop below the kitchen's eaves, but its slope rises well
- * above them, and the kitchen's eave slab was buried in its shingles. Equal
- * heights count, so two wings of the same height meet in a valley instead of
- * crossing overhangs in the gap between them.
+ * "In the way" tests the neighbour's roof, not its walls — a low wall can carry
+ * a slope well above these eaves. Equal heights count, so two wings of the same
+ * height meet in a valley rather than crossing overhangs in the gap.
  */
 function overhangOn(
   room: RoomSpec,
@@ -571,13 +520,10 @@ function overhangOn(
 }
 
 /**
- * Which rooms get a roof, and where its two heights are.
- *
- * A room is skipped when something else stands over the same ground and reaches
- * at least as high: the bedroom roofs the reading corner under it, and the great
- * room roofs the loft *inside* it. The loft is the case that makes the rule
- * subtle — it shares the great room's ceiling exactly, so equal tops are broken
- * by footprint, and the bigger room is the one the building is shaped by.
+ * Which rooms get a roof, and where its two heights are. A room is skipped when
+ * something over the same ground reaches at least as high. A loft shares its
+ * room's ceiling exactly, so equal tops are broken by footprint — the bigger
+ * room is the one the building is shaped by.
  */
 export function roofsOf(rooms: readonly RoomSpec[]): DerivedRoof[] {
   const roofs: DerivedRoof[] = []
@@ -650,11 +596,7 @@ export type DerivedShelf = {
 export type DerivedFurniture = FurnitureSpec & {
   roomId: string
   x: number
-  /**
-   * World height of the piece's base — normally its room's floor, raised by
-   * `y` for something standing on something else (a coffee maker on a counter)
-   * and by rather more for a picture, whose `y` names the centre of the frame.
-   */
+  /** World height of the piece's base — see `mountHeight` for the three cases. */
   y: number
   z: number
   rotationY: number
@@ -696,13 +638,9 @@ export type DerivedLight = {
 const radians = (degrees: number) => (degrees * Math.PI) / 180
 
 /**
- * Where a piece's base sits, in world metres.
- *
- * `y` in the document means "how far off this room's floor", which is what you
- * want for a coffee maker standing on a counter. Two kinds read it differently
- * because two kinds do not stand on the floor at all: a picture's `y` is the
- * centre of the frame, which is how anybody hanging one thinks about it, and a
- * pendant hangs from the ceiling rather than rising from the boards.
+ * Where a piece's base sits, in world metres. `y` normally means "off this
+ * room's floor"; two kinds do not stand on the floor at all, so a picture's `y`
+ * is the centre of its frame and a pendant hangs from the ceiling.
  */
 function mountHeight(room: RoomSpec, item: FurnitureSpec, height: number): number {
   if (WALL_MOUNTED.has(item.kind)) return room.elevation + (item.y ?? 1.55) - height / 2
@@ -720,11 +658,9 @@ export type DerivedWorld = {
   stairs: DerivedStair[]
   lights: DerivedLight[]
   /**
-   * The forest, grown from the rooms it has to keep out of.
-   *
-   * Derived rather than owned by the renderer because a tree is something you
-   * walk into now: the trunks in `solids` and the trunks you can see have to be
-   * the same trunks, and the only way to guarantee that is one list.
+   * The forest, grown from the rooms it has to keep out of. Derived rather than
+   * owned by the renderer because the trunks in `solids` and the trunks you can
+   * see have to be the same trunks.
    */
   trees: Tree[]
   /** Every solid, with its vertical extent. Filter by level before colliding. */
@@ -739,34 +675,25 @@ export type DerivedWorld = {
 }
 
 /**
- * Where a piece of furniture is allowed to be, overriding the document.
+ * Where a piece has been shoved to, overriding the document. Kept out of
+ * `library.json` on purpose: that file is the user's, and writing furniture back
+ * into it would put their comments and formatting at the mercy of a shove.
  *
- * Only the moving boxes use this — you can shove one across the room and it
- * stays where you left it — and it is kept out of `library.json` on purpose:
- * that file is yours, and the app writing your furniture back into it would
- * mean your comments and your formatting were at the mercy of a shove.
- *
- * `elevation` is the floor the box was set down on. Optional because older
- * saves lack it; without it the box stands at its document room's storey,
- * which is wrong exactly when it was carried up or down a flight of stairs.
+ * `elevation` is the floor it was set down on, optional because older saves lack
+ * it — without it a box carried up a flight stands at its document room's storey.
  */
 export type FurnitureOverride = { at: [number, number]; facing: number; elevation?: number }
 
 /**
- * A moving box the app made, off the stack in the kitchen, rather than one the
- * document placed.
- *
- * Same shape as an override plus the room whose frame `at` is written in —
- * a spawned box has no document entry to inherit a room from. It lives in
- * `books.json` beside the shoved-furniture overrides, and for the same reason:
- * the app must not write furniture into `library.json`.
+ * A box the app made off the kitchen stack rather than one the document placed.
+ * An override plus the room whose frame `at` is written in, since a spawned box
+ * has no document entry to inherit one from.
  */
 export type SpawnedBox = FurnitureOverride & { room: string }
 
 /**
- * The app's edits to the document's box population: boxes taken off the stack,
- * and document boxes broken down. Nothing but `box` furniture is ever in
- * either — the rest of the room is the document's alone.
+ * The app's edits to the document's boxes: made off the stack, or broken down.
+ * Nothing but `box` furniture is ever in either.
  */
 export type BoxEdits = {
   spawned?: Record<string, SpawnedBox>
@@ -785,9 +712,8 @@ export function deriveWorld(
   const solids: Solid[] = []
   const slabs: Slab[] = []
 
-  // Boxes made off the stack join their room's furniture list; a spawned box
-  // whose room has been edited away falls back to the first room rather than
-  // vanishing with the books in it.
+  // A spawned box whose room has been edited away falls back to the first room
+  // rather than vanishing with the books in it.
   const removed = new Set(boxEdits.removed ?? [])
   const extraBoxes = new Map<string, FurnitureSpec[]>()
   const extraElevation = new Map<string, number | undefined>()
@@ -836,10 +762,9 @@ export function deriveWorld(
       const hung = WALL_MOUNTED.has(item.kind)
       const width = item.size?.[0] ?? base.width
       const depth = hung ? base.depth : (item.size?.[1] ?? base.depth)
-      // A flight's height is its `rise` — the same number the ramp below climbs.
-      // Reading `height` here instead left the treads at the kind's default 2.6
-      // while the ramp went to wherever the document said, so the bedroom flight
-      // was drawn ending 62 cm under the floor it delivers you onto.
+      // A flight's height is its `rise`, the same number the ramp below climbs.
+      // Reading `height` leaves the treads at the kind's default while the ramp
+      // goes where the document says, ending the flight short of its floor.
       const height = hung
         ? (item.size?.[1] ?? base.height)
         : item.kind === 'stairs'
@@ -883,9 +808,8 @@ export function deriveWorld(
           kind: item.kind,
           roomId: room.id,
           x: derived.x,
-          // Where the bulb is, not where the fitting starts: a floor lamp lights
-          // from its shade, a pendant from just under its own body, and a string
-          // of fairy lights from the line it hangs on.
+          // Where the bulb is, not where the fitting starts: a floor lamp
+          // lights from its shade, a pendant from under its own body.
           y:
             baseY +
             (item.kind === 'floorlamp'
@@ -916,11 +840,9 @@ export function deriveWorld(
         stairs.push({
           id: item.id,
           bounds: {
-            // Summed, not the max of the two terms: that is the AABB of a
-            // rotated rectangle, and the schema accepts any facing. With max,
-            // a 45° flight lost its corners — `stairProgress` returned null on
-            // real treads and the walk refused the step. (For axis-aligned
-            // flights one term is zero, so nothing changes.)
+            // Summed, not maxed: this is the AABB of a rotated rectangle, and
+            // the schema accepts any facing. With max, a 45° flight loses its
+            // corners and the walk refuses the step on real treads.
             minX: derived.x - (Math.abs(dx) * halfRun + Math.abs(dz) * halfWide),
             maxX: derived.x + (Math.abs(dx) * halfRun + Math.abs(dz) * halfWide),
             minZ: derived.z - (Math.abs(dz) * halfRun + Math.abs(dx) * halfWide),
@@ -981,11 +903,9 @@ export function deriveWorld(
 }
 
 /**
- * Which room a world position is in, if any.
- *
- * `near` disambiguates a loft from the room under it: with two floors over the
- * same plan, "which room am I in" is only answerable if you say how high up you
- * are. Callers that genuinely do not care pass nothing and get the lowest.
+ * Which room a world position is in. `near` disambiguates a loft from the room
+ * under it — with two floors over one plan the question needs a height. Callers
+ * that do not care pass nothing and get the lowest.
  */
 export function roomAt(
   world: DerivedWorld,
@@ -998,9 +918,8 @@ export function roomAt(
   for (const room of world.rooms) {
     if (!inside(roomBounds(room), x, z)) continue
     if (near === undefined) {
-      // No height given: keep looking and answer with the lowest, as the
-      // contract says — returning the first match handed out the loft for
-      // ground-floor positions in any document that listed it first.
+      // No height given: keep looking and answer with the lowest. Returning the
+      // first match hands out the loft whenever a document lists it first.
       if (best === null || room.elevation < best.elevation) best = room
       continue
     }
@@ -1024,14 +943,10 @@ function stairProgress(stair: DerivedStair, x: number, z: number): number | null
 }
 
 /**
- * The height of the floor under a point — the single answer to "what am I
- * standing on", used by the walk controller and by anything you drop.
- *
- * `from` is the level you are already at, because with a loft over a living
- * room there is more than one floor under your feet and the right one is the
- * nearest one at or below you. A point over a stairwell has no floor at loft
- * level at all: the answer is the floor two and a half metres down, which the
- * controller then refuses to step off.
+ * The single answer to "what am I standing on", for the walk controller and for
+ * anything you drop. `from` is the level you are at, because with a loft over a
+ * room the right floor is the nearest one at or below you — and over a stairwell
+ * there is none at loft level, which is how the controller refuses the step.
  */
 export function floorAt(world: DerivedWorld, x: number, z: number, from = 0): number | null {
   let best: number | null = null
@@ -1050,14 +965,9 @@ export function floorAt(world: DerivedWorld, x: number, z: number, from = 0): nu
     if (slab.y <= from + STEP_UP && (best === null || slab.y > best)) best = slab.y
   }
 
-  // The ground, which is a floor like any other now that you can walk out of
-  // the porch. It comes last and loses every tie because it is the lowest thing
-  // there is: standing in a room, the boards under you win, and the only points
-  // where the ground is the answer are the ones with no building over them.
-  //
-  // `terrainAt` returns null in the lake and past the edge of the world, which
-  // is the same answer a stairwell gives — nothing here — and refuses the step
-  // for the same reason.
+  // The ground is a floor like any other, but loses every tie: indoors the
+  // boards win, so it only answers where no building stands. `terrainAt` gives
+  // null in the lake and past the world's edge, as a stairwell does.
   const ground = terrainAt(x, z)
   if (ground !== null && ground <= from + STEP_UP && (best === null || ground > best)) {
     best = ground
@@ -1070,9 +980,8 @@ export function floorAt(world: DerivedWorld, x: number, z: number, from = 0): nu
 export const STEP_UP = 0.42
 
 /**
- * Where a food delivery is left: at the foot of the porch steps, on the ground
- * the treads walk down to. A map with no `step` gets it at the spawn instead —
- * wherever that is, it is somewhere the person who wrote the map stands.
+ * Where a food delivery is left: at the foot of the porch steps. A map with no
+ * `step` gets the spawn instead, which is at least somewhere you stand.
  */
 export function deliverySpot(world: DerivedWorld): { x: number; y: number; z: number; yaw: number } {
   const step = world.furniture.find((item) => item.kind === 'step')
@@ -1085,10 +994,7 @@ export function deliverySpot(world: DerivedWorld): { x: number; y: number; z: nu
   return { x: x + 0.6, y: floorAt(world, x + 0.6, z, y) ?? y, z, yaw: 0 }
 }
 
-/**
- * The height of whatever a dropped book would land on: the floor, or the top of
- * a table if it is over one.
- */
+/** What a dropped book lands on: the floor, or a table if it is over one. */
 export function supportAt(world: DerivedWorld, x: number, z: number, from: number): number {
   let best = floorAt(world, x, z, from) ?? 0
 

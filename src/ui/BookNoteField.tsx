@@ -4,12 +4,9 @@ import { useAnnotationsStore } from '../state/annotations'
 import { useAppStore } from '../state/store'
 
 /**
- * Writing a note on the page you are reading.
- *
- * The same one-line field as the wall note, taking the keyboard entirely while
- * open — the reader's own keys bail out when `annotating` is set. Unlike a wall
- * note this one stays on its page, in `.library/annotations.json`, and is found
- * again by the fore-edge tab.
+ * The wall note's field, taking the keyboard entirely while open. Unlike a wall
+ * note this one stays on its page, in `annotations.json`, and is found again by
+ * the fore-edge tab.
  */
 export function BookNoteField() {
   const annotating = useAppStore((s) => s.annotating)

@@ -11,13 +11,9 @@ import { useAppStore } from '../state/store'
 import { coverImageFor, onCoverReady, peekCoverColour, peekCoverImage } from '../state/covers'
 
 /**
- * How far a focused book slides out, and how far it then turns.
- *
- * A book on a shelf stands spine-out, so its cover is against its neighbour and
- * cannot be seen at all. Looking at one therefore draws it out far enough to
- * clear the books either side and turns it to present its front board — which
- * is the only way a cover is visible on a shelf without laying the whole
- * library out face-first.
+ * How far a focused book slides out, and how far it then turns. A shelved book
+ * stands spine-out, so drawing it clear of its neighbours and turning it is the
+ * only way to see a cover without laying the whole library out face-first.
  */
 const PULL = 0.085
 /** Far enough that a book has cleared its neighbours before it starts turning. */
@@ -33,10 +29,9 @@ const PRINT_RANGE = 4.2
 /** Reassign cells this often, in frames. */
 const REPRINT_EVERY = 6
 /**
- * At most this many cells are drawn per pass. Turning on the spot can invalidate
- * every cell at once, and printing 255 spines in one frame is a visible hitch —
- * spreading it over a few passes fills the shelf in over a fifth of a second,
- * which reads as the room resolving rather than as a stall.
+ * Turning on the spot can invalidate every cell at once, and printing 255 spines
+ * in one frame is a visible hitch. Spread over a few passes it reads as the room
+ * resolving rather than as a stall.
  */
 const REPRINTS_PER_PASS = 24
 
@@ -51,11 +46,9 @@ export function Books() {
   const atlas = useMemo(() => makeBookAtlas(), [])
   useEffect(() => () => atlas.dispose(), [atlas])
 
-  // Instance capacity has to be fixed at construction, so allocate headroom and
-  // hide the unused tail rather than rebuilding the mesh whenever a book moves.
-  // Plain arithmetic, no memo: the rounding is what keeps the value (and so the
-  // remount) stable. A memo keyed on emptiness froze the capacity at the first
-  // non-empty size, and every book past it was silently invisible.
+  // Capacity is fixed at construction, so allocate headroom and hide the tail
+  // rather than rebuilding whenever a book moves. Plain arithmetic, no memo:
+  // the rounding is what keeps the value — and so the remount — stable.
   const capacity = Math.max(64, Math.ceil((packed.length + 64) / 256) * 256)
 
   const geometry = useMemo(() => {
@@ -134,9 +127,8 @@ export function Books() {
     const amount = pull.current[i] ?? 0
     const show = show_.current[i] ?? 0
 
-    // A glance slides a book out a little; drawing it out takes it fully clear
-    // of the shelf and only then turns it, so even a thin book cannot sweep
-    // through its neighbours on the way round.
+    // A glance slides it out; drawing it takes it fully clear before turning,
+    // so even a thin book cannot sweep through its neighbours on the way.
     position
       .copy(item.position)
       .addScaledVector(item.outward, amount * PULL + show * (DRAW_OUT + item.depth / 2))
@@ -197,14 +189,10 @@ export function Books() {
   useEffect(rewriteAll, [held]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * A cover that has finished loading changes both the front board and the
-   * colour of the binding, so the cell has to be drawn again.
-   *
-   * Only if the book *has* a cell. Covers are warmed for the whole library in
-   * the background now, which means artwork arrives for books nowhere near you
-   * — and giving up a cell for one of those would mean the atlas churning
-   * quietly for minutes while you stand still. A book with no cell will be
-   * drawn with its cover the first time it earns one.
+   * A loaded cover changes the front board and the binding colour, so the cell
+   * is redrawn — but only if the book has one. Covers are warmed for the whole
+   * library in the background, so artwork arrives for books nowhere near you,
+   * and spending a cell on those churns the atlas while you stand still.
    */
   useEffect(() => {
     const listener = (id: string) => {
@@ -217,10 +205,8 @@ export function Books() {
   }, [])
 
   /**
-   * Hand out atlas cells to whatever is close enough to read, nearest first.
-   *
-   * Books that keep their cell are left alone, so standing still costs nothing
-   * and walking costs only the cells that actually changed hands.
+   * Atlas cells to whatever is close enough to read, nearest first. Books that
+   * keep their cell are left alone, so standing still costs nothing.
    */
   const frame = useRef(0)
   const lastPass = useRef(0)
@@ -287,9 +273,8 @@ export function Books() {
           thickness: item.thickness,
           cover: peekCoverImage(item.id) ?? null,
         })
-        // Ask for the artwork if this is the first time this book has been
-        // close enough to matter. Rate-limited inside, because for a PDF this
-        // means rasterising its first page.
+        // The first time this book is close enough to matter. Rate-limited
+        // inside, because for a PDF this rasterises the first page.
         if (book) coverImageFor(book)
       }
       assigned.add(entry.index)
@@ -328,10 +313,9 @@ export function Books() {
     if (!mesh) return
 
     frame.current += 1
-    // Counted in frames so a turn on the spot amortises over several passes —
-    // but bounded in wall-clock too, because on a software rasteriser a frame
-    // can be most of a second and six of them is a shelf that visibly refuses
-    // to resolve. The per-pass cap already limits what one pass can cost.
+    // In frames, so a turn on the spot amortises — but bounded in wall-clock
+    // too, because on a software rasteriser six frames is most of a second and
+    // a shelf that visibly refuses to resolve.
     if (frame.current % REPRINT_EVERY === 0 || clock.elapsedTime - lastPass.current > 0.8) {
       lastPass.current = clock.elapsedTime
       reprint()

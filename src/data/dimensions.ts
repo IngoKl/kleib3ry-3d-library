@@ -1,15 +1,11 @@
 import type { IndexedBook } from '../services/types'
 
 /**
- * Physical proportions for a book, derived from index data alone.
- *
- * Page count drives thickness, so a shelf shows at a glance which books are the
- * long ones. Height, depth and cloth colour come from a hash of the book id:
- * arbitrary but *stable*, so a book always looks the same.
- *
- * Everything is about a quarter over life size, and `world/shelf.ts` matches.
- * At true scale a printed spine lands on a handful of screen pixels however
- * much texture is thrown at it; only size buys legibility.
+ * Physical proportions from index data alone. Page count drives thickness, so a
+ * shelf shows at a glance which books are the long ones; height, depth and cloth
+ * come from a hash of the id — arbitrary but stable. Everything is a quarter
+ * over life size, because at true scale a printed spine is a handful of pixels
+ * however much texture is thrown at it.
  */
 export type BookDimensions = {
   thickness: number
@@ -42,14 +38,9 @@ const MIN_THICKNESS = 0.013
 const MAX_THICKNESS = 0.098
 
 /**
- * How many pages a file that does not say is likely to have.
- *
- * Rarely reached now: a PDF states its page count and the EPUB probe measures
- * the length of the documents inside the archive, which is a far better signal
- * than the size of the file around them. This is for the ones that answer
- * neither — an archive with nothing document-shaped in it, or a row indexed
- * before the probe learned to measure. The curve is square-rooted because most
- * of a book's bulk on disk after the first megabyte is images rather than text.
+ * How many pages a file that does not say is likely to have. Rarely reached: a
+ * PDF states its count and the EPUB probe measures the documents inside. Square
+ * rooted, because most of a book's bulk after the first megabyte is images.
  */
 export function estimatedPages(book: IndexedBook): number {
   if (book.pageCount && book.pageCount > 0) return book.pageCount
@@ -58,9 +49,8 @@ export function estimatedPages(book: IndexedBook): number {
 }
 
 /**
- * Sheets of paper are about 0.1 mm; a leaf is two pages, plus the boards. The
- * clamp is what keeps a 4,000-page reference work from being wider than the
- * compartment it has to stand in.
+ * Paper is about 0.1 mm and a leaf is two pages, plus boards. The clamp keeps a
+ * 4,000-page reference work narrower than the compartment it stands in.
  */
 export function thicknessFor(book: IndexedBook): number {
   return clamp(estimatedPages(book) * PER_PAGE + 0.008, MIN_THICKNESS, MAX_THICKNESS)
@@ -71,9 +61,8 @@ export function dimensionsFor(book: IndexedBook): BookDimensions {
   const a = ((hash >>> 0) % 1000) / 1000
   const b = ((hash >>> 10) % 1000) / 1000
 
-  // No lean here: a book wedged between two others stands plumb, whatever its
-  // own character, and the only books with room to lean are the ones at the
-  // open end of a row. `packRow` settles those — see `shelving.ts`.
+  // No lean here: a book wedged between two others stands plumb, and only the
+  // ones at the open end of a row have room. `packRow` settles those.
   return {
     thickness: thicknessFor(book),
     // Hardbacks run taller than paperbacks; EPUBs get the paperback range.

@@ -68,9 +68,8 @@ test.describe('collision', () => {
   })
 
   test('nothing is sitting on the player spawn', () => {
-    // Asked at the spawn's own *level*. `WORLD.colliders` is every solid in the
-    // building flattened, which since the loft includes a balustrade two and a
-    // half metres over the spawn point — something you walk under, not into.
+    // Asked at the spawn's own level: flattened, the solids include the loft's
+    // balustrade overhead, which is something you walk under, not into.
     const solids = [...WORLD.solids, ...shelfColliders(WORLD.shelves)]
     const here = solidsAt(solids, WORLD.spawn.y)
     expect(blocked(here, { x: WORLD.spawn.x, z: WORLD.spawn.z }, 0.28)).toBe(false)

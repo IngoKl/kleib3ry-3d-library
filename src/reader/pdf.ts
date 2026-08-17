@@ -6,32 +6,23 @@ import { library } from '../services'
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
 /**
- * PDF rasterisation for both the reader and cover extraction.
+ * PDF rasterisation for both the reader and cover extraction. The render is
+ * cheap and the decode is what costs frames, so documents are opened once and
+ * shared and pages rasterise one at a time.
  *
- * The spike established that the render itself is cheap and the *decode* is
- * what costs frames, so documents are opened once and shared, and pages are
- * rasterised one at a time rather than in parallel.
- *
- * Open documents are reference-counted rather than cached forever: a parsed
- * document pins its complete file bytes in the pdf.js worker, so "opened once
- * and kept" during the cover warm sweep meant the whole library resident in
- * memory at once. Every `openDocument` must be paired with a `closeDocument`;
- * the document is destroyed when the last holder lets go.
+ * Reference-counted rather than cached forever: a parsed document pins its whole
+ * file in the pdf.js worker, so keeping them during the cover sweep means the
+ * library resident at once. Every `openDocument` needs its `closeDocument`.
  */
 
 type OpenEntry = { doc: Promise<PDFDocumentProxy>; refs: number }
 const documents = new Map<string, OpenEntry>()
 
 /**
- * A hold on an open document, and the only way to let one go.
- *
- * Releasing is bound to the entry it opened rather than to the book's id, and
- * is idempotent. Both matter. A failed open drops its entry from the map, so an
- * id-keyed release could arrive after somebody else had opened the same book
- * and take *their* reference — one holder's cleanup destroying the document the
- * reader is still reading, which shows up as a page that renders blank the next
- * time it is asked for. That is the sort of thing that only happens to a book
- * you have just added, because that is when a cover render and a read overlap.
+ * A hold on an open document, and the only way to let one go. Releasing is bound
+ * to the entry rather than the book id, and is idempotent: a failed open drops
+ * its entry, so an id-keyed release could arrive later and take somebody else's
+ * reference — destroying the document the reader is still reading.
  */
 export type Held = { doc: Promise<PDFDocumentProxy>; release: () => void }
 
@@ -71,8 +62,7 @@ function releaser(id: string, entry: OpenEntry): () => void {
     entry.refs -= 1
     if (entry.refs > 0) return
     // Only if this entry is still the one under that id: a failed open has
-    // already taken itself out, and whatever is there now belongs to somebody
-    // else.
+    // already gone, and whatever is there now belongs to somebody else.
     if (documents.get(id) === entry) documents.delete(id)
     // Destroying the loading task, not `cleanup`: cleanup keeps the worker-side
     // document (and the file bytes) alive, which is the leak this exists to close.

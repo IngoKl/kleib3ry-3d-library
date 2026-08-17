@@ -53,8 +53,8 @@ type LibraryState = {
   dims: Map<string, BookDimensions>
 
   /**
-   * Exactly what is in `books.json`, including rows whose shelf is not in the
-   * world right now. Keeping those is what makes deleting a bookcase reversible.
+   * Exactly what is in `books.json`, rows for absent shelves included — which is
+   * what makes deleting a bookcase reversible.
    */
   savedRows: Record<RowKey, string[]>
   /** Which box each book was deliberately put in, as written down. */
@@ -68,10 +68,7 @@ type LibraryState = {
   boxes: Record<string, string[]>
   /** Every book in a box, box by box. The unshelved half of the library. */
   boxed: string[]
-  /**
-   * Books put down on a table or the floor. A third home, and the only one
-   * whose position is stored rather than derived.
-   */
+  /** A third home, and the only one whose position is stored rather than derived. */
   loose: Record<string, LoosePlacement>
   /** What the last reconciliation cost, for the panel. Null when it cost nothing. */
   reconciliation: string | null
@@ -79,17 +76,13 @@ type LibraryState = {
   readProgress: Record<string, number>
   /** Shelf id -> what is written on its label card. Overrides the document. */
   labels: Record<string, string>
-  /**
-   * Pages and notes pinned to the walls. A list rather than a map: sheets are
-   * found by pointing at them, so there is no key to look one up by.
-   */
+  /** A list, not a map: sheets are found by pointing, so there is no key to look one up by. */
   pins: PinnedSheet[]
   /** Whiteboard id -> what has been drawn on it, oldest stroke first. */
   drawings: Record<string, BoardStroke[]>
   /**
-   * Records that have been moved: `filed` is the crate one was put in,
-   * `looseRecords` where one was set down. Everything else is dealt from
-   * `music/` in folder order, so both are usually empty.
+   * Records that have been moved. Everything else is dealt from `music/` in
+   * folder order, so both of these are usually empty.
    */
   filedRecords: Record<string, string>
   looseRecords: Record<string, RecordPlacement>
@@ -122,20 +115,11 @@ type LibraryState = {
   putDown: (id: string, placement: LoosePlacement) => void
   /** Move a book that is already lying about, as the physics settles it. */
   nudge: (id: string, placement: LoosePlacement) => void
-  /**
-   * Unpack a box onto the shelves. Returns how many books found a shelf;
-   * whatever did not fit is still in the box.
-   */
+  /** Returns how many found a shelf; whatever did not fit is still in the box. */
   emptyBoxOntoShelves: (boxId: string) => number
-  /**
-   * The reverse: every book off every shelf and off the floor, back into the
-   * boxes. Returns how many moved.
-   */
+  /** The reverse: every book off every shelf and floor, back into the boxes. */
   packEverything: () => number
-  /**
-   * Every book lying on a *floor* into the nearest box. Books left on tables
-   * stay put. Returns how many were picked up.
-   */
+  /** Every book on a floor into the nearest box; books left on tables stay put. */
   packLooseBooks: () => number
   /** Remember where you got to in a book, so putting it down keeps the page. */
   setProgress: (bookId: string, spread: number) => void
@@ -156,33 +140,23 @@ type LibraryState = {
   putRecordDown: (trackId: string, placement: RecordPlacement) => void
   /** Forget where a record was put, so it goes back to its dealt place. */
   freeRecord: (trackId: string) => void
-  /**
-   * Stand a prop somewhere. The cup always lands under its one id; anything
-   * else gets a fresh one. Returns the id it stands under.
-   */
+  /** The cup always lands under its one id; anything else gets a fresh one. */
   placeProp: (prop: PlacedProp) => string
   /** Take a prop off whatever it stands on. Returns it, so it can go into your hand. */
   removeProp: (id: string) => PlacedProp | undefined
   /** Shove a piece of furniture. Only the moving boxes accept this. */
   moveFurniture: (id: string, at: [number, number], facing: number, elevation?: number) => void
-  /**
-   * Make a new box up off the stack and stand it at a world position. Returns
-   * its id — every id is fresh, so two boxes can never fight over one entry.
-   */
+  /** Every id is fresh, so two boxes can never fight over one layout entry. */
   spawnBox: (x: number, z: number, facing: number, elevation: number) => string | null
-  /**
-   * Break a box down. Only an *empty* box goes — a boxful of books is not
-   * something to vanish with a keystroke. Returns false if it refused.
-   */
+  /** Only an empty box goes: a boxful is not something to vanish with a keystroke. */
   deleteBox: (boxId: string) => boolean
   bookAt: (id: string) => IndexedBook | undefined
   dimensionsOf: (id: string) => BookDimensions | undefined
 }
 
 /**
- * What `carried` holds while carrying a box that does not exist yet — one off
- * the kitchen stack. It becomes real furniture with a real id when set down.
- * Starts with `#` so it can never collide with a document id.
+ * What `carried` holds for a box off the kitchen stack, which becomes real
+ * furniture when set down. Starts with `#` so it cannot collide with a document id.
  */
 export const NEW_BOX = '#new-box'
 
@@ -196,9 +170,8 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => Promise<void>) | null = null
 
 /**
- * Write any pending layout save now. Callers about to read the file (`load`) or
- * lose the page (shutdown) flush first, so the debounce cannot swallow the last
- * edit.
+ * Write any pending layout save now. Callers about to read the file or lose the
+ * page flush first, so the debounce cannot swallow the last edit.
  */
 export async function flushLayoutSave(): Promise<void> {
   if (saveTimer === undefined) return
@@ -212,10 +185,7 @@ function currentWorld(): DerivedWorld | null {
   return useWorldStore.getState().world
 }
 
-/**
- * Whether a part-empty row leans. A setting rather than a library fact, so it
- * is read when packing rather than stored with the layout.
- */
+/** A setting rather than a library fact, so it is read when packing, not stored. */
 const leaning = () => useSettings.getState().booksLean
 
 function project(
@@ -292,8 +262,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
   /**
    * Remember a placement in the saved layout as well as the live one. A book is
-   * in exactly one place, so writing it anywhere removes it from everywhere
-   * else. Rows for shelves this world lacks pass through untouched.
+   * in one place, so writing it anywhere removes it from everywhere else; rows
+   * for shelves this world lacks pass through untouched.
    */
   const remember = (
     id: string,
@@ -387,9 +357,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Filing, setting down and letting go of a record. All three are one small
-     * write: a crate has no order worth keeping, so a record's place is a
-     * single entry rather than an arrangement. See `Records.tsx` for the deal.
+     * A crate has no order worth keeping, so a record's place is one entry
+     * rather than an arrangement. See `Records.tsx` for the deal.
      */
     fileRecord: (trackId, crateId) => {
       set({
@@ -418,9 +387,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     placeProp: (prop) => {
-      // There is one cup and one headlamp, so each stands under its one id;
-      // everything else is minted as it arrives, counter plus time so ids
-      // never collide.
+      // One cup and one headlamp, each under its own id; everything else is
+      // minted on arrival, counter plus time so ids never collide.
       propCounter += 1
       const id =
         prop.kind === 'cup' || prop.kind === 'headlamp'
@@ -484,10 +452,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         const placements = layout?.furniture ?? {}
         const spawnedBoxes = layout?.spawnedBoxes ?? {}
         const removedBoxes = layout?.removedBoxes ?? []
-        // The world has to know where the boxes were pushed to — and which
-        // boxes exist at all — before the books are reconciled against it, or
-        // a box's pile is drawn at its old place and a made-up box's books
-        // tip into the others.
+        // The world must know which boxes exist and where before the books are
+        // reconciled against it, or the piles are drawn at the old places.
         useWorldStore.getState().setBoxEdits({ spawned: spawnedBoxes, removed: removedBoxes })
         useWorldStore.getState().setPlacements(placements)
 
@@ -502,9 +468,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           labels: layout?.labels ?? {},
           pins,
           drawings: layout?.drawings ?? {},
-          // Deliberately not filtered against the music folder: a record whose
-          // file is momentarily missing — an unmounted drive, a folder being
-          // reorganised — should find its crate again when the file comes back,
+          // Not filtered against the music folder: a record whose file is
+          // momentarily missing should find its crate again when it returns,
           // and an entry for a track nobody has is inert.
           filedRecords: layout?.records?.filed ?? {},
           looseRecords: layout?.records?.loose ?? {},
@@ -551,9 +516,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         set({ savedRows: result.rows, savedBoxes: result.boxes, hasSavedLayout: true })
         scheduleSave()
       }
-      // Otherwise deliberately no save: books that went into boxes are still
-      // written down as belonging to the shelf they came from, so putting the
-      // bookcase back in `library.json` puts them back on it.
+      // Deliberately no save: boxed books stay written down against the shelf
+      // they came from, so restoring the bookcase puts them back on it.
     },
 
     setProgress: (bookId, spread) => {
@@ -589,9 +553,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const world = currentWorld()
       if (!world || world.rooms.length === 0) return null
 
-      // The room whose frame the position is written in: the one you are
-      // standing in, or — set down outdoors — the nearest one. Any room works
-      // as a frame; nearest keeps the numbers small and survives far edits.
+      // The frame the position is written in: the room you are in, or the
+      // nearest one outdoors. Any room works; nearest keeps the numbers small.
       const room =
         roomAt(world, x, z, elevation) ??
         [...world.rooms].sort(
@@ -600,9 +563,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
             Math.hypot(b.origin[0] - x, b.origin[1] - z),
         )[0]!
 
-      // A fresh id, skipping everything the room has, has spawned, or has
-      // broken down — a broken-down id must stay burned, or its leftover
-      // layout entries would haunt the next box to take it.
+      // A broken-down id stays burned, or its leftover layout entries would
+      // haunt the next box to take it.
       const taken = new Set([
         ...world.furniture.map((item) => item.id),
         ...Object.keys(get().spawnedBoxes),
@@ -660,11 +622,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       try {
         const lastScan = await library.scan()
         set({ lastScan })
-        // "Scan" means look at the folder again, and the folder is not only
-        // books. The other three are walked on demand rather than indexed, so
-        // nothing in Rust has to be told — but the lists in front of them were
-        // read once at startup, which is why a record or a tape dropped into
-        // the folder while the app was open only turned up on the next launch.
+        // "Scan" means look at the whole folder again. The media folders need
+        // nothing in Rust, but their lists were read once at startup — so
+        // without this a record dropped in mid-session waits for a relaunch.
         await Promise.all([
           get().load(),
           useMediaStore.getState().load(),
@@ -684,9 +644,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const world = currentWorld()
       const one = new Set([id])
 
-      // Taking a book out of a box is a legitimate way to pick one up, and it
-      // has to leave the box or you could take the same book forever. So is
-      // picking one up off the table you left it on.
+      // A book taken out of a box has to leave it, or you could take the same
+      // book forever. Off a table counts too.
       const onShelf = Object.values(rows).some((ids) => ids.includes(id))
       if (!onShelf && !boxed.includes(id) && !(id in loose)) return false
 
@@ -775,10 +734,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       scheduleSave()
     },
 
-    /**
-     * Unpack a box onto the shelves, empty rows in the nearest case first — so
-     * carrying the box to a bookcase and pressing `G` fills *that* case.
-     */
+    /** Empty rows in the nearest case first, so carrying a box to a case fills that one. */
     emptyBoxOntoShelves: (boxId) => {
       const { rows, boxes, dims, savedBoxes } = get()
       const world = currentWorld()
@@ -817,10 +773,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       return moved.size
     },
 
-    /**
-     * Everything back into the boxes. Runs the same reconciliation a new
-     * library does, so the result matches a freshly opened folder.
-     */
+    /** Runs a new library's own reconciliation, so the result matches a fresh folder. */
     packEverything: () => {
       const { books, dims } = get()
       const world = currentWorld()
@@ -844,9 +797,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         savedRows: {},
         savedBoxes: result.boxes,
         loose: {},
-        // Reconciliation reports "everything is new", which is true of the
-        // arrangement and would read as an alarm about the shelves. It was not
-        // an accident: it is what was asked for.
+        // Reconciliation would report "everything is new", which reads as an
+        // alarm rather than as the thing that was just asked for.
         reconciliation: null,
       })
       scheduleSave()
@@ -860,9 +812,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const crates = boxesIn(world)
       if (crates.length === 0) return 0
 
-      // A book on a table was *left* there; a book whose only support is the
-      // floor is a stray. The physics settled each one before its placement was
-      // stored, so the stored height is trustworthy.
+      // A book on a table was left there; one supported only by the floor is a
+      // stray. The physics settled each before storing, so the height is sound.
       const strays = Object.entries(loose).filter(([, at]) => {
         const floor = floorAt(world, at.x, at.z, at.y + 0.1)
         if (floor === null) return true
@@ -930,9 +881,8 @@ useWorldStore.subscribe((state, previous) => {
 })
 
 // Closing the window inside the debounce must not lose the last shelving.
-// `pagehide` is the reliable end-of-page signal; `beforeunload` is belt and
-// braces for the WebView. The save is fire-and-forget — there is no keeping a
-// page alive for it — but the IPC message is away before teardown.
+// `pagehide` is the reliable signal, `beforeunload` belt and braces for the
+// WebView. Fire-and-forget, but the IPC message is away before teardown.
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => void flushLayoutSave())
   window.addEventListener('beforeunload', () => void flushLayoutSave())

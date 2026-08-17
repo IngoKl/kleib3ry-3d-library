@@ -2,9 +2,8 @@ use std::path::Path;
 
 use super::{plausible_author, plausible_title, Probed};
 
-/// Page count and Info-dictionary metadata. Cover rasterisation is deliberately
-/// not here: it needs a real renderer (pdfium), which is a separate decision
-/// about shipping a native library.
+/// Page count and Info-dictionary metadata. No cover rasterisation: that needs
+/// pdfium, which is a separate decision about shipping a native library.
 pub fn probe(path: &Path) -> Probed {
     let Ok(doc) = lopdf::Document::load(path) else {
         return Probed::default();

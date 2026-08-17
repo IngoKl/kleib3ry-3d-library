@@ -25,19 +25,14 @@ import { useWorldStore } from '../state/world'
 /**
  * The building itself: floors, walls, glazing and rafters.
  *
- * Two things here are less obvious than they look. Floors are *slabs*, not
- * planes, because a loft floor is also the ceiling of the room underneath it
- * and a plane has no underside — and because a stairwell is a rectangle taken
- * out of one, which `floorSlabs` does by subtraction so that what you see and
- * what `floorAt` lets you stand on are the same geometry. And a room only
- * builds the walls it declares, so a porch is a roof on four posts rather than
- * a room with the walls turned off.
+ * Floors are slabs rather than planes, because a loft floor is also a ceiling
+ * and a plane has no underside; a stairwell is subtracted from one by
+ * `floorSlabs`, so what you see and what `floorAt` lets you stand on are the
+ * same geometry. A room only builds the walls it declares, so a porch is a roof
+ * on four posts rather than a room with its walls turned off.
  */
 
-/**
- * Nudge a pane just inside its reveal, so the glass does not z-fight the
- * plaster. The thin axis of the box is the one the wall faces along.
- */
+/** Nudged just inside its reveal, so the glass does not z-fight the plaster. */
 function paneOf(pane: Panel): Panel {
   const [x, y, z] = pane.position
   const facesX = pane.size[0] < pane.size[2]
@@ -48,13 +43,9 @@ function paneOf(pane: Panel): Panel {
 }
 
 /**
- * A set of boxes as a single geometry.
- *
- * A room's shell is a dozen wall panels once its openings are cut out, plus
- * four lengths of skirting and a rafter every metre — thirty-odd meshes per
- * room, and five rooms of that was most of the frame's draw calls before any
- * books were drawn. They never move relative to each other, so they are merged
- * once per document and drawn as one.
+ * A room's shell is thirty-odd meshes — wall panels, skirting, a rafter every
+ * metre — which across five rooms was most of the frame's draw calls before any
+ * books. None of it moves, so it merges once per document and draws as one.
  */
 const merge = mergePanels
 
@@ -86,11 +77,9 @@ function Shell({
 }
 
 /**
- * One floor rectangle, as a slab with an underside.
- *
- * The texture is shared across the whole room and offset per slab, so the
- * boards run continuously across a stairwell rather than restarting at every
- * cut — which is what gives away a floor built out of pieces.
+ * One floor rectangle as a slab with an underside. The texture is shared across
+ * the room and offset per slab, so the boards run continuously rather than
+ * restarting at every cut — which is what gives away a floor built of pieces.
  */
 function FloorSlab({
   slab,
@@ -147,11 +136,9 @@ function skirtingFor(room: RoomSpec, wall: Wall): Panel {
 }
 
 /**
- * Rafters across the ceiling, and corner posts where a room is missing walls.
- *
- * Both are timber, so they merge into the same mesh. A porch is a roof with
- * nothing holding it up, which reads as a bug rather than as architecture;
- * four posts is the whole fix.
+ * Rafters, and corner posts where a room is missing walls — both timber, so they
+ * merge into one mesh. A porch is otherwise a roof with nothing holding it up,
+ * which reads as a bug rather than as architecture.
  */
 function timberOf(room: RoomSpec): Panel[] {
   const [cx, cz] = room.origin
@@ -190,20 +177,17 @@ function timberOf(room: RoomSpec): Panel[] {
 }
 
 /**
- * Joinery round the openings: frames, mullions and sills for the glazed
- * windows, architraves for the doors. A hole cut straight through plaster
- * reads as a render; a window is a window because timber surrounds it. All of
- * it is boxes in the timber material, so it joins the rafters' merge and
- * costs no draw call. Every piece stands proud of both wall faces by more
- * than the pane's ±0.006 nudge, so glass and frame never fight for pixels.
+ * Frames, mullions and sills for the windows, architraves for the doors: a hole
+ * cut through plaster reads as a render, and timber is what makes it a window.
+ * All boxes in the timber material, so it joins the rafters' merge; every piece
+ * stands proud of both wall faces by more than the pane's own nudge.
  */
 const TRIM = 0.045
 const ARCHITRAVE = 0.07
 /**
- * How far the door trim laps over its opening, and under its own head. Flush,
- * an architrave's faces land exactly on the reveal `wallPanels` leaves and on
- * its own head's ends — coplanar, co-facing, and flickering the height of the
- * doorway. `paneOf`'s nudge, at a door, and far too small to narrow anything.
+ * How far the door trim laps its opening. Flush, an architrave's faces land
+ * exactly on the reveal and on its own head's ends — coplanar and flickering
+ * the height of the doorway. `paneOf`'s nudge, at a door.
  */
 const LAP = 0.01
 
@@ -288,10 +272,9 @@ function Room({ room }: { room: RoomSpec }) {
   return (
     <group>
       {slabs.map((slab, i) => (
-        // Flush-abutted rooms extend coplanar slabs under the shared doorway
-        // (the porch against the cabin), and the two faces fight for pixels in
-        // the threshold. A hair of per-room bias, deterministic off the id and
-        // far below anything a foot or an eye can measure, settles the fight.
+        // Flush-abutted rooms extend coplanar slabs under the shared doorway,
+        // and the two faces fight for pixels. A hair of per-room bias, seeded
+        // off the id, settles it below anything a foot or an eye can measure.
         <FloorSlab key={`floor-${i}`} slab={slab} texture={floorTexture} bias={slabBias} />
       ))}
 
@@ -337,14 +320,10 @@ function Room({ room }: { room: RoomSpec }) {
 }
 
 /**
- * Lamplight in the glass after dark.
- *
- * At night a lit room's windows should be the warmest thing on the hillside —
- * the view of the cabin from across the lake is the whole reward for walking
- * there. One additive wash over the room's panes, merged to a single draw
- * call; its strength follows the ambience blend and whether any lamp in the
- * room is actually on, read per frame rather than subscribed, so switching a
- * lamp off fades the windows with it.
+ * Lamplight in the glass after dark: at night a lit room's windows should be the
+ * warmest thing on the hillside, since the view of the cabin from across the
+ * lake is the reward for walking there. One additive wash over the panes, its
+ * strength read per frame so switching a lamp off fades the windows with it.
  */
 function WindowGlow({ room, panes }: { room: RoomSpec; panes: readonly Panel[] }) {
   const material = useRef<THREE.MeshBasicMaterial>(null)
@@ -406,10 +385,9 @@ export function Rooms() {
   const world = useWorldStore((s) => s.world)
   const group = useRef<THREE.Group>(null)
 
-  // Published whole rather than as a group of just the wall meshes: the shells
-  // are merged per room and per material, so pulling the walls into a group of
-  // their own would mean a second traversal of the same geometry. The raycast
-  // filters on `userData.wall` instead — see `Interaction`.
+  // Published whole rather than as a walls-only group: the shells are merged
+  // per room and material, so a group of their own means a second traversal.
+  // The raycast filters on `userData.wall` instead.
   useLayoutEffect(() => {
     sceneRefs.walls = group.current
     return () => {

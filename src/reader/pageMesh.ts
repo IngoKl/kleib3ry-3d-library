@@ -1,11 +1,9 @@
 import * as THREE from 'three'
 
 /**
- * A single sheet of paper as a skinned, bone-driven mesh hinged at x = 0.
- *
- * Same rig as wass08/r3f-animated-book-slider: a segmented box whose vertices
- * are weighted between two adjacent bones in a chain running along +X, so
- * rotating the bones bows the sheet instead of folding it.
+ * A sheet of paper as a skinned mesh hinged at x = 0: a segmented box whose
+ * vertices are weighted between adjacent bones along +X, so rotating the bones
+ * bows the sheet instead of folding it.
  */
 
 export const PAGE_SEGMENTS = 24
@@ -93,9 +91,8 @@ export function makeSheet(width: number, height: number, depth: number): Sheet {
 }
 
 /**
- * Bow the sheet. `bend` in [0,1] scales the bow; the per-bone deltas follow
- * cos(pi*u), which integrates to zero across the sheet so the free edge ends
- * up parallel to the hinge rather than curled away from it.
+ * The per-bone deltas follow cos(pi*u), which integrates to zero across the
+ * sheet, so the free edge ends parallel to the hinge rather than curled away.
  */
 export function applyBow(bones: THREE.Bone[], baseAngle: number, bend: number, amplitude: number) {
   bones[0]!.rotation.y = baseAngle
@@ -106,12 +103,9 @@ export function applyBow(bones: THREE.Bone[], baseAngle: number, bend: number, a
 }
 
 /**
- * Curl into the gutter for the two sheets lying open.
- *
- * The tangent angle must *decay to zero*, otherwise the sheet keeps rotating
- * along its whole length and dives through the page block underneath it. So
- * shape the cumulative angle as `amount * exp(-i / falloff)` and hand the
- * bones the differences: steep at the spine, dead flat past the fold.
+ * The tangent angle must decay to zero, or the sheet keeps rotating along its
+ * length and dives through the page block. Shaped as `amount * exp(-i /
+ * falloff)`: steep at the spine, dead flat past the fold.
  */
 export function applyGutterCurl(
   bones: THREE.Bone[],
@@ -128,10 +122,7 @@ export function applyGutterCurl(
 
 export const GUTTER_FALLOFF = 3
 
-/**
- * How far the flat part of a curled sheet ends up in front of its hinge.
- * Used to seat the sheet so its plateau lands exactly on the page block.
- */
+/** Where a curled sheet's flat part lands, so its plateau seats on the page block. */
 export function gutterRise(width: number, amount: number, falloff = GUTTER_FALLOFF) {
   const segmentWidth = width / PAGE_SEGMENTS
   let rise = 0

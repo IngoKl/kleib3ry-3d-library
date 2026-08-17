@@ -2,10 +2,9 @@
 //! for the walls, `video/` for the tapes that go in the television, and `roms/`
 //! for the arcade machine.
 //!
-//! Deliberately *not* indexed. Books are, because probing a PDF is slow and a
-//! collection is tens of thousands of files; a music folder is hundreds and an
-//! artwork folder dozens, so walking them on demand beats a second cache to
-//! keep in sync — and a record dropped in five seconds ago is on the shelf.
+//! Deliberately not indexed: these folders are hundreds of files rather than
+//! tens of thousands, so walking them on demand beats a second cache to keep in
+//! sync — and a record dropped in five seconds ago is already on the shelf.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,16 +22,12 @@ pub const ROMS_DIR: &str = "roms";
 
 const AUDIO_EXTENSIONS: [&str; 5] = ["mp3", "wav", "flac", "ogg", "m4a"];
 const IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "gif"];
-/// What a tape can be.
-///
-/// Listed rather than probed, and deliberately wider than what will actually
-/// play: the WebView plays what Chromium plays, which is roughly H.264 in MP4
-/// and VP8/VP9 in WebM. A Matroska file is still a tape in the crate — it goes
-/// in the machine, fails to start, and says so in the panel, which is a better
-/// answer than pretending the file is not there.
+/// Deliberately wider than what the WebView will actually play. A Matroska file
+/// is still a tape in the crate: it goes in, fails, and says so in the panel,
+/// which beats pretending the file is not there.
 const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "webm", "m4v", "mov", "mkv", "ogv"];
-/// Only CHIP-8 for now: the machine in the cabinet is the one the emulator in
-/// the front end implements. A wider list waits for a second machine.
+/// Only what the front end's emulator implements; a wider list waits for a
+/// second machine.
 const ROM_EXTENSIONS: [&str; 1] = ["ch8"];
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,13 +50,9 @@ pub struct Artwork {
     pub title: String,
 }
 
-/// A tape in the crate beside the television.
-///
-/// `series` is the folder it sits in, which for a video folder is very often the
-/// thing it belongs to — a season, a director, "holidays 1998". The same
-/// convention as a music folder's album, and for the same reason: the shape
-/// somebody has already sorted their files into is better metadata than
-/// anything a probe would find.
+/// A tape in the crate beside the television. `series` is the folder it sits in
+/// — a season, a director, "holidays 1998" — because the shape somebody already
+/// sorted their files into is better metadata than anything a probe would find.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tape {
@@ -73,11 +64,8 @@ pub struct Tape {
     pub size_bytes: u64,
 }
 
-/// A game for the arcade machine, from `<root>/roms`.
-///
-/// Not probed at all: a CHIP-8 image is a bare byte array with no header, so
-/// its filename is all the label there is, and the folder it sits in — `ch8`,
-/// a collection, a year — stands in for a series, exactly as a tape's does.
+/// A game for the arcade machine. Not probed: a CHIP-8 image is a bare byte
+/// array with no header, so the filename is the only label there is.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rom {
@@ -89,8 +77,7 @@ pub struct Rom {
     pub size_bytes: u64,
 }
 
-/// `<root>/music`, if it exists. Absent, the library simply has no records —
-/// which is not an error, it is a library nobody has put music in.
+/// `<root>/music`, if it exists. Absent means no records, not an error.
 pub fn music_root(root: &Path) -> Option<PathBuf> {
     let dir = root.join(MUSIC_DIR);
     dir.is_dir().then_some(dir)
@@ -150,18 +137,16 @@ fn folder_names(path: &Path, root: &Path) -> (Option<String>, Option<String>) {
 
     match parts.len() {
         0 => (None, None),
-        // One folder deep is the album — `music/Wild Is the Wind/04.mp3` — not the
-        // artist, or an untagged single-level folder would be credited as a person.
+        // One folder deep is the album, not the artist, or an untagged
+        // single-level folder would be credited as a person.
         1 => (None, Some(parts[0].clone())),
         n => (Some(parts[n - 2].clone()), Some(parts[n - 1].clone())),
     }
 }
 
-/// Every playable file under `<root>/music`, one record each.
-///
-/// A parser given whatever is on somebody's disk is a parser that will
-/// eventually panic, so tag reading runs under the same net the book indexer
-/// uses: a track whose tags cannot be read is still a track, under its filename.
+/// Every playable file under `<root>/music`, one record each. Tag reading runs
+/// under the same panic net as the book indexer: a track whose tags cannot be
+/// read is still a track, under its filename.
 pub fn list_tracks(root: &Path) -> Vec<Track> {
     let Some(dir) = music_root(root) else { return Vec::new() };
 
@@ -204,12 +189,8 @@ pub fn list_artwork(root: &Path) -> Vec<Artwork> {
         .collect()
 }
 
-/// Every tape under `<root>/video`, in folder order.
-///
-/// No probing at all, unlike a book: a container's duration and title sit behind
-/// a demuxer, and shipping one to print a nicer label on a cassette is a large
-/// dependency for a small gain. The filename is the title, the folder is the
-/// series, and the WebView finds out the rest when the tape is played.
+/// Every tape under `<root>/video`, in folder order. Not probed: a container's
+/// title sits behind a demuxer, which is a large dependency for a nicer label.
 pub fn list_videos(root: &Path) -> Vec<Tape> {
     let Some(dir) = video_root(root) else { return Vec::new() };
 
@@ -256,12 +237,9 @@ pub fn list_roms(root: &Path) -> Vec<Rom> {
         .collect()
 }
 
-/// The path of one ROM, by the id `list_roms` handed out.
-///
-/// There is no index entry to look this up in, so the folder is walked again —
-/// it is a few dozen files, and it means a caller can only ever name a ROM the
-/// listing already told it about, the same property `Catalog::path_of` gives
-/// books.
+/// The path of one ROM, by the id `list_roms` handed out. No index to consult,
+/// so the folder is walked again — a few dozen files, and it means a caller can
+/// only name a ROM the listing already gave it, as `Catalog::path_of` does.
 pub fn rom_path(root: &Path, id: &str) -> Option<PathBuf> {
     list_roms(root).into_iter().find(|rom| rom.id == id).map(|rom| PathBuf::from(rom.path))
 }
@@ -303,8 +281,8 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// One folder deep is an album, not a person. Credited as the artist, an
-    /// untagged `music/Wild Is the Wind/` would put a record title where a name goes.
+    /// Otherwise an untagged `music/Wild Is the Wind/` puts a record title
+    /// where a name goes.
     #[test]
     fn a_single_folder_is_the_album_rather_than_the_artist() {
         let dir = temp_dir("one-folder");

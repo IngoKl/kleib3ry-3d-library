@@ -11,20 +11,13 @@ import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
 
 /**
- * The tapes, standing in the crate beside the television.
+ * The tapes in the crate beside the television, printed through the books' atlas
+ * machinery — which is not a shortcut: a cassette is a thin box with a printed
+ * spine and a label on one face, exactly what `spineAtlas` draws. Its own small
+ * grid, though; see the atlas below.
  *
- * Printed through the *books'* atlas machinery, which is not a shortcut: a VHS
- * cassette is a thin box with a printed spine and a big label on one face, and
- * that is precisely the thing `spineAtlas` draws. The title goes up the spine,
- * the series goes where a book's author goes, and the whole crate costs one draw
- * call — the same bargain the shelves make. Its own small grid, though: see the
- * atlas below for what sharing the shelves' eighty-eight cells cost.
- *
- * Arranged the way the records are, and for the same reason: a tape's place in
- * the crate is not a decision worth storing. Every crate in the world takes a
- * slice of the video folder in folder order, so dropping a file into `video/`
- * puts it in the box — and a tape taken out has somewhere to go back to without
- * anything being written down.
+ * Arranged like the records, for the same reason: a tape's place in the crate is
+ * not worth storing, so each crate takes a slice of `video/` in folder order.
  */
 
 /** A VHS cassette, a shade over life size like everything else in here. */
@@ -34,10 +27,7 @@ const DEPTH = 0.129
 const GAP = 0.004
 /** How far the tapes stand off the bottom of the crate. */
 const FLOOR = 0.04
-/**
- * Leaned back, so the spine you have to read tips up towards someone standing
- * over the crate rather than presenting its edge to the ceiling.
- */
+/** Leaned back, so the spine tips towards somebody standing over the crate. */
 const LEAN = -0.14
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0)
 const UP = new THREE.Vector3(0, 1, 0)
@@ -61,9 +51,8 @@ export function Tapes() {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const world = useWorldStore((s) => s.world)
   const tapes = useVideoStore((s) => s.tapes)
-  // Subscribed rather than peeked: the tape in the machine and the tape in your
-  // hand are out of the crate, and their instances have to follow the moment
-  // either changes rather than the next time the crosshair moves.
+  // Subscribed rather than peeked: a tape in the machine or in your hand is out
+  // of the crate, and the instances must follow the moment either changes.
   const playing = useVideoStore((s) => s.playing)
   const heldTape = useAppStore((s) => s.heldTape)
 
@@ -110,9 +99,8 @@ export function Tapes() {
   const capacity = useMemo(() => Math.max(16, blocks * 16), [blocks])
 
   /**
-   * A crate holds a dozen tapes, so it gets a sixteen-cell atlas rather than the
-   * eighty-eight-cell one the shelves use. Same cells, same drawing, one
-   * sixteenth of the texture — and the texture size is what the frame pays.
+   * A dozen tapes gets a sixteen-cell atlas rather than the shelves'
+   * eighty-eight: same drawing, a sixteenth of the texture the frame pays for.
    */
   const atlas = useMemo(() => makeBookAtlas({ columns: 4, rows: 4 }), [])
   const geometry = useMemo(() => makeBookGeometry(), [])
@@ -164,16 +152,14 @@ export function Tapes() {
     matrix.compose(position, quaternion, away ? hidden : scale)
     mesh.setMatrixAt(i, matrix)
 
-    // The printed cell already carries the shell colour, so the instance colour
-    // must stay white or it would tint the label twice. The focused tape lifts
-    // and brightens, which reads as the hand it is about to be in.
+    // The printed cell carries the shell colour, so the instance stays white or
+    // the label is tinted twice. The focused tape lifts and brightens.
     colour.setScalar(1 + amount * 0.3)
     mesh.setColorAt(i, colour)
   }
 
-  // Print every tape. No cell recycling: a crate holds a dozen or two and the
-  // grid holds fifteen, so anything past the grid stays plain plastic rather
-  // than stealing a cell from a tape you can actually see.
+  // No cell recycling: a crate holds a dozen or two and the grid fifteen, so
+  // anything past it stays plain plastic rather than stealing a visible cell.
   useLayoutEffect(() => {
     let rects = geometry.getAttribute('aUvRect') as THREE.InstancedBufferAttribute | undefined
     if (!rects || rects.count !== capacity) {
@@ -190,8 +176,7 @@ export function Tapes() {
           author: item.series,
           colour: item.colour,
           // A cassette spine is narrower than any book's, so the atlas would
-          // shrink the title to nothing; told it is thicker than it is, the
-          // label is printed at a size somebody can read.
+          // shrink the title to nothing. Told it is thicker, it stays readable.
           thickness: 0.024,
           cover: null,
         })
@@ -256,9 +241,8 @@ export function Tapes() {
   })
 
   return (
-    // Receives shadow but does not cast one, like the shelved books: down inside
-    // a crate there is nothing for a cassette's shadow to fall on, and a caster
-    // is geometry the shadow pass has to rasterise whether it is seen or not.
+    // Receives but does not cast, like the shelved books: inside a crate there
+    // is nothing for the shadow to fall on, and a caster still costs the pass.
     <instancedMesh
       key={capacity}
       ref={meshRef}

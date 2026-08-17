@@ -12,15 +12,12 @@ import { useWorldStore } from '../state/world'
 import { coverImageFor, onCoverReady, peekCoverColour, peekCoverImage } from '../state/covers'
 
 /**
- * The books in the moving boxes: everything not yet unpacked, plus whatever an
- * edit displaced. Pointable and takeable, exactly like a shelved book, because
- * putting them away is the whole point of them being visible.
+ * Everything not yet unpacked, plus whatever an edit displaced — pointable and
+ * takeable like a shelved book, because putting them away is the point.
  *
- * They lie in a stack with their **covers up and their spines out**, printed
- * from the same atlas the shelves use — a box of anonymous coloured slabs is
- * something you can only rummage in, and finding the book you want is the thing
- * you are doing here. A box holds more than it can show, so what you see is the
- * top of the pile; browsing moves that slice down through the rest.
+ * They lie covers up and spines out, printed from the shelves' own atlas: a box
+ * of anonymous slabs is something you can only rummage in. A box holds more than
+ * it shows, so you see the top of the pile and browsing moves that slice down.
  */
 const HIGHLIGHT = new THREE.Color('#e6d3a6')
 const WHITE = new THREE.Color('#ffffff')
@@ -28,11 +25,7 @@ const Y_AXIS = new THREE.Vector3(0, 1, 0)
 const Z_AXIS = new THREE.Vector3(0, 0, 1)
 /** How far a focused book lifts out of the pile. */
 const LIFT = 0.03
-/**
- * Laid on its side: the front board turns to face the ceiling and the printed
- * spine ends up along the edge of the stack, which is how a pile of books in a
- * box actually reads.
- */
+/** Front board to the ceiling and printed spine along the edge of the stack. */
 const LAID_FLAT = new THREE.Quaternion().setFromAxisAngle(Z_AXIS, Math.PI / 2)
 
 export function BoxedBooks() {
@@ -54,9 +47,8 @@ export function BoxedBooks() {
   const atlas = useMemo(() => makeBookAtlas(), [])
   useEffect(() => () => atlas.dispose(), [atlas])
 
-  // Rounded up in chunks so the value (and the remount it forces) only changes
-  // when a pile actually outgrows it — a memo keyed on emptiness froze this at
-  // the first non-empty size and hid every book past it.
+  // Rounded up in chunks, so the value — and the remount it forces — only
+  // changes when a pile actually outgrows it.
   const capacity = Math.max(32, Math.ceil((placed.length + 32) / 64) * 64)
 
   const geometry = useMemo(() => {
@@ -114,12 +106,9 @@ export function BoxedBooks() {
   }
 
   /**
-   * Print every book on show, up to the atlas.
-   *
-   * No distance culling and no recycling, unlike the shelves: what a box shows
-   * is a hundred books at most and only changes when you browse or move one, so
-   * the whole visible pile fits the atlas at once and is redrawn when it
-   * changes rather than on a per-frame budget.
+   * No distance culling and no recycling, unlike the shelves: a box shows a
+   * hundred books at most and only changes when you browse or move one, so the
+   * visible pile fits the atlas at once and is redrawn on a change.
    */
   const print = () => {
     const mesh = meshRef.current
@@ -178,9 +167,8 @@ export function BoxedBooks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capacity, placed])
 
-  // Picking a book up (or putting one back) only hides or shows its instance;
-  // repainting the whole box atlas for that was a ~15 MB texture re-upload and
-  // a visible hitch on every grab.
+  // Taking a book only hides its instance; repainting the atlas for that is a
+  // ~15 MB re-upload and a visible hitch on every grab.
   useLayoutEffect(() => {
     const mesh = meshRef.current
     if (!mesh) return
@@ -195,10 +183,9 @@ export function BoxedBooks() {
     if (packing) setBoxViews(packing.views)
   }, [packing, setBoxViews])
 
-  // A cover that finishes loading changes both the board and the binding, so
-  // whatever is on show has to be drawn again — but only for a book actually
-  // on show: a repaint is a full atlas re-upload, and `warmCovers` walks the
-  // whole catalogue while a fresh library is all boxes.
+  // A loaded cover changes the board and the binding, so what is on show is
+  // redrawn — but only that: a repaint is a full re-upload, and `warmCovers`
+  // walks the whole catalogue while a fresh library is all boxes.
   useEffect(() => {
     const listener = (id: string) => {
       if (placed.some((item) => item.id === id)) print()

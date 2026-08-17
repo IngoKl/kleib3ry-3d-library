@@ -22,14 +22,11 @@ import { playOneShot } from '../scene/ambientSound'
 import { approach } from '../lib/ease'
 
 /**
- * Read mode. Three constraints that are easy to break:
- *
- *   - the gutter curl must decay to zero, or the sheet dives through the page
- *     block;
- *   - the turn rotates *negatively* about Y, or the leaf sweeps down through
- *     the table;
- *   - the camera *docks* so the spread fills the viewport — legibility is
- *     capped by screen pixels, not texture resolution.
+ * Read mode. Three constraints that are easy to break: the gutter curl must
+ * decay to zero, or the sheet dives through the page block; the turn rotates
+ * negatively about Y, or the leaf sweeps down through the table; and the camera
+ * docks so the spread fills the viewport, because legibility is capped by
+ * screen pixels rather than texture resolution.
  */
 
 const PAGE_HEIGHT = 0.24
@@ -47,13 +44,9 @@ const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 
 const quantise = (px: number) => Math.max(512, Math.min(4096, Math.round(px / 256) * 256))
 
 /**
- * A leaf in motion.
- *
- * `dragging` means a finger is on it and `progress` comes from the pointer, not
- * from the clock — that is what makes it feel like paper rather than like an
- * animation you triggered. Let go and it settles: to 1 if you carried it far
- * enough or flicked it, back to 0 if you did not, which is how you peek at the
- * next page and change your mind.
+ * A leaf in motion. While `dragging`, `progress` comes from the pointer rather
+ * than the clock, which is what makes it paper instead of an animation you
+ * triggered. Let go and it settles either way, so a half-drag is a peek.
  */
 type Turn = {
   dir: 1 | -1
@@ -64,20 +57,13 @@ type Turn = {
 }
 
 /**
- * How far a bookmark stands out above the top edge of the page.
- *
- * The dock frames the spread exactly — that is what makes the type legible — so
- * anything proud of the page is cropped unless the frame is opened up to admit
- * it. It is therefore paid for only when a book actually has a bookmark in it,
- * rather than costing every book a few per cent of its text size forever.
+ * How far a bookmark stands above the page. The dock frames the spread exactly,
+ * so anything proud of it is cropped unless the frame opens up — which is paid
+ * for only when a book actually has a bookmark in it.
  */
 const RIBBON_PROUD = 0.015
 
-/**
- * How far a note tab stands out of the fore-edge, sideways. Same bargain as
- * the ribbons: the dock only pays for the extra frame width when the open book
- * actually has a note in it.
- */
+/** Sideways out of the fore-edge, on the ribbons' bargain: paid for only when used. */
 const TAB_PROUD = 0.012
 
 /** Fraction of the viewport width a full turn takes. */
@@ -88,23 +74,15 @@ const DRAG_COMMIT = 0.32
 const FLICK_SPEED = 1.1
 
 /**
- * Shared empty list for the bookmark selector.
- *
- * Returning a fresh `[]` from a zustand selector is a re-render on every store
- * touch, which for a component that also writes to the store is an infinite
- * loop. One frozen instance keeps the selector referentially stable.
+ * A fresh `[]` from a zustand selector re-renders on every store touch, which
+ * for a component that also writes is an infinite loop.
  */
 const NO_BOOKMARKS: readonly number[] = Object.freeze([])
 /** Same again for the notes and ink selectors, for the same reason. */
 const NO_NOTES: readonly BookNote[] = Object.freeze([])
 const NO_STROKES: readonly BoardStroke[] = Object.freeze([])
 
-/**
- * Ribbon colours, dealt out in order.
- *
- * From a fixed palette in bookmark order, so the third slip is always the same
- * colour as long as the first two are still in.
- */
+/** Dealt in bookmark order, so the third slip keeps its colour while the first two stay. */
 const RIBBONS = ['#a8384a', '#3f6b8a', '#4b7a4a', '#a87a2e', '#6b4a7a', '#2f6b6b']
 /** The stitched edge of a slip: the same colour, darker. */
 const RIBBON_EDGE = ['#6d2130', '#27455a', '#2f4e2f', '#6d4d18', '#452f4f', '#1c4444']
@@ -144,15 +122,13 @@ export function Reader() {
 
   const turnRef = useRef<Turn | null>(null)
   /**
-   * One keyboard press remembered while a leaf is already in flight, started
-   * the moment that leaf lands — tapping twice to skim two pages must not lose
-   * the second tap. One, not a queue: a third press replaces the second.
+   * One press remembered while a leaf is in flight, so tapping twice skims two
+   * pages. One, not a queue: a third press replaces the second.
    */
   const pendingRef = useRef<1 | -1 | null>(null)
   /**
-   * True while a lift's faces are still rasterising — before `turnRef` exists.
-   * The queue has to see this window too, or a quick second tap on a cold
-   * spread starts a rival load instead of being remembered.
+   * True while a lift's faces rasterise, before `turnRef` exists. The queue must
+   * see this window, or a second tap on a cold spread starts a rival load.
    */
   const armedRef = useRef(false)
   /** `lift`, mirrored out of the input effect so the frame loop can start it. */
@@ -167,10 +143,7 @@ export function Reader() {
   const ribbons = useRef<THREE.Group>(null)
   const noteTabs = useRef<THREE.Group>(null)
 
-  /**
-   * Whether the pen is picked up, mirrored into a ref so the pointer handlers
-   * can read it without re-subscribing.
-   */
+  /** Mirrored into a ref so the pointer handlers read it without re-subscribing. */
   const [pen, setPen] = useState(false)
   const penRef = useRef(pen)
   penRef.current = pen
@@ -239,16 +212,14 @@ export function Reader() {
 
     return () => {
       cancelled = true
-      // Release the reader's hold; a PDF is destroyed once no cover or page
-      // render still shares it. Without this every book ever opened stayed
-      // resident in the pdf.js worker for the life of the app.
+      // Release the reader's hold; the PDF dies once nothing else shares it.
+      // Without this every book ever opened stays in the pdf.js worker.
       live?.close()
     }
   }, [reading, book])
 
-  // Closing the book must also let go of its textures: the component stays
-  // mounted, so without this the last book's full-resolution page cache
-  // survived until a different book was opened.
+  // The component stays mounted, so without this the last book's
+  // full-resolution page cache survives until a different book is opened.
   useEffect(() => {
     if (reading) return
     setDoc(null)
@@ -287,10 +258,9 @@ export function Reader() {
   }, [pages])
 
   /**
-   * Put a spread on the static sheets, but only if both its pages are already
-   * rasterised. Synchronous and all-or-nothing on purpose: this is what the
-   * turn commits through, and a half-applied spread is the flash we are here to
-   * remove.
+   * Put a spread on the static sheets, only if both pages are rasterised.
+   * Synchronous and all-or-nothing: the turn commits through this, and a
+   * half-applied spread is the flash it exists to remove.
    */
   const showSpread = useCallback(
     (s: number) => {
@@ -306,9 +276,8 @@ export function Reader() {
 
       readerStatus.spread = s
       readerStatus.showing = [leftPage(s), rightPage(s)]
-      // Republished here rather than only on open: re-opening the book you are
-      // already on does not re-run the load effect, so the count set there
-      // would be whatever the last reset left behind.
+      // Re-opening the book you are already on does not re-run the load effect,
+      // so a count set only there would be whatever the last reset left.
       readerStatus.pages = doc?.pages ?? readerStatus.pages
       readerStatus.rendered = true
       // Whatever was being sought, this is now what is shown.
@@ -354,16 +323,14 @@ export function Reader() {
     reading ? (s.drawings[reading]?.[rightPage(spread)] ?? NO_STROKES) : NO_STROKES,
   )
   const setProgress = useLibraryStore((s) => s.setProgress)
-  // Spread s shows pages 2s and 2s+1, so the last page lives on spread
-  // floor(N/2) — `ceil(N/2)` undercounted by one for even page counts, which
-  // made the final page unreachable by "go to page".
+  // Spread s shows pages 2s and 2s+1, so the last page is on floor(N/2).
+  // `ceil(N/2)` undercounts for even page counts and strands the final page.
   const spreadCount = doc ? Math.floor(doc.pages / 2) + 1 : 0
 
   /**
-   * A wipe is the one edit that takes ink *off* a page, and the canvas cannot
-   * unpaint — so a shrunken stroke list re-rasterises the page from the source
-   * and the decorate hook repaints what is left. A stroke that lands (the list
-   * grows) was already drawn live and needs nothing.
+   * A wipe is the one edit that takes ink off a page, and a canvas cannot
+   * unpaint — so a shrunken stroke list re-rasterises from the source. A stroke
+   * that lands was already drawn live and needs nothing.
    */
   const inkWatermark = useRef({ spread: -1, left: 0, right: 0 })
   useEffect(() => {
@@ -381,26 +348,20 @@ export function Reader() {
   }, [leftStrokes, rightStrokes, pages, spread, showSpread])
 
   /**
-   * Remember the page, so putting the book down open puts it down *here*.
-   *
-   * Written on every spread change rather than on close, because "close" is
-   * `Esc`, closing the window, or walking away, and only the first of those is
-   * something the reader would get to hear about.
+   * Remember the page, so putting the book down open puts it down here. Written
+   * on every spread change rather than on close, because closing can be `Esc`,
+   * the window going away, or simply walking off.
    */
   useEffect(() => {
-    // Gated on the document being open: before that, `spread` is still the
-    // transient 0 of a mounting reader, and writing it would erase the very
-    // position about to be restored.
+    // Before the document opens, `spread` is a mounting reader's transient 0 —
+    // writing it would erase the position about to be restored.
     if (reading && doc) setProgress(reading, spread)
   }, [reading, doc, spread, setProgress])
 
   /**
-   * Jump to a page somebody typed.
-   *
-   * Deliberately a jump and not a flurry of turns: "go to page 400" means open
-   * it there, the way you would with a thumb, not leaf through two hundred
-   * spreads. Any leaf in flight is put away first, exactly as grabbing a ribbon
-   * does — a turn landing after the jump would undo it.
+   * A jump, not a flurry of turns: "go to page 400" means open it there, the way
+   * a thumb does. Any leaf in flight is put away first, as grabbing a ribbon
+   * does, or a turn landing afterwards would undo it.
    */
   const jumpRequest = useAppStore((s) => s.jumpTo)
   const clearJump = useAppStore((s) => s.requestJump)
@@ -424,11 +385,9 @@ export function Reader() {
     if (!reading) return
 
     /**
-     * Which page is under the pointer, and where on it — raycast against the
-     * two resting sheets themselves and read the hit's texture coordinates.
-     * The uv is exact on the curled part near the gutter, where any flat-plane
-     * substitute puts the ink centimetres from the pointer; and it is already
-     * in page space, the frame the strokes are stored in.
+     * Which page is under the pointer, from the hit's texture coordinates. The
+     * uv stays exact on the curl near the gutter, where a flat-plane substitute
+     * puts the ink centimetres out, and it is already in page space.
      */
     const penCaster = new THREE.Raycaster()
     const penPointer = new THREE.Vector2()
@@ -447,9 +406,8 @@ export function Reader() {
     }
 
     /**
-     * Lift a leaf. `held` starts it under the pointer instead of letting it
-     * fall on its own; either way nothing moves until its two faces have
-     * rasterised, so a leaf never swings blank.
+     * Lift a leaf. `held` starts it under the pointer rather than letting it
+     * fall; either way it waits for both faces, so a leaf never swings blank.
      */
     const lift = (dir: 1 | -1, held: boolean) => {
       if (!doc || !pages || turnRef.current || armedRef.current) return
@@ -478,9 +436,8 @@ export function Reader() {
         sheets.turning.mesh.visible = true
         readerStatus.turning = true
         // A click that ended before the faces rasterised has no pointer on the
-        // leaf any more; installing it as `dragging` would strand a turn the
-        // frame loop never advances and block every turn after it. A finished
-        // click means a turn, so let it fall on its own.
+        // leaf, and `dragging` would strand a turn the frame loop never
+        // advances. A finished click means a turn, so let it fall.
         const dragging = held && drag.current !== null
         turnRef.current = { dir, progress: 0, dragging, target: 1 }
 
@@ -498,9 +455,8 @@ export function Reader() {
       // keystroke in it.
       const app = useAppStore.getState()
       if (app.jumping || app.settingsOpen || app.annotating) return
-      // Held, an arrow key would queue a turn per repeat and `B` would put a
-      // bookmark in and take it out again thirty times a second. A page turn is
-      // a press. (See the note in `Player.tsx`.)
+      // Held, an arrow queues a turn per repeat and `B` flickers a bookmark in
+      // and out thirty times a second. A page turn is a press.
       if (e.repeat) return
 
       if (e.code === 'KeyJ') {
@@ -511,14 +467,12 @@ export function Reader() {
       if (e.code === 'KeyP') {
         e.preventDefault()
         /**
-         * Tear out the page you are looking at — which copies it and leaves the
-         * book exactly as it was. Nothing is removed from anything: the sheet
-         * records which book and which page, and is rasterised from the same
-         * file next time it is drawn. "Tear out" is the gesture, not the effect.
+         * Tear out a page, which copies it and leaves the book as it was: the
+         * sheet records a book and a page number and is rasterised from the same
+         * file. "Tear out" is the gesture, not the effect.
          *
-         * The recto, the right-hand page, because that is the one a hand reaches
-         * for; on the last spread of an odd-paged book there is no recto, so the
-         * verso is what you get.
+         * The recto, because that is the page a hand reaches for — falling back
+         * to the verso on the last spread of an odd-paged book.
          */
         const app = useAppStore.getState()
         // One sheet at a time. Silently replacing the one you were about to pin
@@ -555,8 +509,7 @@ export function Reader() {
       }
       if (e.key === 'ArrowRight' || e.code === 'Space') {
         e.preventDefault()
-        // Mid-turn — or mid-load, before the leaf exists — the press is
-        // remembered rather than swallowed, so tapping twice skims two pages.
+        // Mid-turn or mid-load, the press is remembered rather than swallowed.
         // Keyboard only: a drag is not a queueable wish.
         if (turnRef.current || armedRef.current) pendingRef.current = 1
         else lift(1, false)
@@ -591,9 +544,8 @@ export function Reader() {
       if (jumped) return
 
       if (penRef.current) {
-        // The pen is up: a press on a page starts a line there, and a press
-        // off the pages is nothing — never a turn, or drawing to the edge
-        // would flip the page out from under the stroke.
+        // A press off the pages is nothing, never a turn, or drawing to the
+        // edge would flip the page out from under the stroke.
         const hit = penHit(e)
         if (!hit || !doc || hit.page < 1 || hit.page > doc.pages) return
         startPageStroke(hit.page, hit.u, hit.v)
@@ -611,10 +563,9 @@ export function Reader() {
 
     const onPointerMove = (e: PointerEvent) => {
       if (pageDrawing.page !== null) {
-        // Ink goes straight onto the page's own canvas, a segment at a time,
-        // and the texture re-uploads — the cost of drawing, paid only while
-        // the pen is down. The stroke stays on the page it started on; carry
-        // the pointer off it and the line simply waits for it to come back.
+        // Straight onto the page's canvas a segment at a time, re-uploading the
+        // texture — paid only while the pen is down. A stroke stays on the page
+        // it started on and waits if the pointer leaves.
         const hit = penHit(e)
         if (!hit || !pages || hit.page !== pageDrawing.page) return
         if (extendPageStroke(hit.u, hit.v)) {
@@ -682,10 +633,7 @@ export function Reader() {
     }
   }, [reading, doc, pages, sheets, gl, camera, setReading, setMode, toggleBookmark, drawOnPage])
 
-  /**
-   * Grabbing a ribbon. Raycast in page coordinates rather than screen ones so
-   * the slips stay hittable however the book happens to be posed.
-   */
+  /** Raycast in page coordinates, so the slips stay hittable however the book is posed. */
   const raycaster = useMemo(() => new THREE.Raycaster(), [])
   const pointer = useMemo(() => new THREE.Vector2(), [])
   useEffect(() => {
@@ -753,9 +701,8 @@ export function Reader() {
         Math.sin(Math.PI * turn.progress),
         BOW_AMPLITUDE * turn.dir,
       )
-      // Dropped back: no turn happened, so put the leaf away and leave the
-      // spread alone. This is what makes a half-drag a peek rather than a
-      // commitment.
+      // No turn happened, so put the leaf away and leave the spread alone —
+      // which is what makes a half-drag a peek rather than a commitment.
       if (turn.target === 0 && !turn.dragging && turn.progress <= 0) {
         turnRef.current = null
         sheets.turning.mesh.visible = false
@@ -767,10 +714,9 @@ export function Reader() {
         playOneShot('swish', 0.4)
       }
 
-      // Commit only once the destination is on the GPU, and do it in one frame:
-      // paint the static sheets, then hide the leaf. If the pages are not ready
-      // the leaf simply rests flat — already showing the new left page on its
-      // back face — instead of exposing the spread we just turned away from.
+      // Commit in one frame once the destination is on the GPU: paint the
+      // sheets, then hide the leaf. Unready, the leaf rests flat — already
+      // showing the new left page — rather than exposing the old spread.
       if (turn.target === 1 && turn.progress >= 1) {
         const next = spreadRef.current + turn.dir
         if (showSpread(next)) {
@@ -789,10 +735,8 @@ export function Reader() {
             liftRef.current?.(queued, false)
           }
         } else if (pages) {
-          // The prefetch started these a second ago and `load` deduplicates, so
-          // this normally costs a map lookup. It is here so that waiting can
-          // never become hanging: a leaf must not rest flat forever waiting on
-          // a render nobody asked for.
+          // `load` deduplicates, so this is normally a map lookup. It is here
+          // so a leaf cannot rest flat forever waiting on a render nobody asked for.
           void pages.load(leftPage(next))
           void pages.load(rightPage(next))
         }

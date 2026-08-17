@@ -1,9 +1,6 @@
 import { useAppStore } from '../state/store'
 
-/**
- * Every key the room answers to, on one card. F1 opens and closes it; it does
- * not take the keyboard, so you can read it while you walk.
- */
+/** Every key the room answers to. It does not take the keyboard, so you can walk. */
 
 const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
   {

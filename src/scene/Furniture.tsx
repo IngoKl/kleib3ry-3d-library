@@ -30,18 +30,15 @@ import { makeArcadeScreen } from './arcadeScreen'
 import { PropModel } from './Props'
 
 /**
- * Furniture, built from boxes and cylinders rather than shipped as models: the
- * repo stays text and the proportions stay arguable. Nothing is detailed enough
- * to inspect closely — it reads at the distance you see it from.
+ * Furniture built from boxes and cylinders rather than shipped as models, so the
+ * repo stays text. Nothing reads closer than the distance you see it from.
  *
- * Groups are published to `sceneRefs` rather than raycast as one scene — seats,
- * surfaces, fixtures, boxes, boards — because the crosshair asks a different
- * question of each.
+ * Published to `sceneRefs` as groups — seats, surfaces, fixtures, boxes, boards
+ * — because the crosshair asks a different question of each.
  */
 
-// Moss rather than leather: with the floor, the shelves and the ceiling all in
-// wood, brown seating made the whole room one material. Green is what a cabin
-// puts against timber.
+// Moss rather than leather: with floor, shelves and ceiling all in wood, brown
+// seating makes the whole room one material.
 const CLOTH = '#63705a'
 const CLOTH_DARK = '#525e4b'
 const OAK = '#8a6039'
@@ -60,9 +57,8 @@ const TERRACOTTA = '#9c5a3c'
 // Glazed white with a hint of the room in it. Pure white in a timber cabin reads
 // as a hole rather than as a bath.
 const PORCELAIN = '#e6e4dd'
-// The beige-grey of every television ever sold in 1987, and the dead green a
-// switched-off tube actually is — not black, which is what a dark grey box in a
-// dim room reads as when you get it wrong.
+// The beige-grey of every set sold in 1987, and the dead green a switched-off
+// tube actually is — black reads as a hole in the casing.
 const CASING = '#b9b2a1'
 const CASING_DARK = '#8e887a'
 const TUBE_OFF = '#2b322e'
@@ -74,12 +70,10 @@ const PUTTY = '#c9c2ad'
 const PUTTY_DARK = '#a29a86'
 
 /**
- * A piece's body as one geometry per material rather than a JSX tree of
- * boxes: the FairyLights/Plant/Stairs idiom, shared. An armchair was nine
- * draw calls and is three — the whole map's furniture was most of the frame's
- * draw budget, and merging is what pays for the chamfers and turned legs.
- * Callers build their part lists in a `useMemo` keyed on their dims, so a
- * width prop changing rebuilds and the old geometries go back.
+ * A piece's body as one geometry per material rather than a JSX tree of boxes —
+ * an armchair is three draw calls instead of nine, which is what pays for the
+ * chamfers and turned legs. Callers memoise their part lists on their dims, so
+ * a width change rebuilds and the old geometries are disposed.
  */
 function useMerged<K extends string>(
   lists: Record<K, THREE.BufferGeometry[]>,
@@ -156,11 +150,8 @@ function Sofa({ width }: { width: number }) {
     useMemo(
       () => ({
         cloth: [
-          // The seat and the back stop a centimetre inside the arms rather than
-          // flush with them. Flush puts their side faces in exactly the plane of
-          // the arm's outer face, and two surfaces in one plane shimmer against
-          // each other as you walk past — the arm is what you see from the side,
-          // so this tucks the ends inside it where they cannot fight.
+          // Seat and back stop a centimetre inside the arms: flush puts their
+          // side faces in the plane of the arm's, and coplanar surfaces shimmer.
           chamferBlock(width - 0.02, 0.16, 0.8, 0.02, 0, 0.36, 0),
           rakedBack(width - 0.02, 0.52, 0.16, 0.1, 0, 0.6, -0.32),
           // Two cushions rather than one long slab, which is what makes it a sofa.
@@ -242,9 +233,8 @@ function splayed(w: number, h: number, d: number, tilt: number, x: number, y: nu
 }
 
 /**
- * A folding chair: two splayed frames crossing under a slatted seat, with a
- * low back. Drawn open, always — a folded one would be a different piece of
- * furniture, and what you carry is a preview anyway (see `Handling`).
+ * Two splayed frames crossing under a slatted seat. Always drawn open: a folded
+ * one is a different piece, and what you carry is a preview anyway.
  */
 function FoldingChair() {
   const parts = useMerged(
@@ -282,9 +272,8 @@ function FoldingChair() {
 }
 
 /**
- * A folding table: a slatted top on two trestles. Its top is a surface like any
- * other table's, so a book, a cup or a record set down on it lands on the
- * boards rather than on the grass under them.
+ * A slatted top on two trestles. An ordinary surface, so a book set down on it
+ * lands on the boards rather than the grass under them.
  */
 function FoldingTable({ width, depth, height }: { width: number; depth: number; height: number }) {
   const top = height - 0.03
@@ -414,9 +403,8 @@ function Table({ width, depth, height }: { width: number; depth: number; height:
 }
 
 /**
- * A bed: frame, mattress, duvet and pillows. The headboard is the -Z end, so
- * `facing: 0` points the foot into the room. It is a surface — a book left on
- * the covers is exactly where books end up — and you can sit on the edge.
+ * Frame, mattress, duvet and pillows, headboard at the -Z end so `facing: 0`
+ * points the foot into the room. A surface, and you can sit on the edge.
  */
 function Bed({ width, depth }: { width: number; depth: number }) {
   const parts = useMerged(
@@ -534,10 +522,9 @@ function FloorLamp({ lit }: { lit: boolean }) {
 }
 
 /**
- * A pendant on a flex. Its `y` is the fitting, so it hangs from there down —
- * and `drop` is how far it is back up to the ceiling, because a fixed length of
- * flex ends in mid-air under a cathedral ceiling and comes up through the
- * floorboards of the room above a low one. See `ceilingDrop`.
+ * A pendant on a flex. `y` is the fitting and `drop` the distance back up to the
+ * ceiling: a fixed length ends in mid-air under a cathedral ceiling and comes up
+ * through the boards above a low one. See `ceilingDrop`.
  */
 function Pendant({ lit, drop }: { lit: boolean; drop: number }) {
   // The shade stays its own mesh: `lit` drives its colour and emissive.
@@ -568,10 +555,8 @@ function Pendant({ lit, drop }: { lit: boolean; drop: number }) {
 }
 
 /**
- * A string of bulbs, sagging between its two ends.
- *
- * `size` is [length, sag] and `y` is the height it is strung at. The flex is
- * drawn as short segments following the same catenary the bulbs hang from, so
+ * A string of bulbs sagging between its ends: `size` is [length, sag], `y` the
+ * height it is strung at. The flex follows the same catenary as the bulbs, so
  * the line and the lights cannot drift apart.
  */
 function FairyLights({ width, sag, lit }: { width: number; sag: number; lit: boolean }) {
@@ -579,9 +564,8 @@ function FairyLights({ width, sag, lit }: { width: number; sag: number; lit: boo
   // Normalised -1..1 across the span, so the shape is the same at any length.
   const dip = (t: number) => -sag * (1 - t * t)
 
-  // Two draw calls per string: the flex is one merged geometry and the bulbs
-  // one instanced mesh. Unmerged this is ~36 segment meshes plus one per bulb,
-  // times every string in the map.
+  // Two draw calls per string — merged flex, instanced bulbs. Unmerged it is
+  // ~36 segment meshes plus one per bulb, times every string in the map.
   const flex = useMemo(() => {
     const parts: THREE.BufferGeometry[] = []
     const segments = bulbs * 3
@@ -637,10 +621,7 @@ function FairyLights({ width, sag, lit }: { width: number; sag: number; lit: boo
   )
 }
 
-/**
- * A switch plate. One press works every light in the library, which is what a
- * switch by the door is actually for.
- */
+/** One press works every light in the library, which is what a door switch is for. */
 function LightSwitch({ width, height, allOn }: { width: number; height: number; allOn: boolean }) {
   return (
     <group>
@@ -715,11 +696,8 @@ function Fireplace({ width, height, lit }: { width: number; height: number; lit:
 }
 
 /**
- * A plant: a pot and a fan of leaves.
- *
- * The leaves are merged into one geometry rather than left as seven cones.
- * Nothing here moves relative to anything else, and seven draw calls apiece
- * across a cabin's worth of greenery is more than the greenery is worth.
+ * A pot and a fan of leaves, merged into one geometry: nothing moves relative to
+ * anything else, and seven draw calls apiece is more than greenery is worth.
  */
 function Plant({ height }: { height: number }) {
   const potHeight = Math.min(0.3, height * 0.32)
@@ -809,9 +787,8 @@ function KitchenCounter({ width, depth, height }: { width: number; depth: number
 }
 
 /**
- * A bath: a tub with a rim you can sit on and leave a book on, and a mixer at
- * the head end. The water is a plane a hair under the rim rather than a volume —
- * from anywhere you stand, a bath is its surface.
+ * A tub with a rim you can sit on and leave a book on. The water is a plane just
+ * under the rim rather than a volume: from anywhere you stand, a bath is its surface.
  */
 function Bathtub({ width, depth, height }: { width: number; depth: number; height: number }) {
   const parts = useMerged(
@@ -906,13 +883,9 @@ function Basin({ width, depth, height }: { width: number; depth: number; height:
 }
 
 /**
- * A wall clock, telling the machine's own time.
- *
- * The hands are turned in a frame loop rather than re-rendered: a clock that
- * re-rendered React sixty times a second to move a minute hand would be the most
- * expensive ornament in the building. The seconds are read from the system clock
- * every frame and the hands are set from that, so it stays right after a pause,
- * a tab switch or a laptop lid.
+ * A wall clock on the machine's own time. The hands turn in a frame loop rather
+ * than through React, and are set from the system clock each frame, so it stays
+ * right across a pause, a tab switch or a laptop lid.
  */
 function Clock({ size }: { size: number }) {
   const hour = useRef<THREE.Group>(null)
@@ -1187,21 +1160,16 @@ function Bin({ width, height }: { width: number; height: number }) {
   )
 }
 
-// The headlamp's home spot renders the same lying lamp a placed prop does —
-// see `HeadlampAtRest` in Props.tsx. There is one lamp: on your head, standing
-// somewhere as a prop, or here, and the home only draws it in the third case.
+// There is one headlamp — on your head, placed as a prop, or at its home spot —
+// and the home only draws it in the third case. See `HeadlampAtRest`.
 
 /**
- * A hinged door leaf, standing in a doorway. `E` swings it — the angle is
- * eased here, per frame, because a door that snaps between its two states
- * reads as a texture flipping — and whether it is open is remembered in
- * `ambience.json` with the lamps, because which doors stand open is a fact
- * about the room, not about this machine. A closed one blocks the doorway:
- * the walk controller adds that collider itself, off the same bit.
+ * A hinged leaf in a doorway. `E` swings it, eased per frame because a door that
+ * snaps between states reads as a texture flipping; whether it stands open is a
+ * fact about the room, so it lives in `ambience.json`.
  *
- * `width` and `height` are the *doorway* — see `doorwayOf`. Post and leaf are
- * cut to fill it, because a leaf sized on its own leaves daylight down its
- * leading edge and over its head.
+ * `width` and `height` are the doorway's — see `doorwayOf` — because a leaf
+ * sized on its own leaves daylight down its edge and over its head.
  */
 function DoorLeaf({ width, height, open }: { width: number; height: number; open: boolean }) {
   const swing = useRef<THREE.Group>(null)
@@ -1435,9 +1403,8 @@ const SPIN_UP = PLATTER_SPEED / 0.5
 const COAST_DOWN = PLATTER_SPEED / 1.5
 
 /**
- * The deck. A plinth, a platter, an arm — and, when a record is on, its disc
- * on the platter and its sleeve leaning against the plinth, so the record you
- * carried over is visibly the one playing.
+ * A plinth, a platter and an arm — plus, while a record is on, its disc and its
+ * sleeve, so the one you carried over is visibly the one playing.
  */
 function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: string | null }) {
   const platter = useRef<THREE.Group>(null)
@@ -1452,9 +1419,8 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
   useEffect(() => () => sleeve?.dispose(), [sleeve])
   const loaded = playing !== null
 
-  // The motor ramps rather than steps: pulled up to 33 1/3 quickly, and
-  // carried down by the platter's own weight; the arm swings at a hand's pace.
-  // On the scene's own clock, like everything else that moves.
+  // The motor ramps rather than steps — up to 33 1/3 quickly, down on the
+  // platter's own weight — and the arm swings at a hand's pace.
   useFrame((_, rawDelta) => {
     const dt = Math.min(rawDelta, 1 / 20)
     const speedTo = spinning ? PLATTER_SPEED : 0
@@ -1548,12 +1514,10 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
 }
 
 /**
- * Artwork is anything somebody drops in a folder, which includes photographs
- * far larger than a GPU texture is allowed to be — and an oversized upload
- * fails silently, leaving a black canvas in the frame. So the image is decoded
- * and redrawn into a capped canvas rather than handed to the GPU raw; at frame
- * size on a wall, a couple of thousand pixels is already more than the screen
- * will ever show of it.
+ * Artwork is whatever somebody drops in a folder, including photographs larger
+ * than a GPU texture may be — and an oversized upload fails silently, leaving a
+ * black frame. Decoded into a capped canvas instead; at frame size on a wall,
+ * a couple of thousand pixels is more than the screen will ever show.
  */
 const ARTWORK_MAX_PX = 2048
 
@@ -1666,11 +1630,9 @@ function MovingBox({ width, depth }: { width: number; depth: number }) {
 }
 
 /**
- * Flattened moving boxes leaning against the wall, waiting to be made up.
- *
- * The spares live in the kitchen: E takes one into your arms and X stands it
- * up wherever you are — see `spawnBox`. A lean of a few degrees each, slightly
- * disagreeing, is what says "stack of cardboard" rather than "panel".
+ * Flattened boxes waiting to be made up: E takes one, X stands it up wherever
+ * you are. A few degrees of lean each, slightly disagreeing, is what says
+ * "stack of cardboard" rather than "panel".
  */
 function BoxStack({ width, depth, height }: { width: number; depth: number; height: number }) {
   const parts = useMerged(
@@ -1711,21 +1673,17 @@ function BoxStack({ width, depth, height }: { width: number; depth: number; heig
 }
 
 /**
- * A flight of stairs, as actual treads.
- *
- * The ramp the walk controller climbs is continuous — see `floorAt` — while
- * what you see is steps, which is the usual and entirely acceptable lie. The
- * rise per tread is chosen so that a flight of any height gets treads of about
- * 18 cm, which is what a staircase looks like.
+ * A flight as actual treads. The ramp the walk controller climbs is continuous
+ * — see `floorAt` — which is the usual acceptable lie. Tread count is chosen to
+ * keep the rise near 18 cm at any height, which is what a staircase looks like.
  */
 function Stairs({ width, run, rise }: { width: number; run: number; rise: number }) {
   const steps = Math.max(2, Math.round(rise / 0.18))
   const treadDepth = run / steps
   const stepRise = rise / steps
 
-  // A dozen treads and two dozen stringer pieces, as two geometries. Built once
-  // per flight: a staircase is the most box-heavy thing in the room and none of
-  // it moves.
+  // A dozen treads and two dozen stringer pieces as two geometries, built once:
+  // a staircase is the most box-heavy thing in the room and none of it moves.
   const [treads, stringers] = useMemo(() => {
     const box = block
     const tread: THREE.BufferGeometry[] = []
@@ -1733,9 +1691,8 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
     for (let i = 0; i < steps; i++) {
       const z = -run / 2 + treadDepth * (i + 0.5)
       tread.push(box(width, stepRise, treadDepth, 0, stepRise * (i + 0.5), z))
-      // A stringer stepped with the treads rather than run as one slab: a
-      // full-height box beside a staircase is a wall, and looks exactly like
-      // one from the landing.
+      // Stepped with the treads rather than one slab: a full-height box beside
+      // a staircase is a wall, and looks like one from the landing.
       for (const hand of [-1, 1]) {
         side.push(
           box(
@@ -1779,11 +1736,8 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
 }
 
 /**
- * A desk: a top, a modesty panel, and a bank of drawers under one end.
- *
- * Deeper and a shade higher than the dining table it would otherwise be, because
- * a desk is somewhere you spread a book open and leave it — which is also why it
- * is a `surface` and the dining chairs are not.
+ * A top, a modesty panel and a bank of drawers. Deeper and higher than a dining
+ * table, because a desk is somewhere you spread a book open and leave it.
  */
 function Desk({ width, depth, height }: { width: number; depth: number; height: number }) {
   const parts = useMerged(
@@ -1836,19 +1790,13 @@ function Desk({ width, depth, height }: { width: number; depth: number; height: 
 }
 
 /**
- * A whiteboard. Aluminium frame, a pen tray, and a face you can pin to and draw
- * on.
+ * An aluminium frame, a pen tray, and a face you can pin to and draw on. Hung
+ * like a picture, and published to `sceneRefs.boards` so the crosshair offers it
+ * both to a torn-out page and to the marker.
  *
- * Hung like a picture — `size` is width by height and `y` is the centre of the
- * board — because that is how anybody hanging one thinks about it. What makes it
- * more than a white picture is that it is published to `sceneRefs.boards`, so the
- * crosshair offers it both as somewhere a torn-out page can go and as somewhere
- * the marker will write.
- *
- * The face carries a canvas painted from the saved strokes. Repainting the whole
- * list happens on an *edit* — a stroke finished, a board wiped, a library loaded
- * — while the line under your hand is extended a segment at a time; see `board.ts`
- * for why the live stroke is not in a store.
+ * The face carries a canvas painted from the saved strokes. The whole list is
+ * repainted on an edit; the line under your hand is extended a segment at a
+ * time — see `board.ts` for why the live stroke is not in a store.
  */
 function Whiteboard({ id, width, height }: { id: string; width: number; height: number }) {
   const frame = 0.03
@@ -1859,8 +1807,7 @@ function Whiteboard({ id, width, height }: { id: string; width: number; height: 
   useLayoutEffect(() => painter.repaint(strokes ?? []), [painter, strokes])
 
   // The live stroke gains points outside React, so the only way to notice is to
-  // look. One integer compared per frame per board, against a hand that is not
-  // usually holding a marker at all.
+  // look: one integer compared per frame per board.
   const seen = useRef(drawing.revision)
   useFrame(() => {
     if (drawing.revision === seen.current) return
@@ -1935,17 +1882,11 @@ function TapeCrate({ width, depth, height }: { width: number; depth: number; hei
 }
 
 /**
- * The television: a portable colour set, which is to say a heavy one.
- *
- * The screen is the only interesting part. When a tape is running it carries a
- * `VideoTexture` over the one `<video>` element `state/video.ts` owns, so the
- * picture is the tape rather than a decoration; the rest of the time it is the
- * dead green a tube actually is, with a soft scanline wash over it so a set that
- * is off still reads as glass rather than as a hole in the casing.
- *
- * The texture is created here rather than in the store because the store has no
- * business knowing about three; the element is a singleton, so this is the one
- * place that needs to dispose of anything.
+ * A portable colour set, which is to say a heavy one. The screen carries a
+ * `VideoTexture` over the single `<video>` element `state/video.ts` owns while a
+ * tape runs, and otherwise a dead green with a scanline wash, so an off set
+ * still reads as glass. The texture is built here because the store has no
+ * business knowing about three.
  */
 function Crt({
   width,
@@ -1961,18 +1902,15 @@ function Crt({
   const screenW = width * 0.78
   const screenH = height * 0.72
 
-  // The store flips `playing` on the keypress, a beat before the element has
-  // decoded anything — and a VideoTexture with no frame draws black. The glass
-  // stays its dead green until the store says this tape's first frame arrived.
+  // `playing` flips on the keypress, before the element has decoded anything,
+  // and a VideoTexture with no frame draws black.
   const ready = useVideoStore((s) => s.ready)
 
   const picture = useMemo(() => {
     if (!playing) return null
     const texture = new THREE.VideoTexture(videoElement())
     texture.colorSpace = THREE.SRGBColorSpace
-    // A tube's picture does not tile, and a tape's aspect is whatever it is:
-    // clamped and stretched to the glass, which is what a 4:3 set did to
-    // everything anyway.
+    // Clamped and stretched to the glass, which is what a 4:3 set did anyway.
     texture.wrapS = THREE.ClampToEdgeWrapping
     texture.wrapT = THREE.ClampToEdgeWrapping
     return texture
@@ -2047,17 +1985,11 @@ function Crt({
 }
 
 /**
- * The arcade cabinet: an upright box of painted chipboard with a tube in it.
- *
- * The screen is a `CanvasTexture` exactly one texel per CHIP-8 pixel — see
- * `arcadeScreen.ts` — painted here per frame while a cartridge is in, because
- * the machine itself is stepped elsewhere (`Arcade.tsx`) and this component
- * only shows it. Painting an 8 KB texture per frame is nothing; the keyed
- * material is the same trap-avoidance the television's glass does.
- *
- * No point light, deliberately: the marquee and the glass glow with emissive
- * materials instead, because a light is a standing charge on every lit
- * fragment in the room — the rule `CrtGlow` follows.
+ * An upright box of painted chipboard with a tube in it. The screen is a
+ * `CanvasTexture` at one texel per CHIP-8 pixel, repainted per frame while a
+ * cartridge is in — 8 KB a frame is nothing — while `Arcade.tsx` steps the
+ * machine. No point light: the marquee and glass are emissive instead, because
+ * a light is a standing charge on every lit fragment in the room.
  */
 function ArcadeCabinet({
   width,
@@ -2081,9 +2013,8 @@ function ArcadeCabinet({
     if (!running) return
     const machine = arcadeMachine()
     screen.paint(machine)
-    // A crash reads from across the room: the marquee drops to a glimmer and
-    // the tube greys behind the last frame it drew. Read per frame because
-    // `halted` lives on the machine, outside any store.
+    // A crash reads from across the room. Per frame because `halted` lives on
+    // the machine, outside any store.
     const halted = machine?.halted ?? false
     if (marquee.current) marquee.current.emissiveIntensity = halted ? 0.12 : 0.9
     if (glass.current) glass.current.color.setScalar(halted ? 0.3 : 1)
@@ -2095,9 +2026,8 @@ function ArcadeCabinet({
   const trim = '#4a3226'
   const cream = '#d8cdb4'
   const deckY = height * 0.58
-  // The head unit sits back a little on the base; everything mounted on its
-  // face — marquee, bezel, glass — must stand *proud* of this or it is
-  // swallowed by the box, which is how the screen's top half went missing.
+  // The head unit sits back on the base, so marquee, bezel and glass must stand
+  // proud of this or the box swallows them.
   const headFront = depth * 0.26
 
   return (
@@ -2206,11 +2136,9 @@ const SHELL_SLOTS: [number, number][] = [
 ]
 
 /**
- * The crate of cartridges beside the cabinet. One shell per ROM the folder
- * actually holds — minus the one in your hand or in the machine — but they are
- * anonymous: a crate of a handful of games does not earn a third atlas, so the
- * HUD names what you took. Same argument the tape crate's own small grid
- * makes, taken one step further down.
+ * One shell per ROM in the folder, minus the one in your hand or the machine.
+ * Anonymous: a handful of games does not earn a third atlas, so the HUD names
+ * what you took.
  */
 function RomBox({ width, depth, height }: { width: number; depth: number; height: number }) {
   const inCrate = useArcadeStore((s) => s.roms.length - (s.inserted !== null ? 1 : 0))
@@ -2260,11 +2188,8 @@ function RomBox({ width, depth, height }: { width: number; depth: number; height
 }
 
 /**
- * The catalogue terminal: a monitor on a box, with a keyboard in front of it.
- *
- * What it does lives in the HUD: a search you type has to be readable, and a
- * canvas texture on a 40 cm screen across a desk is not. This is the thing you
- * walk up to.
+ * A monitor on a box, with a keyboard. What it does lives in the HUD — a search
+ * you type has to be readable, and a canvas texture across a desk is not.
  */
 function Computer({ width, depth, height, awake }: { width: number; depth: number; height: number; awake: boolean }) {
   const screenW = width * 0.62
@@ -2318,12 +2243,8 @@ function Computer({ width, depth, height, awake }: { width: number; depth: numbe
 }
 
 /**
- * A pad of notes, on a desk.
- *
- * Sheets rather than a block: the top one is a hair proud of the rest and every
- * sheet under it is offset by a fraction of a millimetre, because a pad you can
- * see the leaves of is the difference between "a stack of paper" and "a yellow
- * cube". Taking one is `E`, which opens the field you write on it.
+ * Sheets rather than a block, each offset a fraction of a millimetre: a pad you
+ * can see the leaves of is the difference from a yellow cube. `E` takes one.
  */
 function PostIts({ width, depth }: { width: number; depth: number }) {
   const parts = useMerged(
@@ -2356,12 +2277,9 @@ function PostIts({ width, depth }: { width: number; depth: number }) {
 }
 
 /**
- * Two treads hanging off the edge of a deck.
- *
- * Not solid, and not a `stairs`: the drop from the decking to the ground is 24 cm,
- * which is inside the step the walk controller takes unaided, so there is no ramp
- * to build. This exists so the place you walk down looks like a place to walk
- * down. It hangs *below* its own origin, which is the top of the deck.
+ * Two treads hanging off a deck. Neither solid nor a `stairs`: the 24 cm drop is
+ * inside what the walk controller takes unaided, so this only makes the place
+ * you walk down look like one. It hangs below its origin, the top of the deck.
  */
 function Step({ width, depth, height }: { width: number; depth: number; height: number }) {
   const parts = useMerged(
@@ -2381,10 +2299,8 @@ function Step({ width, depth, height }: { width: number; depth: number; height: 
 }
 
 /**
- * Whether anything in the library is lit, for the switch plates to show.
- *
- * Only asked when there is a switch on screen: it walks every lamp in the
- * building, and no other piece of furniture cares.
+ * Whether anything in the library is lit, for the switch plates. Only asked when
+ * a switch is on screen: it walks every lamp in the building.
  */
 function useAnyLightOn(wanted: boolean): boolean {
   const lamps = useWorldStore((s) => s.world?.lights)
@@ -2394,12 +2310,9 @@ function useAnyLightOn(wanted: boolean): boolean {
 }
 
 /**
- * The doorway a leaf is standing in, as [width, height].
- *
- * The document sizes a leaf by hand and gets it a few centimetres small, which
- * is daylight round two of its edges; the hole is the only honest source for
- * how big a door is. Matched by position, because a doorway is where the piece
- * was put. Its own `size` stays what the collider is cut from — see `walk.ts`.
+ * The doorway a leaf stands in, as [width, height]. A hand-sized leaf is always a
+ * few centimetres small, which is daylight round its edges, so the hole is the
+ * only honest source. Its own `size` still cuts the collider — see `walk.ts`.
  */
 function doorwayOf(world: DerivedWorld, item: DerivedFurniture): [number, number] | null {
   const room = world.rooms.find((spec) => spec.id === item.roomId)
@@ -2413,12 +2326,9 @@ function doorwayOf(world: DerivedWorld, item: DerivedFurniture): [number, number
 }
 
 /**
- * How far it is from a fitting up to whatever is over it.
- *
- * Usually the room's own ceiling — but a room can be under another room, and
- * the great room's is 4.8 m up while the hearth pendant hangs under the loft
- * floor at 2.28. So the nearest slab overhead wins, or a flex either stops in
- * mid-air or comes up through the boards of the room above.
+ * How far it is from a fitting up to whatever is over it. The nearest slab wins,
+ * not the room's ceiling: under a loft, a flex measured to the ceiling either
+ * stops in mid-air or comes up through the boards above.
  */
 function ceilingDrop(world: DerivedWorld, item: DerivedFurniture): number {
   const room = world.rooms.find((spec) => spec.id === item.roomId)
@@ -2467,9 +2377,8 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
   )
   const ink = useAppStore((s) => (item.kind === 'marker' ? s.markerInk : 0))
   const allOn = useAnyLightOn(item.kind === 'lightswitch')
-  // How big the doorway is and how far it is up to the ceiling are facts about
-  // the *room*, not about the piece, so they are looked up here rather than
-  // inside bodies that know nothing but their own dimensions.
+  // Doorway size and ceiling drop are facts about the room, so they are looked
+  // up here rather than inside bodies that know only their own dimensions.
   const world = useWorldStore((s) => s.world)
   const doorway = useMemo(
     () => (item.kind === 'door' && world ? doorwayOf(world, item) : null),
@@ -2598,12 +2507,9 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
     }
   })()
 
-  // `item.y` is the base of every piece, but a picture and a whiteboard are
-  // modelled about their centres — which is the only way to draw a frame — so
-  // the two hung kinds are lifted by half their height. Done here rather than in
-  // each body so the next thing hung on a wall cannot get it wrong: without it
-  // the board's own `y` of 1.5 m put its centre at 0.9 and its pen tray at knee
-  // height.
+  // `item.y` is a piece's base, but the hung kinds are modelled about their
+  // centres — the only way to draw a frame — so they are lifted by half their
+  // height here, where the next thing hung on a wall cannot get it wrong.
   const lift = WALL_MOUNTED.has(item.kind) ? item.height / 2 : 0
 
   return (
@@ -2644,9 +2550,8 @@ export function Furniture() {
   }, [world, artwork])
 
   /**
-   * Which picture hangs in which frame. A frame with a `source` names its file;
-   * the rest are dealt out of `artwork/` in document order, so two frames in a
-   * room do not show the same print.
+   * Which picture hangs in which frame. A `source` names its file; the rest are
+   * dealt out of `artwork/` in order, so two frames never show the same print.
    */
   const sources = useMemo(() => {
     if (!world) return new Map<string, string>()
@@ -2729,22 +2634,10 @@ export function Furniture() {
 }
 
 /**
- * The lights, separate from the furniture that carries them: a `pointLight`
- * inside `Piece` would be remounted on every unrelated re-render, and three
- * re-allocates a shadow map when that happens.
- *
- * A lamp that is off stays in the scene with no intensity. The light count is
- * baked into every shader three compiles, so unmounting one recompiles the whole
- * cabin mid-frame.
- */
-/**
  * What is left of the room's lighting once the lamps moved into the pool: the
  * television's glow, which is not a lamp and is mounted only while a tape runs.
- *
- * The lamps themselves are candidates now rather than lights — see
- * [lightPool.ts](./lightPool.ts). The rule they were mounted for still holds
- * (every point light is a term every lit fragment pays for, even at zero
- * intensity); the pool is how a building keeps forty lamps and pays for eight.
+ * The lamps are pool candidates rather than lights — see `lightPool.ts` — since
+ * every point light is a term every lit fragment pays for, even at zero.
  */
 export function FurnitureLights() {
   const world = useWorldStore((s) => s.world)
@@ -2753,24 +2646,17 @@ export function FurnitureLights() {
 }
 
 /**
- * The cold light a running television throws into the room.
- *
- * A point light hung just in front of the glass, unsteady the way a picture is
- * — the flicker is two incommensurate sines, which never repeat obviously and
- * cost nothing. Mounted only while a tape is *in* the machine, unlike the
- * lamps: every point light in the scene is a term every lit fragment pays for
- * even at zero intensity, which the software rasteriser the tests run on
- * cannot afford as a standing charge. Inserting a tape recompiles the shaders
- * once, behind the far larger cost of the video element spinning up; pause
- * only zeroes the intensity, so leaning on space never recompiles anything.
+ * The cold light a running television throws, flickering on two incommensurate
+ * sines so it never obviously repeats. Mounted only while a tape is in the
+ * machine, because a point light costs every lit fragment even at zero
+ * intensity; pause only zeroes it, so leaning on space recompiles nothing.
  */
 function CrtGlows({ world }: { world: { furniture: DerivedFurniture[] } }) {
   const loaded = useVideoStore((s) => s.playing !== null)
   const crtId = useVideoStore((s) => s.crt)
   if (!loaded) return null
-  // Only the set the tape is in glows; the others are dark glass. The first
-  // set stands in when nothing recorded which one (a tape started before the
-  // id was tracked), matching `sourceOf` in Sound.
+  // Only the set the tape is in glows. The first stands in when nothing
+  // recorded which one, matching `sourceOf` in Sound.
   const sets = world.furniture.filter((item) => item.kind === 'crt')
   const lit = sets.find((item) => item.id === crtId) ?? sets[0]
   return lit ? <CrtGlow key={lit.id} item={lit} /> : null

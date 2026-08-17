@@ -3,14 +3,10 @@ import { inkAt } from '../data/inks'
 import type { BoardStroke } from '../services/types'
 
 /**
- * What is drawn on the whiteboards.
- *
- * Strokes are stored in board space — `u` across, `v` up, both 0 to 1 — so a
- * board resized in `library.json` keeps its drawing and the canvas resolution
- * stays a rendering decision.
- *
- * The live stroke is a plain mutable object rather than store state: it gains a
- * point per frame, and it is committed to the layout once, when you let go.
+ * What is drawn on the whiteboards. Strokes are in board space — `u` across, `v`
+ * up, 0 to 1 — so a resized board keeps its drawing and canvas resolution stays
+ * a rendering decision. The live stroke is a plain mutable object: it gains a
+ * point per frame and lands in the layout once, when you let go.
  */
 
 /** Line width, as a fraction of the board's height. */

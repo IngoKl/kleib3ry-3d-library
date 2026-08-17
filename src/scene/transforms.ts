@@ -5,10 +5,8 @@ import { useMemo } from 'react'
 
 /**
  * World transform of every bookcase, and the direction out of its open face.
- *
- * Derived from the world document and shared by everything that has to place
- * something relative to a shelf — the instanced books, the spine labels, the
- * placement ghost, the crosshair. One source, so a shelf cannot be in two places.
+ * Shared by everything that places something relative to a shelf, so a shelf
+ * cannot be in two places.
  */
 export type ShelfTransform = {
   quaternion: THREE.Quaternion
@@ -24,10 +22,8 @@ export function shelfTransforms(world: DerivedWorld): ShelfTransform[] {
     const quaternion = new THREE.Quaternion().setFromAxisAngle(Y_AXIS, shelf.rotationY)
     return {
       quaternion,
-      // `shelf.y` is the floor the case stands on, which is 0 for every room
-      // until a library has a loft — and everything that places something
-      // against a shelf goes through this matrix, so it only has to be right
-      // in one place.
+      // `shelf.y` is the floor the case stands on. Everything placed against a
+      // shelf goes through this matrix, so it only has to be right here.
       matrix: new THREE.Matrix4().compose(
         new THREE.Vector3(shelf.x, shelf.y, shelf.z),
         quaternion,

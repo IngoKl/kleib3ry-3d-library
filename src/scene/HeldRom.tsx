@@ -8,11 +8,8 @@ import { useArcadeStore } from '../state/arcade'
 import type { IndexedRom } from '../services/types'
 
 /**
- * The label on the cartridge in your hand.
- *
- * The shells in the crate are anonymous dressing, so this is the only place a
- * ROM's title is ever printed on plastic — which is exactly why it gets a
- * full-resolution canvas, the same reasoning as the tape in hand.
+ * The shells in the crate are anonymous, so this is the only place a ROM's title
+ * is printed on plastic — hence a full-resolution canvas, like the tape in hand.
  */
 function labelTexture(rom: IndexedRom): THREE.CanvasTexture {
   const width = 384

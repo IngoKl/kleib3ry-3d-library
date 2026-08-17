@@ -11,7 +11,7 @@ folder, and the save files live in it (see
 
 ```bash
 docker build -t kleib3ry .
-docker run --rm -p 8080:8080 -v /path/to/your/library:/library kleib3ry
+docker run --rm -p 127.0.0.1:8080:8080 -v /path/to/your/library:/library kleib3ry
 ```
 
 Then open <http://localhost:8080>. On a fresh library folder, open the panel and
@@ -21,7 +21,7 @@ reads it.
 No library of your own to hand? The repository carries a small real one:
 
 ```bash
-docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
+docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
 ```
 
 With compose:

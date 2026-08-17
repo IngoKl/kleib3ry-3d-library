@@ -2,21 +2,15 @@ import { deliverySpot, type DerivedWorld } from '../world/derive'
 import { terrainAt } from '../world/terrain'
 
 /**
- * What he is carrying: a takeaway, or a book — a paper you ordered off arXiv,
- * which is delivered exactly the way the food is, because a delivery is a
- * delivery. The id is the book's; the title is only for the card that says
- * what is on its way.
+ * A takeaway, or a paper off arXiv delivered exactly the way the food is. The
+ * title is only for the card that says what is on its way.
  */
 export type Parcel = { kind: 'takeaway' } | { kind: 'book'; id: string; title: string }
 
 /**
- * The delivery courier: somebody who walks out of the trees with your food or
- * your reading, puts it down at the foot of the porch steps, and walks away
- * again.
- *
- * A plain mutable object outside zustand, like the player and the cat — he
- * moves every frame while he is about, and must not trigger React renders
- * doing it. `Courier.tsx` is the only writer once a delivery has started.
+ * Somebody who walks out of the trees, puts your food or your reading down at
+ * the porch steps, and leaves. A plain mutable object outside zustand, like the
+ * player and the cat: he moves every frame and must not re-render React.
  */
 export const courier = {
   active: false,
@@ -44,15 +38,12 @@ export const courier = {
 const APPROACH = 20
 
 /**
- * The way in with the fewest trunks across it. He has no pathfinding — the
- * same deliberate poverty as the cat — so the best that can be done is to
- * pick, once, a straight lane that mostly misses the forest, and let the odd
- * branch brush past him.
+ * The way in with the fewest trunks across it. He has no pathfinding — the cat's
+ * deliberate poverty — so this picks one straight lane that mostly misses.
  */
 function clearestWay(world: DerivedWorld, spot: { x: number; z: number; yaw: number }): number {
-  // `spot.yaw` faces the *box* back at the house; the lane out of the trees
-  // runs the other way. Getting this backwards had him walking in through the
-  // building, which is a horror film, not a delivery.
+  // `spot.yaw` faces the box back at the house, so the lane runs the other way.
+  // Backwards, he walks in through the building.
   const outward = spot.yaw + Math.PI
   let best = outward
   let bestScore = Infinity

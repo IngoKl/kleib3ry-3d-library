@@ -1,6 +1,6 @@
 /**
  * The only seam between the app and the filesystem. Nothing above
- * `src/services/` may import `@tauri-apps/*` — swapping the driver is what lets
+ * `src/services/` may import `@tauri-apps/*`: swapping the driver is what lets
  * hosted mode exist without changes above this layer.
  */
 
@@ -28,10 +28,7 @@ export type ScanSummary = {
   failed: number
 }
 
-/**
- * Which book sits where. Stored verbatim by Rust — the front end owns this
- * schema. Written by the app, not by hand.
- */
+/** Which book sits where. Stored verbatim by Rust; the front end owns this schema. */
 export type LayoutDocument = {
   rows: Record<string, string[]>
   /** Box furniture id -> the books in that moving box, bottom of the pile first. */
@@ -42,10 +39,7 @@ export type LayoutDocument = {
   loose?: Record<string, LoosePlacement>
   /** Where you have shoved the moving boxes, by furniture id. */
   furniture?: Record<string, { at: [number, number]; facing: number; elevation?: number }>
-  /**
-   * Boxes made up off the kitchen stack: id -> which room's frame the position
-   * is written in, and where. The app's own boxes, never `library.json`'s.
-   */
+  /** Boxes made off the kitchen stack, with the room whose frame `at` is in. */
   spawnedBoxes?: Record<
     string,
     { room: string; at: [number, number]; facing: number; elevation?: number }
@@ -65,11 +59,9 @@ export type LayoutDocument = {
 }
 
 /**
- * A small carryable thing. `full` is the only state any of them has.
- *
- * Exactly one `cup` and one `headlamp` exist; the headlamp is stored only while
- * off your head (worn is session state). Cans and takeaway boxes are minted on
- * arrival and destroyed by the bin.
+ * A small carryable thing; `full` is its only state. There is one `cup` and one
+ * `headlamp` — the latter stored only while off your head — while cans and
+ * takeaway boxes are minted on arrival and destroyed by the bin.
  */
 export type PropKind = 'cup' | 'can' | 'takeaway' | 'headlamp'
 
@@ -83,10 +75,7 @@ export type PlacedProp = {
   yaw: number
 }
 
-/**
- * One line drawn on a whiteboard. Points are in board space — `u` across, `v`
- * up, both 0 to 1 — so a resized board keeps its drawing.
- */
+/** Points in board space — `u` across, `v` up, 0 to 1 — so a resize keeps the drawing. */
 export type BoardStroke = {
   /** Which pen, as an index into the marker inks. */
   ink: number
@@ -94,11 +83,7 @@ export type BoardStroke = {
   points: number[]
 }
 
-/**
- * Only the records that have been moved. Untouched records are dealt into
- * crates from `music/` folder order (see `Records.tsx`), so this is usually
- * empty.
- */
+/** Only records that have been moved; the rest are dealt from `music/` folder order. */
 export type RecordLayout = {
   /** Track id -> the crate you filed it in, when that is not where it was dealt. */
   filed?: Record<string, string>
@@ -110,12 +95,9 @@ export type RecordLayout = {
 export type RecordPlacement = { x: number; y: number; z: number; yaw: number }
 
 /**
- * A sheet stuck to a wall: a page copied out of a book, or a note.
- *
- * A page is a copy — it records which book and page number, and the book keeps
- * its own page. World coordinates rather than a wall id, so deleting a wall
- * leaves the sheet where it was instead of teleporting it to whichever wall
- * inherited the id.
+ * A page copied out of a book, or a note. World coordinates rather than a wall
+ * id, so deleting a wall leaves the sheet where it was instead of teleporting it
+ * to whichever wall inherited the id.
  */
 export type PinnedSheet = {
   /** Unique within a library. Generated when the sheet is made. */
@@ -138,9 +120,8 @@ export type PinnedSheet = {
 }
 
 /**
- * A book lying on a table or the floor. World coordinates rather than
- * relative to whatever it sits on, so removing that table drops the book to the
- * floor beneath instead of moving it.
+ * World coordinates rather than relative to whatever it sits on, so removing a
+ * table drops the book to the floor instead of moving it.
  */
 export type LoosePlacement = {
   x: number
@@ -167,9 +148,8 @@ export type BookNote = {
 }
 
 /**
- * Bookmarks and notes, in `.library/annotations.json`. Readable outside the
- * app: 1-based page numbers, and each book carries its title and author so an
- * entry outlives the index.
+ * Bookmarks and notes, readable outside the app: 1-based page numbers, and each
+ * book carries its title and author so an entry outlives the index.
  */
 export type AnnotationsDocument = {
   books: Record<
@@ -181,11 +161,7 @@ export type AnnotationsDocument = {
       bookmarks?: number[]
       /** Page order, then creation order. */
       notes?: BookNote[]
-      /**
-       * Ink drawn on pages, keyed by page number (a string, as JSON keys are).
-       * Strokes are in page space — `u` across, `v` up, 0 to 1 — the same
-       * shape a whiteboard stores, so one painter serves both.
-       */
+      /** Keyed by page number. Whiteboard-shaped strokes in page space, so one painter serves both. */
       drawings?: Record<string, BoardStroke[]>
     }
   >
@@ -210,10 +186,7 @@ export type IndexedArtwork = {
   title: string
 }
 
-/**
- * A tape in the library's `video/` folder. No duration or thumbnail: both would
- * mean demuxing the container, and `video/` is walked on demand, not indexed.
- */
+/** No duration or thumbnail: both would mean demuxing, and `video/` is not indexed. */
 export type IndexedTape = {
   id: string
   path: string
@@ -225,10 +198,7 @@ export type IndexedTape = {
   sizeBytes: number
 }
 
-/**
- * A game in the library's `roms/` folder. Not probed: a CHIP-8 image is a bare
- * byte array with no header, so the filename is the only label available.
- */
+/** Not probed: a CHIP-8 image has no header, so the filename is the only label. */
 export type IndexedRom = {
   id: string
   path: string
@@ -241,9 +211,8 @@ export type IndexedRom = {
 }
 
 /**
- * The lamps, the hour and the weather. Its own file rather than part of the
- * book layout: it describes the room, not the books, and deleting it is the
- * documented way to reset every light and the weather.
+ * The lamps, the hour and the weather. Its own file because it describes the
+ * room rather than the books, and deleting it is the documented reset.
  */
 export type AmbienceState = {
   /** Furniture id -> whether it is lit. Absent means "as the document says". */
@@ -255,10 +224,9 @@ export type AmbienceState = {
 }
 
 /**
- * `tauri` is the desktop app over IPC; `http` is a browser against
- * `kleib3ry-server`; `browser` is a plain tab with no filesystem and a generated
- * stand-in library. Shown in the HUD — an empty-looking library is usually the
- * wrong one of these.
+ * `tauri` is the desktop app over IPC, `http` a browser against
+ * `kleib3ry-server`, `browser` a plain tab with a stand-in library. Shown in the
+ * HUD, because an empty-looking library is usually the wrong one of these.
  */
 export type DriverKind = 'tauri' | 'http' | 'browser'
 
@@ -272,11 +240,7 @@ export interface LibraryService {
   /** False when the host cannot index real files (the browser driver). */
   readonly canIndex: boolean
 
-  /**
-   * False when the host cannot fetch a paper into the library. Tracks `canIndex`
-   * in practice, but stays separate so an offline build can disable it and keep
-   * indexing.
-   */
+  /** Separate from `canIndex` so an offline build can disable it and keep indexing. */
   readonly canFetchPapers: boolean
 
   getRoot(): Promise<string | null>
@@ -295,13 +259,10 @@ export interface LibraryService {
   saveRenderedCover(id: string, dataUrl: string): Promise<string>
 
   /**
-   * Download an arXiv paper into the library folder, index it, and return the
-   * book it became. Implemented in `core/src/paper.rs` rather than in the page:
-   * arxiv.org refuses cross-origin requests, and the result is a file in the
-   * library folder, which nothing above `src/services/` may write.
-   *
-   * `id` is whatever was typed — a bare id, an `arXiv:` citation, or either
-   * page's URL; the core decides whether it is an id at all.
+   * Download an arXiv paper into the library, index it, and return the book it
+   * became. In `core/src/paper.rs` because arxiv.org refuses cross-origin
+   * requests and the result is a file nothing above here may write. `id` is
+   * whatever was typed; the core decides whether it is an id at all.
    */
   fetchPaper(id: string): Promise<IndexedBook>
 
@@ -317,10 +278,7 @@ export interface LibraryService {
   loadLayout(): Promise<LayoutDocument | null>
   saveLayout(layout: LayoutDocument): Promise<void>
 
-  /**
-   * The rest of the library folder. All four resolve to an empty list on a host
-   * with no filesystem, so the scene builds without them rather than failing.
-   */
+  /** All four give an empty list with no filesystem, so the scene builds regardless. */
   listTracks(): Promise<IndexedTrack[]>
   listArtwork(): Promise<IndexedArtwork[]>
   listTapes(): Promise<IndexedTape[]>
@@ -329,24 +287,14 @@ export interface LibraryService {
   /** Raw bytes of one ROM, for the emulator. Read whole — never streamed. */
   readRom(id: string): Promise<Uint8Array>
 
-  /**
-   * The lamps and the weather, from `.library/ambience.json`. Null if never
-   * written, which means "as `library.json` says".
-   */
+  /** Null if never written, which means "as `library.json` says". */
   loadAmbience(): Promise<AmbienceState | null>
   saveAmbience(state: AmbienceState): Promise<void>
 
-  /**
-   * Bookmarks and notes, from `.library/annotations.json` — its own file,
-   * page-numbered and readable without the app. Null if never written.
-   */
+  /** Its own file, page-numbered and readable without the app. Null if never written. */
   loadAnnotations(): Promise<AnnotationsDocument | null>
   saveAnnotations(doc: AnnotationsDocument): Promise<void>
-  /**
-   * Write a Markdown digest of the annotations. Resolves to the written path
-   * (desktop: `.library/annotations.md`), or null when there is no filesystem,
-   * meaning the caller should offer it as a download.
-   */
+  /** Resolves to the written path, or null with no filesystem — then offer a download. */
   exportAnnotationsMarkdown(markdown: string): Promise<string | null>
 
   /** Turn an absolute file path into a URL the WebView can actually load. */

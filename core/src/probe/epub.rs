@@ -5,10 +5,9 @@ use quick_xml::Reader;
 
 use super::{extension_for, meaningful, CoverImage, Probed};
 
-/// Parse an EPUB far enough to get title, author and cover art.
-///
-/// An EPUB is a zip: `META-INF/container.xml` points at a package document
-/// (`.opf`) which carries the metadata and a manifest of every file inside.
+/// Parse an EPUB far enough to get title, author and cover art. An EPUB is a
+/// zip whose `META-INF/container.xml` points at a package document (`.opf`)
+/// carrying the metadata and a manifest.
 pub fn probe(bytes: &[u8]) -> Probed {
     let cursor = std::io::Cursor::new(bytes);
     let Ok(mut zip) = zip::ZipArchive::new(cursor) else {
@@ -42,24 +41,15 @@ pub fn probe(bytes: &[u8]) -> Probed {
     }
 }
 
-/// How much text there is per page once the reader has set the book in type.
-///
-/// `epubPages.ts` fits about 950 characters on one of its pages, and the markup
-/// around them in the file adds something like a quarter again.
+/// `epubPages.ts` fits about 950 characters on a page, and the markup around
+/// them adds a quarter again.
 const BYTES_PER_PAGE: u64 = 1_200;
 
-/// About how long this book is, in the pages the reader will actually give it.
-///
-/// A reflowable book has no pages until something lays it out — but it does
-/// have a *length*, and the shelf needs one: a book's thickness comes from its
-/// page count, so with nothing here every EPUB in the library stood on the
-/// shelf as the same fat paperback. The fallback in front of this was the
-/// compressed file size, which for an EPUB is mostly cover art and
-/// illustrations rather than words — a picture book read as a doorstop and a
-/// long novel as a pamphlet.
-///
-/// The zip's central directory carries every entry's uncompressed size, so
-/// nothing is decompressed to work this out: sum the documents and divide.
+/// About how long this book is, in the reader's own pages. A reflowable book has
+/// no pages until something lays it out, but the shelf needs a thickness — and
+/// compressed file size is mostly cover art, which shelves a picture book as a
+/// doorstop. The zip's central directory carries uncompressed sizes, so this
+/// sums the documents and divides without decompressing anything.
 fn estimated_pages<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Option<u32> {
     let mut bytes: u64 = 0;
     for i in 0..zip.len() {
@@ -69,8 +59,7 @@ fn estimated_pages<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Opt
             bytes = bytes.saturating_add(entry.size());
         }
     }
-    // Nothing readable in it is not a book of no pages, it is a book we cannot
-    // measure — and `None` is what lets the front end fall back to file size.
+    // Unmeasurable, not zero-length — `None` lets the front end use file size.
     (bytes > 0).then(|| u32::try_from(bytes / BYTES_PER_PAGE).unwrap_or(u32::MAX).max(1))
 }
 
@@ -79,9 +68,8 @@ fn read_entry<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, name: &str)
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// No metadata or cover is anywhere near this big; a zip entry claiming
-/// otherwise is a bomb, and decompressing it unbounded is an allocation abort
-/// that no `catch_unwind` in the indexer can contain.
+/// No cover is this big. An entry claiming otherwise is a bomb, and decompressing
+/// it unbounded aborts on allocation, which no `catch_unwind` can contain.
 const MAX_ENTRY_BYTES: u64 = 32 * 1024 * 1024;
 
 fn read_entry_bytes<R: Read + std::io::Seek>(
@@ -100,11 +88,9 @@ fn read_entry_bytes<R: Read + std::io::Seek>(
     (buf.len() as u64 <= MAX_ENTRY_BYTES).then_some(buf)
 }
 
-/// Resolve a manifest href against the package document's directory.
-///
-/// Hrefs are relative URLs: `../cover.jpg` and `image%20one.png` are both
-/// common in real files, and the zip directory stores neither dot segments nor
-/// percent escapes — a literal comparison never matches them.
+/// Resolve a manifest href against the package document's directory. Hrefs are
+/// relative URLs, and the zip directory stores neither dot segments nor percent
+/// escapes, so `../cover.jpg` and `image%20one.png` never match literally.
 fn join(base: &str, href: &str) -> String {
     let href = percent_decode(href);
     let mut parts: Vec<&str> =
@@ -215,9 +201,8 @@ fn parse_package(xml: &str) -> Package {
         buf.clear();
     }
 
-    // Second pass for the attribute-shaped data. `item` and `meta` appear as
-    // either empty or start elements; a separate pass keeps the text handling
-    // above from having to care.
+    // Second pass for the attribute-shaped data, so the text handling above
+    // need not also cope with empty elements.
     let mut reader = Reader::from_str(xml);
     let mut buf = Vec::new();
     loop {

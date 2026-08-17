@@ -1,12 +1,8 @@
 //! The desktop shell: commands, settings, and the paths they resolve.
 //!
-//! Everything that reads a book lives in `kleib3ry_core`. What is left here is
-//! what is genuinely about being a desktop app — the IPC surface, the
-//! asset-protocol scope, the native folder picker, and where an installed
-//! application may keep files.
-//!
-//! The core modules are re-exported so `src/bin/scan.rs` and the tests can
-//! reach them from here.
+//! Everything that reads a book lives in `kleib3ry_core`; what is left is
+//! genuinely about being a desktop app — the IPC surface, the asset scope, the
+//! folder picker. The core modules are re-exported for `bin/scan.rs`.
 
 pub use kleib3ry_core::{catalog, index, media, probe};
 
@@ -19,9 +15,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use catalog::{Book, Catalog};
 
-/// What can go wrong in the shell: whatever the core can, plus Tauri itself.
-/// The core's errors are flattened rather than nested, so a failure reads the
-/// same in the HUD whichever crate it came from.
+/// Whatever the core can go wrong with, plus Tauri. Flattened rather than
+/// nested, so a failure reads the same in the HUD whichever crate raised it.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
@@ -40,15 +35,13 @@ pub enum Error {
     ScanInProgress,
 }
 
-/// The one core error the shell asks about by name, because it is not a failure
-/// so much as a state: there is no library folder yet, and the answer to most
-/// questions is therefore "nothing" rather than an error.
+/// The one core error asked about by name: no library folder yet is a state, not
+/// a failure, and most questions then answer "nothing".
 fn is_no_root(error: &Error) -> bool {
     matches!(error, Error::Core(kleib3ry_core::Error::NoLibraryRoot))
 }
 
 // Commands must return something serde can hand to the WebView.
-// Spelled out in full because the `Result` alias below is single-parameter.
 impl Serialize for Error {
     fn serialize<S: serde::Serializer>(
         &self,
@@ -86,12 +79,9 @@ impl Settings {
     }
 }
 
-/// Where everything the app owns lives when there is no library folder yet.
-///
-/// Note what is *not* here: the world document, the book layout, the index and
-/// the covers. Those are the save file, and a save file belongs to the library
-/// it describes, so they live in the library folder itself — see
-/// `kleib3ry_core::save_files`, which both this and the server read.
+/// Where the app keeps files when there is no library folder yet. The world
+/// document, layout, index and covers are deliberately absent: they are the save
+/// file, so they live in the library — see `kleib3ry_core::save_files`.
 struct Paths {
     settings: PathBuf,
     covers: PathBuf,
@@ -139,21 +129,15 @@ pub use kleib3ry_core::CONFIG_DIR;
 struct SaveFiles {
     world: PathBuf,
     layout: PathBuf,
-    /// Which lamps are on and what the weather is doing. Its own file because
-    /// it is about the room rather than about the books, and because deleting
-    /// it is a sensible way to get every light and the daylight back.
+    /// Lamps and weather. Its own file so deleting it resets them.
     ambience: PathBuf,
-    /// Bookmarks and notes. Its own readable file so the marginalia are the
-    /// user's without the app.
+    /// Bookmarks and notes, readable without the app.
     annotations: PathBuf,
 }
 
-/// Where rendered and extracted covers are cached.
-///
-/// In the library folder, under `.library/`, so that the folder carries its own
-/// artwork: rasterising a thousand PDF first pages takes minutes, and copying a
-/// library to another machine should not mean doing it again. Falls back to the
-/// app's data directory until a folder has been chosen.
+/// Where covers are cached: in the library folder, so it carries its own artwork
+/// and a copy to another machine need not rasterise a thousand pages again.
+/// Falls back to the app's data directory until a folder is chosen.
 fn covers_dir(app: &AppHandle) -> Result<PathBuf> {
     match root_of(app) {
         Ok(root) => Ok(kleib3ry_core::save_files(&root).covers),
@@ -162,22 +146,15 @@ fn covers_dir(app: &AppHandle) -> Result<PathBuf> {
     }
 }
 
-/// The book index, beside the covers it refers to.
-///
-/// In the library folder so that `npm run scan` and the app are looking at the
-/// same index — a command that scans a folder the app then ignores would be a
-/// trap. It is still a derived file: delete it and rescan.
-///
-/// No fallback for "no folder chosen yet": an index describes a library, and
-/// without one there is nothing to describe. Callers answer with an empty
-/// catalogue instead.
+/// The book index, beside the covers it refers to. In the library folder so
+/// `npm run scan` and the app read the same one. No fallback before a folder is
+/// chosen — callers answer with an empty catalogue instead.
 fn index_file(app: &AppHandle) -> Result<PathBuf> {
     Ok(kleib3ry_core::save_files(&root_of(app)?).index)
 }
 
-/// Let the WebView load images out of the cover cache. The asset protocol
-/// starts with an empty scope, and the cache lives at a user-chosen path that
-/// cannot be known at build time, so without this every cover is broken.
+/// Let the WebView load images out of the cover cache. The asset scope starts
+/// empty and the cache path is not known at build time.
 fn allow_covers(app: &AppHandle) -> Result<PathBuf> {
     let dir = covers_dir(app)?;
     fs::create_dir_all(&dir)?;
@@ -209,13 +186,10 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
     }
 }
 
-/// Let the WebView load one of the library folder's own media directories.
-///
-/// The asset scope starts empty and gains only four named directories —
-/// covers, music, artwork, video — each when something first asks for it.
-/// A directory rather than a `read_music_file` command because audio and video
-/// are streamed while they play; pulling a whole FLAC through IPC would be
-/// slower and far more memory. `roms/` is read once, so it stays a command.
+/// Let the WebView load one of the library's media directories. The scope gains
+/// only covers, music, artwork and video, each when first asked for. A directory
+/// rather than a command because audio and video are streamed while they play;
+/// `roms/` is read once, so it stays a command.
 fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
     let root = match root_of(app) {
         Ok(root) => root,
@@ -244,9 +218,8 @@ fn get_library_root(app: AppHandle) -> Result<Option<String>> {
     Ok(Settings::load_from(&paths(&app)?.settings)?.library_root)
 }
 
-/// A library root is stored canonical: an existing directory, made absolute,
-/// so a relative path cannot quietly mean "relative to wherever the app
-/// happened to start".
+/// Stored canonical, so a relative path cannot quietly mean "relative to
+/// wherever the app happened to start".
 fn normalize_root(raw: &str) -> Result<String> {
     let dir = PathBuf::from(raw);
     if !dir.is_dir() {
@@ -255,9 +228,8 @@ fn normalize_root(raw: &str) -> Result<String> {
     let real = dir
         .canonicalize()
         .map_err(|_| Error::NotADirectory(raw.to_string()))?;
-    // On Windows `canonicalize` yields a `\\?\C:\...` verbatim path, which the
-    // asset scope and the front end both display and match poorly. Strip it
-    // for plain drive paths; UNC paths keep theirs.
+    // Windows `canonicalize` yields a `\\?\C:\...` verbatim path, which the asset
+    // scope and the front end both handle poorly. UNC paths keep theirs.
     let text = real.to_string_lossy();
     match text.strip_prefix(r"\\?\") {
         Some(rest) if rest.as_bytes().get(1) == Some(&b':') => Ok(rest.to_string()),
@@ -304,10 +276,8 @@ fn list_books(app: AppHandle) -> Result<Vec<Book>> {
 }
 
 /// Fetch a paper off arXiv into the library folder, and hand back the book.
-///
-/// `async` for the same reason `scan_library` is: this one waits on a network
-/// round trip and a download, and doing that on the main thread is a window
-/// Windows will offer to close for you.
+/// `async` because it waits on a download, and blocking the main thread is a
+/// window Windows offers to close for you.
 #[tauri::command(async)]
 fn fetch_paper(app: AppHandle, id: String) -> Result<Book> {
     let root = root_of(&app)?;
@@ -330,8 +300,7 @@ fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<in
     if guard.0.swap(true, Ordering::SeqCst) {
         return Err(Error::ScanInProgress);
     }
-    // A drop guard, so an error — or a panic escaping the scan — cannot leave
-    // the flag set and every later scan refused.
+    // A drop guard, so an error or a panic cannot leave the flag set.
     struct Release<'a>(&'a ScanGuard);
     impl Drop for Release<'_> {
         fn drop(&mut self) {
@@ -345,16 +314,13 @@ fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<in
     let covers = allow_covers(&app)?;
     let emitter = app.clone();
 
-    // One event per file is thousands of IPC messages for a real library, which
-    // is its own way of wedging the WebView. Report about a hundred times over
-    // the whole scan, plus the last one so the bar always finishes.
+    // One event per file is thousands of IPC messages, which wedges the WebView.
+    // Report about a hundred times, plus the last so the bar always finishes.
     let mut last = 0u32;
-    // The core reports its own error type; the shell's wraps it.
     Ok(index::scan(&root, &index_path, &covers, move |progress| {
         let step = (progress.total / 100).max(1);
         let final_item = progress.done >= progress.total;
-        // The very first event always goes through so the bar appears at the
-        // start of the scan rather than one step into it.
+        // The first event always goes through, so the bar appears at the start.
         if progress.done != 0 && !final_item && progress.done < last + step {
             return;
         }
@@ -364,28 +330,18 @@ fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<in
     })?)
 }
 
-/// Store a cover the WebView rendered.
-///
-/// PDF first pages need a real renderer. Rather than ship pdfium and its
-/// several megabytes of native library, the front end rasterises page one with
-/// pdf.js — which it already loads for reading — and posts the result here to
-/// be cached like any other cover.
-///
-/// The file *is* the record: listing derives a book's cover from what is in the
-/// cache, so nothing has to write the index and the scan stays its only writer.
+/// Store a cover the WebView rendered — the front end rasterises page one with
+/// pdf.js rather than the app shipping pdfium. The file is the record: listing
+/// derives covers from the cache, so the scan stays the index's only writer.
 #[tauri::command]
 fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<String> {
-    // The id becomes a file name inside the covers directory. It is normally a
-    // hex hash, but it arrives from the WebView, and `PathBuf::join` follows
-    // `..` and absolute paths — so anything that is not a plain name is a
-    // write outside the cache and gets refused. The same guard the server
-    // applies, which is why it lives in core rather than in either shell.
+    // The id becomes a file name and arrives from the WebView; the guard is in
+    // core so this and the server cannot come to mean two different things.
     if !kleib3ry_core::catalog::is_cover_id(&id) {
         return Err(Error::BadImage(format!("not a cover id: {id}")));
     }
-    // And only a book the index knows may have a cover cached, or the cache
-    // fills with orphans one call at a time. Skipped when there is no library
-    // folder yet, because then there is no index to ask and no books either.
+    // Only an indexed book may cache a cover, or the cache fills with orphans.
+    // Skipped before a library folder is chosen: no index, and no books either.
     if let Ok(index) = index_file(&app) {
         if !Catalog::load(&index)?.contains(&id) {
             return Err(Error::Core(kleib3ry_core::Error::UnknownBook(id)));
@@ -407,11 +363,9 @@ fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<S
     Ok(covers.join(&name).to_string_lossy().to_string())
 }
 
-/// Raw bytes of a book file, for pdf.js.
-///
-/// Deliberately not the asset protocol: the library lives at an arbitrary path
-/// the user picked, and widening the asset scope to cover it would grant the
-/// WebView far more of the disk than reading one indexed book requires.
+/// Raw bytes of a book file, for pdf.js. Deliberately not the asset protocol:
+/// widening the scope to a user-chosen path grants the WebView far more of the
+/// disk than reading one indexed book requires.
 #[tauri::command]
 fn read_book_file(app: AppHandle, id: String) -> Result<tauri::ipc::Response> {
     let root = root_of(&app)?;
@@ -421,12 +375,9 @@ fn read_book_file(app: AppHandle, id: String) -> Result<tauri::ipc::Response> {
     Ok(tauri::ipc::Response::new(fs::read(path)?))
 }
 
-/// The world document, returned as *text*.
-///
-/// Deliberately not parsed here: it is a file a person edits, comments and all,
-/// and the front end owns its schema. Rust hands over the bytes and stays out of
-/// the way — which also means a document this build cannot understand still
-/// round-trips instead of being rewritten into something lossier.
+/// The world document, returned as text. Not parsed here: a person edits it,
+/// comments and all, and the front end owns its schema — so a document this
+/// build cannot understand still round-trips rather than being rewritten.
 #[tauri::command]
 fn get_world(app: AppHandle) -> Result<Option<String>> {
     match fs::read_to_string(&save_files(&app)?.world) {
@@ -436,10 +387,8 @@ fn get_world(app: AppHandle) -> Result<Option<String>> {
     }
 }
 
-/// Write the starter document, and only that.
-///
-/// Refuses to overwrite an existing file: this is called on first run, and a
-/// race or a bug here would replace a room somebody built with the default one.
+/// Write the starter document, refusing to overwrite: a race or a bug here would
+/// replace a room somebody built with the default one.
 #[tauri::command]
 fn write_default_world(app: AppHandle, text: String) -> Result<bool> {
     let file = save_files(&app)?.world;
@@ -469,9 +418,8 @@ fn save_paths(app: AppHandle) -> Result<serde_json::Value> {
     }))
 }
 
-/// The book layout is an opaque document owned by the front end. Rust stores
-/// and returns it verbatim so its shape can change without a matching change
-/// on this side.
+/// An opaque document owned by the front end, stored verbatim so its shape can
+/// change without a matching change here.
 #[tauri::command]
 fn get_layout(app: AppHandle) -> Result<Option<serde_json::Value>> {
     let file = save_files(&app)?.layout;
@@ -484,25 +432,19 @@ fn get_layout(app: AppHandle) -> Result<Option<serde_json::Value>> {
 
 #[tauri::command]
 fn save_layout(app: AppHandle, layout: serde_json::Value) -> Result<()> {
-    // Atomic, so a crash mid-write cannot truncate the file that remembers
-    // where every book is.
+    // Atomic: a crash mid-write must not truncate where every book is.
     write_atomic(&save_files(&app)?.layout, serde_json::to_string_pretty(&layout)?.as_bytes())?;
     Ok(())
 }
 
 /// Every record in `<library>/music`, with the folder opened to the WebView so
-/// the player can stream them.
-///
-/// Returns an empty list rather than an error when there is no music folder, or
-/// no library folder at all: a library nobody has put music in is a normal
-/// library, and the record shelf simply stands empty.
+/// the player can stream them. No music folder is an empty list, not an error.
 #[tauri::command(async)]
 fn list_music(app: AppHandle) -> Result<Vec<media::Track>> {
     let Some(dir) = allow_media(&app, media::MUSIC_DIR)? else {
         return Ok(Vec::new());
     };
-    // `list_tracks` takes the library root and looks for `music/` itself, so
-    // hand it the parent of the directory just authorised.
+    // `list_tracks` looks for `music/` itself, so hand it the parent.
     Ok(media::list_tracks(dir.parent().unwrap_or(&dir)))
 }
 
@@ -528,11 +470,8 @@ fn list_videos(app: AppHandle) -> Result<Vec<media::Tape>> {
     Ok(media::list_videos(dir.parent().unwrap_or(&dir)))
 }
 
-/// Every ROM in `<library>/roms`, for the arcade machine.
-///
-/// A listing only — no asset-scope grant, unlike the three folders above,
-/// because nothing streams a ROM from a URL: the bytes go through
-/// `read_rom_file` the way a book's do.
+/// Every ROM in `<library>/roms`. A listing only — no asset-scope grant, since
+/// nothing streams a ROM: the bytes go through `read_rom_file` like a book's.
 #[tauri::command(async)]
 fn list_roms(app: AppHandle) -> Result<Vec<media::Rom>> {
     match root_of(&app) {
@@ -542,13 +481,9 @@ fn list_roms(app: AppHandle) -> Result<Vec<media::Rom>> {
     }
 }
 
-/// Raw bytes of one ROM, for the emulator.
-///
-/// A command rather than a directory in the asset scope, for the reason
-/// `read_book_file` is one and `music/` is not: a ROM is a few kilobytes read
-/// once at power-on, not a stream played while it runs. The id must be one
-/// `list_roms` handed out, so the WebView can only ever name a file the
-/// listing already told it about.
+/// Raw bytes of one ROM. A command rather than an asset directory because a ROM
+/// is read once at power-on, not streamed; the id must be one `list_roms` gave
+/// out, so the WebView can only name a file the listing already offered.
 #[tauri::command]
 fn read_rom_file(app: AppHandle, id: String) -> Result<tauri::ipc::Response> {
     let root = root_of(&app)?;

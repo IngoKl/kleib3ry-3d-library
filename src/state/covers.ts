@@ -3,16 +3,10 @@ import type { IndexedBook } from '../services/types'
 import { openDocument, renderPage } from '../reader/pdf'
 
 /**
- * Cover images, fetched or rendered on demand.
- *
- * EPUB covers come out of the file during indexing, so those are just a path.
- * PDFs need a renderer: rather than ship pdfium alongside the app, the first
- * page is rasterised here with pdf.js — already loaded for reading — and handed
- * back to Rust to cache, so it happens once per book, ever.
- *
- * Rendering is lazy and only for books you actually pick up. Rasterising a
- * thousand first pages at scan time would take minutes and most would never be
- * looked at.
+ * Cover images, fetched or rendered on demand. An EPUB's comes out during
+ * indexing, so it is just a path; a PDF's is rasterised here with pdf.js —
+ * already loaded for reading — rather than shipping pdfium, and handed to Rust
+ * to cache, so it happens once per book ever.
  */
 
 const COVER_HEIGHT_PX = 700
@@ -46,11 +40,9 @@ export function coverFor(book: IndexedBook): Promise<string | null> {
         const saved = await library.saveRenderedCover(book.id, dataUrl).catch(() => null)
         return saved ? library.assetUrl(saved) : dataUrl
       } finally {
-        // Let the document go the moment the cover is out of it. The warm
-        // sweep walks the whole catalogue; holding each parsed PDF would pin
-        // the entire library in the pdf.js worker by the time it finished.
-        // This hold and nobody else's: warming the cover of a book somebody has
-        // just opened must not close it under them.
+        // Released the moment the cover is out: the warm sweep walks the whole
+        // catalogue, and holding each parsed PDF would pin the library in the
+        // worker. This hold and nobody else's, or it closes an open book.
         held.release()
       }
     } catch {
@@ -67,12 +59,9 @@ export function coverFor(book: IndexedBook): Promise<string | null> {
 }
 
 /**
- * The colour a book's binding should be, sampled from its cover, so a shelf
- * reads as your books before any of the type is legible. Falls back to the id
- * hash in `data/dimensions.ts` when there is no cover.
- *
- * Pale and near-black pixels are skipped: most covers are largely paper or
- * margin, and averaging those gives every book the same dirty grey.
+ * A binding's colour, sampled from its cover, so a shelf reads as your books
+ * before any type is legible; falls back to the id hash. Pale and near-black
+ * pixels are skipped, or the margins give every book the same dirty grey.
  */
 const colours = new Map<string, string | null>()
 const colourJobs = new Map<string, Promise<string | null>>()
@@ -142,13 +131,9 @@ export function coverColourFor(book: IndexedBook): Promise<string | null> {
 }
 
 /**
- * Cover artwork as a decoded image, ready to be drawn into the book atlas.
- *
- * Rate-limited hard, because for a PDF "fetch the cover" means rasterising its
- * first page: a shelf of a hundred books would otherwise queue a hundred
- * renders the moment you walked up to it. Two at a time fills a shelf in over a
- * few seconds without ever competing with the frame you are looking at, and the
- * results are cached to disk, so it happens once per book ever.
+ * Cover artwork decoded and ready for the atlas. Rate-limited hard, because for
+ * a PDF this means rasterising a page: two at a time fills a shelf over a few
+ * seconds without competing with the frame you are looking at.
  */
 const images = new Map<string, HTMLImageElement | null>()
 /** Books asked for by name — a shelf you are standing at, a book in your hand. */
@@ -159,25 +144,25 @@ const background: IndexedBook[] = []
 const claimed = new Set<string>()
 
 /**
- * How many books' cover artwork to keep.
+ * How many decoded covers to keep: `warmCovers` walks the whole catalogue, so
+ * without a cap a large library ends its sweep holding every cover it drew.
  *
- * `warmCovers` deliberately walks the *whole* catalogue, and every entry is a
- * decoded image plus the string that found it — which for a PDF whose render
- * could not be saved is the base64 data URL itself. Without a cap a large
- * library ends its sweep holding all of it for the session.
- *
- * `images` is a `Map`, so its iteration order is insertion order; `peekCoverImage`
- * re-inserts on a hit, which makes the front of the map the least recently drawn
- * and the eviction "whatever is furthest from where you are standing".
+ * `images` iterates in insertion order and `peekCoverImage` re-inserts on a hit,
+ * so the front of the map is the least recently drawn — which makes eviction
+ * "whatever is furthest from where you are standing".
  */
 const MAX_CACHED = 600
 
-/** Drop one book from every cache at once, including its claim, so it can come back. */
+/**
+ * Drop a book's decoded artwork and its claim. What it keeps is the point: a
+ * path and a colour are a few dozen bytes, so walking back to a shelf is a
+ * decode rather than another rasterisation. A data URL is the whole PNG, so
+ * that one goes with the image it belongs to.
+ */
 function forget(id: string) {
   images.delete(id)
-  resolved.delete(id)
-  colours.delete(id)
   claimed.delete(id)
+  if (resolved.get(id)?.startsWith('data:')) resolved.delete(id)
 }
 
 /** Record a decoded cover, evicting the least recently drawn to stay under the cap. */
@@ -191,9 +176,8 @@ function remember(id: string, image: HTMLImageElement | null) {
 }
 
 /**
- * Empty every cache. Called when the library folder changes: ids are content
- * hashes, so nothing would be *wrong* about keeping the last library's covers,
- * but they are megabytes about books that are no longer on any shelf.
+ * Called when the library folder changes. Ids are content hashes, so keeping the
+ * last library's covers would not be wrong — only megabytes about absent books.
  */
 export function forgetCovers() {
   images.clear()
@@ -205,24 +189,20 @@ export function forgetCovers() {
   urgent.length = 0
   background.length = 0
 }
+
 let inFlight = 0
 const MAX_IN_FLIGHT = 2
 /**
- * A pause between background covers.
- *
- * The urgent queue runs flat out because you are looking at those books. The
- * background one is walking the whole library, and for a PDF each entry means
- * rasterising a page — so it deliberately leaves the main thread alone between
- * books. A thousand-book library warms itself in a couple of minutes, once, and
- * every launch after that reads them off disk.
+ * The urgent queue runs flat out because you are looking at those books; the
+ * background one walks the whole library, so it leaves the main thread alone
+ * between them. A thousand books warm in a couple of minutes, once.
  */
 const BACKGROUND_GAP_MS = 90
 
 export function peekCoverImage(id: string): HTMLImageElement | null | undefined {
   const image = images.get(id)
-  // Re-inserted on a hit so the map stays ordered least-recently-drawn first,
-  // which is what `remember` evicts from. Called per visible book per frame; a
-  // delete and a set on a `Map` is nothing next to the draw it feeds.
+  // Re-inserted on a hit, so the map stays least-recently-drawn first for
+  // `remember` to evict from. A delete and a set is nothing next to the draw.
   if (image !== undefined) {
     images.delete(id)
     images.set(id, image)
@@ -268,12 +248,9 @@ function pump() {
 }
 
 /**
- * Queue a book's cover, ahead of the background sweep.
- *
- * Safe to call every frame: the claim is taken when the book is queued rather
- * than when it finishes. Claiming on start instead would leave a book in flight
- * in neither the queue nor the results, so a shelf in view would re-queue the
- * same rasterisation several times a second.
+ * Queue a cover ahead of the background sweep. Safe every frame: the claim is
+ * taken when the book is queued rather than when it starts, or a book in flight
+ * would be in neither the queue nor the results and get re-queued.
  */
 export function coverImageFor(book: IndexedBook) {
   if (claimed.has(book.id)) {

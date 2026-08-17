@@ -8,11 +8,10 @@ import { useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 
 /**
- * The odd leaf letting go of a birch: a dozen recycled quads on the chimney
- * smoke's clock. Each leaf spends a third of its cycle falling from canopy to
- * ground and the rest hidden at zero scale, so the drop stays occasional — a
- * detail you catch, not weather. Landing is a shrink over the last stretch,
- * because the shared material has one opacity for the lot.
+ * A dozen recycled quads on the chimney smoke's clock. Each leaf falls for a
+ * third of its cycle and hides at zero scale for the rest, so the drop stays a
+ * detail you catch rather than weather; landing is a shrink, since the shared
+ * material has one opacity for the lot.
  */
 
 /** Seconds per leaf cycle; 30% of it falling is an ~8 s drop. */

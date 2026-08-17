@@ -1,14 +1,10 @@
 /**
- * A minimal, genuinely parseable EPUB writer — raw zip syntax, no dependencies,
- * no binary fixtures in the repo. Counterpart to `make-pdf.mjs`: the browser
- * driver has no filesystem, so without one real file of each format the reader
- * can only be exercised by `test:desktop`.
+ * A minimal but genuinely parseable EPUB writer — raw zip syntax, no
+ * dependencies, no binary fixtures. Counterpart to `make-pdf.mjs`: without one
+ * real file of each format, only `test:desktop` exercises the reader.
  *
- * Both compression methods appear on purpose. `mimetype` and
- * `META-INF/container.xml` are *stored* (the first because the spec says so,
- * the second so `zip.ts`'s method-0 branch is exercised by opening the sample
- * at all); everything else is deflated, which sends the reader through
- * `DecompressionStream`.
+ * Both compression methods appear on purpose, so opening the sample exercises
+ * `zip.ts`'s stored branch and its `DecompressionStream` one.
  */
 import { deflateRawSync } from 'node:zlib'
 
@@ -34,11 +30,8 @@ function crc32(bytes) {
 }
 
 /**
- * Write the zip.
- *
- * `mimetype` must be first and uncompressed — that is the one thing the EPUB
- * specification says about the container itself, so it is worth honouring even
- * though nothing here would notice.
+ * `mimetype` must be first and uncompressed — the one thing the EPUB spec says
+ * about the container, worth honouring even though nothing here would notice.
  */
 function zip(files) {
   const chunks = []
@@ -148,11 +141,8 @@ const escapeXml = (text) =>
     .replace(/"/g, '&quot;')
 
 /**
- * Build an EPUB from a title, an author, and a list of chapters.
- *
- * Each chapter is `{ heading, paragraphs }` and becomes one document in the
- * spine — which is what makes it a chapter, since the reader starts a fresh
- * page at each one.
+ * Each chapter becomes one document in the spine, which is what makes it a
+ * chapter: the reader starts a fresh page at each one.
  */
 export function makeEpub({ title, author, chapters }) {
   const files = [['mimetype', 'application/epub+zip']]

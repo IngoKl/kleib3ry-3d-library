@@ -1,11 +1,8 @@
 /**
- * Generates a folder of real PDFs and EPUBs for end-to-end verification.
- *
- * Everything is written by hand — raw PDF syntax, a minimal store-only zip, a
- * hand-rolled PNG — so the test corpus needs no dependencies and no fixtures
- * checked into the repo. The files are genuinely parseable: the EPUBs carry
- * real OPF metadata and a real cover image, which is what exercises the Rust
- * probe rather than just proving the walker can see filenames.
+ * A folder of real PDFs and EPUBs for end-to-end verification, written by hand
+ * so the corpus needs no dependencies and no committed fixtures. The files are
+ * genuinely parseable — real OPF metadata, a real cover — which is what
+ * exercises the Rust probe rather than only the walker.
  *
  *   node scripts/make-test-library.mjs [outputDir]
  */

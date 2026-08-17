@@ -4,13 +4,11 @@ import { eveningNow, useSettings } from './settings'
 import type { AmbienceState } from '../services/types'
 
 /**
- * Which lamps are on, whether it is night, whether it is raining — all facts
- * about the room, saved in `.library/ambience.json` beside the layout.
- *
- * Lamps are keyed by furniture id, so one taken out of `library.json` stops
- * being remembered. The document's `"on"` is the *initial* state and is never
- * written back over: flipping a switch must not reformat a hand-edited file.
- * Deleting this file restores every light and a dry day.
+ * Which lamps are on, whether it is night, whether it is raining — facts about
+ * the room, saved beside the layout. Lamps are keyed by furniture id, so one
+ * taken out of `library.json` stops being remembered, and the document's `"on"`
+ * is only an initial state: flipping a switch must not reformat a hand-edited
+ * file. Deleting this restores every light and a dry day.
  */
 
 const SAVE_DEBOUNCE_MS = 400
@@ -68,9 +66,8 @@ export const useAmbienceStore = create<AmbienceStore>((set, get) => {
     load: async () => {
       try {
         const saved = await library.loadAmbience()
-        // "Match the Clock": an evening session arrives in an evening room.
-        // The derived value is not saved — the file keeps what was chosen by
-        // hand, and N still works for the rest of the session.
+        // "Match the Clock": an evening session arrives in an evening room. Not
+        // saved, so the file keeps what was chosen by hand and N still works.
         const match = useSettings.getState().matchClock
         set({
           on: saved?.on ?? {},

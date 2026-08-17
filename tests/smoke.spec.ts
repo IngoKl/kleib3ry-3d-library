@@ -222,12 +222,9 @@ declare global {
 }
 
 /**
- * Load the app and go in.
- *
- * The room now loads *behind* a main menu rather than in front of nothing, so
- * every test starts by pressing the button somebody would press. Nothing
- * reaches the room until it has been — that is the whole point of the gate —
- * so a test that skipped this would find every key dead.
+ * Load the app and go in. The room loads behind a main menu, and nothing reaches
+ * it until the button is pressed — so a test that skipped this finds every key
+ * dead.
  */
 async function boot(page: Page) {
   await page.goto('/')
@@ -244,11 +241,8 @@ async function reboot(page: Page) {
 }
 
 /**
- * Unpack every box onto the shelves.
- *
- * A newly indexed library arrives boxed and stays that way until you unpack it,
- * so most of what follows — taking a book off a shelf, printing spines, losing
- * a bookcase — starts by doing what you would do first in the room.
+ * A newly indexed library arrives boxed and stays that way, so most of what
+ * follows starts by doing what you would do first in the room.
  */
 async function unpackEverything(page: Page) {
   const shelved = await page.evaluate(() =>
@@ -260,25 +254,18 @@ async function unpackEverything(page: Page) {
 }
 
 /**
- * Wait for the crosshair to report something, or give up on this pose.
- *
- * The crosshair is written by a raycast running every other frame, so "has it
- * noticed yet" is answered in frames, not milliseconds — and one frame here is
- * however long a software rasteriser takes over the whole cabin. Sweeping poses
- * on a fixed sleep reads stale nulls under load and finds nothing anywhere,
- * which looks exactly like the room being wrong.
- *
- * Resolves false rather than throwing, because "not from this pose" is the
- * normal answer for most of the poses these helpers try.
+ * Wait for the crosshair to report something, or give up on this pose. The
+ * raycast runs every other frame, so "has it noticed yet" is answered in frames
+ * — and a fixed sleep reads stale nulls under load, which looks exactly like the
+ * room being wrong. Resolves false rather than throwing, because "not from this
+ * pose" is the normal answer.
  */
 async function settled(page: Page, condition: () => boolean, timeout = 4000) {
   const deadline = Date.now() + timeout
   do {
-    // Asked from *this* side rather than with `waitForFunction`, which schedules
-    // its poll as a page timer. Under the load this helper exists to tolerate
-    // those timers are starved, so a condition that became true was reported as
-    // never having happened — which reads as the room being wrong, and sends the
-    // sweep on to try another twenty-nine poses for no reason.
+    // From this side rather than `waitForFunction`, which polls on a page timer:
+    // under the load this exists to tolerate, those timers are starved, and a
+    // condition that became true reports as never having happened.
     if (await page.evaluate(condition)) return true
     await page.waitForTimeout(50)
   } while (Date.now() < deadline)
@@ -286,10 +273,8 @@ async function settled(page: Page, condition: () => boolean, timeout = 4000) {
 }
 
 /**
- * The same, for a condition that needs a value from this side.
- *
- * `page.evaluate` serialises the function, so a closure over an id is a
- * `ReferenceError` in the page rather than a value.
+ * The same, for a condition needing a value from this side: `page.evaluate`
+ * serialises the function, so a closure over an id is a `ReferenceError`.
  */
 async function settledWith(
   page: Page,
@@ -306,14 +291,10 @@ async function settledWith(
 }
 
 /**
- * Stand in front of a bookcase, looking at a compartment with something in it.
- *
- * Derived from the world rather than written down as coordinates: the map is a
- * document somebody edits, and a test that knows where the bookcases *were* is
- * a test that fails the day the room is rearranged. Which rows are stocked is
- * not fixed either — unpacking a box fills empty rows nearest that box first — so
- * this sweeps the height of a case until the crosshair finds a book, or, when
- * carrying one, a shelf to put it on.
+ * Stand in front of a bookcase, looking at a stocked compartment. Derived from
+ * the world rather than written down: a test that knows where the bookcases were
+ * fails the day the room is rearranged. Which rows are stocked is not fixed
+ * either, so this sweeps the height of a case until the crosshair reports.
  */
 async function faceTheShelves(page: Page) {
   const shelves = (await page.evaluate(() => window.__app.places())).shelves
@@ -333,14 +314,10 @@ async function faceTheShelves(page: Page) {
         [shelf, pitch] as const,
       )
       /**
-       * Wait for the crosshair to answer rather than for a fixed moment. The
-       * raycast runs every other frame, and a headless software rasteriser
-       * drawing a forest and seventeen hundred books can take longer over one
-       * frame than any sleep short enough to sweep thirty poses with.
-       *
-       * What counts as an answer depends on what is in your hands. Asking for
-       * "either" returns happily from a pose that had
-       * found a book while the caller went on to need a shelf.
+       * Waited for rather than slept through: one frame here can take longer
+       * than any sleep short enough to sweep thirty poses with. What counts as
+       * an answer depends on what is in your hands — asking for "either"
+       * returns from a pose that found a book while the caller needed a shelf.
        */
       const found = await settled(page, () =>
         window.__app.heldBook() !== null
@@ -363,14 +340,9 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
   await expect(page.locator('canvas')).toBeVisible()
 
   /**
-   * Alive and rendering, and *only* that — which is why it is a wait rather
-   * than a reading.
-   *
-   * On SwiftShader the printed spines cost a texture fetch per fragment across
-   * a thousand-odd boxes. Counting frames inside a fixed window would measure
-   * the host's spare capacity, not the app. Waiting instead, with an allowance
-   * long enough that only a *stopped* render loop can fail it, is what the
-   * assertion was always for.
+   * Alive and rendering, and only that — which is why it is a wait rather than a
+   * reading. Counting frames in a fixed window would measure the host's spare
+   * capacity; an allowance only a stopped render loop can fail measures the app.
    */
   const enoughFrames = 9
   await page.waitForFunction(
@@ -412,30 +384,21 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
 })
 
 /**
- * Walking is measured in *frames*, not milliseconds.
+ * Walking is measured in frames, not milliseconds: the controller caps its step
+ * at 1/20 s, so distance covered is bounded by frames rendered and the same code
+ * covers 1.9 m idle and 5 cm busy. Hold the key until the thing being tested has
+ * happened, or give up — `settled()`'s distinction, for the walk.
  *
- * The controller caps its step at 1/20 s so a dropped frame cannot teleport
- * anybody through a wall, so distance covered is bounded by frames rendered —
- * and one frame here is however long a software rasteriser takes over the whole
- * cabin. Holding `W` for a fixed 1200 ms would measure the host's spare
- * capacity: the same code covers 1.9 m idle and 5 cm busy.
- *
- * So hold the key until the thing being tested has happened, or give up — the
- * same distinction `settled()` draws for the crosshair.
- *
- * Budgets are minutes, not seconds, deliberately. A generous budget still
- * catches a stopped walk controller, which is all it is for; a tight one just
- * reports how busy the machine was.
+ * Budgets are minutes deliberately. A generous one still catches a stopped walk
+ * controller, which is all it is for; a tight one reports how busy the host was.
  */
 async function walkUntil(page: Page, reached: (z: number) => boolean, budgetMs = 60_000) {
   await page.keyboard.down('KeyW')
   const deadline = Date.now() + budgetMs
   try {
     while (Date.now() < deadline) {
-      // Asked from *this* side rather than with `waitForFunction`, which schedules
-      // its poll as a page timer: when the page is saturated those timers are
-      // starved, and a walk that plainly happened reports as never having
-      // started because nothing sampled it while it was going on.
+      // From this side rather than `waitForFunction`: a saturated page starves
+      // its timers, so nothing samples the walk while it is going on.
       if (reached(await page.evaluate(() => window.__app.player().z))) return true
       await page.waitForTimeout(250)
     }
@@ -521,10 +484,8 @@ test('a placement survives a reload', async ({ page }) => {
   await page.keyboard.press('KeyE')
   await settled(page, () => window.__app.heldBook() !== null)
 
-  // Holding a book, the crosshair looks for a shelf rather than a book — which
-  // is not always satisfied by the pose that found a book to pick up, since
-  // taking one can leave the crosshair pointing through the gap it left. Re-aim
-  // rather than assume.
+  // Holding a book, the crosshair looks for a shelf — which the pose that found
+  // the book may not satisfy, since taking one leaves a gap to point through.
   await settled(page, () => window.__app.shelfTarget() !== null)
   let target = await page.evaluate(() => window.__app.shelfTarget())
   if (!target) {
@@ -603,11 +564,9 @@ test('a page turn never exposes the spread it turned away from', async ({ page }
 
   await page.keyboard.press('ArrowRight')
 
-  // Sample right through the turn. The leaf is what hides the swap, so the
-  // ordering that matters is: it may not come down until the destination spread
-  // is already on the sheets. Dropping it first is what produced "old page,
-  // then loading, then the new page" — the leaf landed, the stale spread was
-  // exposed, and pdf.js was still rasterising the replacement.
+  // Sampled right through the turn. The leaf hides the swap, so the ordering
+  // that matters is that it may not come down until the destination spread is
+  // on the sheets — dropping it first exposes the stale one mid-render.
   const samples = await page.evaluate(async () => {
     const seen: { spread: number; showing: [number, number] | null; turning: boolean }[] = []
     let started = false
@@ -666,10 +625,8 @@ test('the library opens in rooms you can walk between', async ({ page }) => {
   expect(stats.worldError).toBeNull()
   expect(await page.evaluate(() => window.__app.room())).toBe('main')
 
-  // Through the doorway on the west wall and into the reading corner. Walking
-  // is timed in simulation steps, and headless runs well under the 20 fps the
-  // movement delta is clamped at, so this waits on arrival rather than on a
-  // duration that would only be right on this machine.
+  // Through the west doorway into the reading corner. Walking is timed in
+  // simulation steps, so this waits on arrival rather than on a duration.
   await page.evaluate(() => window.__app.teleport(-3.4, 0.9, Math.PI / 2))
   await page.locator('canvas').click({ position: { x: 400, y: 400 } })
   await page.keyboard.down('KeyW')
@@ -695,10 +652,8 @@ test('the loft is a room you climb to, and cannot fall off', async ({ page }) =>
   await page.keyboard.down('KeyW')
   try {
     await page.waitForFunction(() => window.__app.room() === 'loft', null, { timeout: 90_000 })
-    // …and all the way to the top, rather than stopping part-way up it. The
-    // eye is part of the wait, not only the assertion: crossing the floor
-    // threshold happens on the ramp, a few millimetres of ease short of what
-    // standing on the loft measures.
+    // …and all the way up, not part-way. The eye is part of the wait: the floor
+    // threshold is crossed on the ramp, short of what standing measures.
     await page.waitForFunction(
       () => {
         const p = window.__app.player()
@@ -741,12 +696,8 @@ test('a book put down in mid-air falls to the floor instead of hanging there', a
   })
 
   /**
-   * Waited for, not slept through.
-   *
-   * Falling is simulated per *frame* with the step clamped at 1/20 s, so how far
-   * a book has fallen after three seconds is a fact about the host's spare
-   * capacity — on the software rasteriser these tests run on that can be three
-   * frames. The same argument every other wait in this file makes.
+   * Falling is simulated per frame with the step clamped, so how far a book has
+   * fallen after three seconds is a fact about the host's spare capacity.
    */
   const landed = await settled(
     page,
@@ -833,12 +784,9 @@ test('deleting a bookcase moves its books into the boxes, and undoing brings the
 
   const shelf = 'west-0'
   /**
-   * Make sure the case under test actually has books on it.
-   *
-   * Unpacking fills *empty* rows nearest the box first and stops when the boxes
-   * run out, so with more shelves in the building than there are books to fill
-   * them, whether any particular row is stocked is not something to assume — and
-   * a test that assumed it fails the day somebody adds a bookcase.
+   * Unpacking fills empty rows nearest the box and stops when the boxes run out,
+   * so whether any particular row is stocked is not something to assume — a test
+   * that did would fail the day somebody adds a bookcase.
    */
   const before = await page.evaluate((id) => {
     const app = window.__app
@@ -938,11 +886,8 @@ test('a book can be taken out of a box and shelved', async ({ page }) => {
 })
 
 /**
- * Stand over a box and look down into it, wherever the map happens to put it.
- *
- * Approached from each side in turn, because a box can be against a wall or
- * behind a chair; the first approach the crosshair actually reaches it from
- * wins. Returns the box id, or null if none could be reached at all.
+ * Stand over a box and look into it, wherever the map puts it. Approached from
+ * each side in turn, because a box can be against a wall or behind a chair.
  */
 async function faceABox(page: Page, want: 'box' | 'book' = 'box') {
   const boxes = (await page.evaluate(() => window.__app.places())).boxes
@@ -1153,10 +1098,8 @@ test('looking into a box and pressing G unpacks it, and only it', async ({ page 
 
 test('you can kneel down to the bottom shelf and stand back up', async ({ page }) => {
   await boot(page)
-  // Stand in front of the first case directly rather than through the
-  // book-hunting sweep: kneeling is about the eye height, not about finding a
-  // book, and on a boxed library the sweep has nothing to find and burns the
-  // whole test timeout proving it.
+  // Directly rather than through the book-hunting sweep: kneeling is about eye
+  // height, and on a boxed library the sweep burns the timeout finding nothing.
   await page.evaluate(() => {
     const s = window.__app.places().shelves[0]!
     window.__app.teleport(
@@ -1166,11 +1109,7 @@ test('you can kneel down to the bottom shelf and stand back up', async ({ page }
     )
     window.__app.look(s.rotationY, -0.4)
   })
-  /**
-   * Eye height is *eased*, so how close it is to standing after a fixed sleep is
-   * a fact about the frame rate rather than about the controller. Waited for,
-   * like everything else here.
-   */
+  /** Eye height is eased, so a fixed sleep measures the frame rate, not the controller. */
   await page.waitForFunction(() => Math.abs(window.__app.player().eye - 1.68) < 0.004, null, {
     timeout: 20_000,
   })
@@ -1198,10 +1137,8 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   test.slow()
   await boot(page)
 
-  // Stand in front of the chair in the reading corner and look down at it — an
-  // armchair is under a metre tall, so a level crosshair sails over the back.
-  // Where the chair *is* comes from the world rather than from a coordinate
-  // written down here, so rearranging the room does not break this.
+  // Looking down at it, since an armchair is under a metre tall and a level
+  // crosshair sails over the back. Its position comes from the world.
   const chair = (await page.evaluate(() => window.__app.furniture())).find(
     (item) => item.id === 'chair',
   )
@@ -1224,10 +1161,8 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
       },
       [chair, away, pitch] as const,
     )
-    // The crosshair is read on rendered frames, so wait for frames rather
-    // than milliseconds — a loaded host renders one a second, and a sleep
-    // measures the host's spare capacity instead of the app. Polled from this
-    // side for the reason the seated settle below gives.
+    // The crosshair is read on rendered frames, so this waits for frames.
+    // Polled from this side, for the reason the seated settle below gives.
     const deadline = Date.now() + 15_000
     while (Date.now() < deadline) {
       const at = await page.evaluate(() => ({
@@ -1250,18 +1185,13 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   await expect(page.getByTestId('seated-card')).toContainText(/stand up/i)
 
   // Seated: lower than standing, at the chair, and walking does not move you.
-  // Sitting down *eases* you into the chair, so the reading is taken once that
-  // has finished rather than at a fixed moment part-way through it — otherwise
-  // what the walk is measured against is a position still on its way.
+  // Read once the ease has finished, or the walk is measured against a
+  // position still on its way.
   await page.waitForFunction(() => window.__app.player().eye < 1.3, null, { timeout: 20_000 })
 
-  // Polled from this side rather than with `waitForFunction`, for the reason
-  // `settled` gives: a page timer is starved by the render loop here, and this
-  // one was evaluated once in twenty seconds. The budget is generous because
-  // the ease is counted in frames and a frame here can be most of a second —
-  // which is also why two equal readings only count once a frame has actually
-  // been rendered between them: the ease moves per *frame*, and two polls
-  // landing inside one long frame used to read as "at rest" mid-glide.
+  // Polled from this side, for `settled`'s reason: the render loop starves page
+  // timers. Two equal readings only count once a frame has been rendered
+  // between them, or two polls inside one long frame read as "at rest".
   let previous = ''
   let previousFrame = -1
   let stopped = false
@@ -1300,11 +1230,8 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
 })
 
 /**
- * Drag across the page from `fromFraction` to `toFraction` of the viewport.
- *
- * Keep `fromFraction` off the right-hand edge: the panel is a real bit of UI
- * sitting over the canvas there, and a pointer down on it is a click on the
- * panel, not a grab of the page. The book fills the middle of the screen.
+ * Keep `fromFraction` off the right-hand edge: the panel is real UI over the
+ * canvas there, and a pointer down on it grabs the panel, not the page.
  */
 async function dragPage(page: Page, fromFraction: number, toFraction: number, steps = 12) {
   const box = (await page.locator('canvas').boundingBox())!
@@ -1322,10 +1249,8 @@ async function dragPage(page: Page, fromFraction: number, toFraction: number, st
 }
 
 test('a page can be dragged across, and half a drag is only a peek', async ({ page }) => {
-  // Three full turns, each animated, with the whole cabin and the forest behind
-  // the book being redrawn every frame by a software rasteriser. It is not that
-  // anything is slow — it is that this drives more of the app end to end than
-  // anything else here, and the default minute is not enough room for it.
+  // Three animated turns with the whole cabin redrawn behind the book every
+  // frame: this drives more of the app end to end than anything else here.
   test.slow()
   await boot(page)
   const opened = await page.evaluate(() => window.__app.readForTest('sample-book'))
@@ -1545,10 +1470,8 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
   await faceTheShelves(page)
 
   /**
-   * Printing is spread over several passes so a turn on the spot cannot stall a
-   * frame, which means "how much is printed" is a function of frames elapsed,
-   * not of wall clock — and headless runs at a few frames a second. So wait for
-   * the count to stop moving rather than for a duration.
+   * Printing is spread over passes, so "how much is printed" is a function of
+   * frames elapsed rather than wall clock: wait for the count to stop moving.
    */
   const settle = async () => {
     await page.evaluate(() => {
@@ -1560,10 +1483,9 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
       () => {
         const w = window as unknown as { __spines?: string; __stable?: number }
         const spines = window.__app.spines()
-        // Both counters, not just one. `reprinted` can sit still for a moment
-        // between passes while `printed` is still climbing, and calling that
-        // Requiring several stable samples: settling too early reads the atlas
-        // as full at a third of what it eventually holds.
+        // Both counters: `reprinted` can sit still between passes while
+        // `printed` climbs. Several stable samples, or settling too early
+        // reads the atlas as full at a third of what it holds.
         const now = `${spines.printed}:${spines.reprinted}`
         w.__stable = w.__spines === now ? (w.__stable ?? 0) + 1 : 0
         w.__spines = now
@@ -1583,19 +1505,11 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
   // The atlas is a fixed size on purpose; printing must never exceed it.
   expect(near.printed).toBeLessThanOrEqual(near.slots)
 
-  // Every book in the library is still one draw call, which is the whole point
-  // of an atlas rather than a text mesh per spine. The ceiling is deliberately
-  // loose, because it is not the books that set it: the cabin is a few hundred
-  // boxes and cylinders of furniture — plus the outdoor dressing (mist, smoke,
-  // birds, dust) — and that is what the number tracks. What it rules out is a
-  // shelved book costing anything at all — see the test below it, which is the
-  // one that actually guards that.
-  // Raised from 640 when the cabin grew a kitchen's worth of appliances, a
-  // games corner, a front door and the camp across the lake — then *lowered*
-  // from 700 when every furniture piece was merged to one geometry per
-  // material, which paid for the chamfers, the trim and the outdoor dressing
-  // and still measured 391 here. The margin is for furniture to come; going
-  // over it means merging, not raising it back.
+  // Every book is still one draw call, which is the point of an atlas rather
+  // than a text mesh per spine. The ceiling is loose because the books do not
+  // set it — the furniture and the outdoor dressing do, and that is what this
+  // number tracks. The margin is for furniture to come: going over it means
+  // merging, not raising it.
   const stats = await page.evaluate(() => window.__app.stats())
   expect(stats.drawCalls).toBeLessThan(520)
 
@@ -1627,15 +1541,10 @@ test('shelving the whole library costs nothing to draw', async ({ page }) => {
   expect(shelved.shelved).toBeGreaterThan(100)
   expect(boxed.shelved).toBe(0)
   /**
-   * Seventeen hundred books just moved out of the boxes and onto the shelves,
-   * from one instanced mesh into another, without the camera moving. The frame
-   * should therefore cost the same either way.
-   *
-   * This is the assertion that actually guards the atlas. A hard ceiling on
-   * draw calls tracks how much furniture is in the room, which is a decision
-   * about the map; this tracks whether a book costs anything, which is a
-   * decision about the renderer — and if it ever fails by hundreds, something
-   * has started drawing books one at a time.
+   * Seventeen hundred books moved from one instanced mesh to another without
+   * the camera moving, so the frame should cost the same either way. This is
+   * the assertion that guards the atlas: a hard ceiling tracks how much
+   * furniture is in the room, and this tracks whether a book costs anything.
    */
   expect(Math.abs(shelved.drawCalls - boxed.drawCalls)).toBeLessThan(20)
 })
@@ -1644,9 +1553,8 @@ test('the lamp pool is a fixed size, however many lamps the building has', async
   await boot(page)
 
   /**
-   * The pool re-ranks every eighth frame and hands a slot over across a short
-   * crossfade, so everything here is answered in *frames*. A fixed sleep on the
-   * software rasteriser measures the host's spare capacity instead of the app.
+   * The pool re-ranks every eighth frame and hands slots over across a
+   * crossfade, so everything here is answered in frames.
    */
   const waitFrames = async (n: number) => {
     const from = await page.evaluate(() => window.__app.stats().frames)
@@ -1659,15 +1567,10 @@ test('the lamp pool is a fixed size, however many lamps the building has', async
   await waitFrames(60)
 
   /**
-   * The whole design rests on this number not moving.
-   *
-   * Three.js compiles every lit material against the *count* of point lights in
-   * the scene, so a count that changes as you walk recompiles every shader in
-   * the room mid-stride — which is why the lamps were all mounted at once
-   * before, and why the fix had to be a fixed pool re-pointed at the nearest
-   * few rather than "mount the ones near you". The default map declares nearly
-   * forty lamps and reveals; if this ever reads like that number again, the
-   * pool has been bypassed and the frame budget has gone with it.
+   * The whole design rests on this number not moving: three.js compiles every
+   * lit material against the count of point lights, so a count that changes as
+   * you walk recompiles the room mid-stride. The default map declares nearly
+   * forty lamps and reveals — if this reads like that, the pool is bypassed.
    */
   const cabin = await page.evaluate(() => window.__app.pointLights())
   expect(cabin.mounted, 'the pool grew to the size of the building').toBeLessThanOrEqual(10)
@@ -1680,11 +1583,9 @@ test('the lamp pool is a fixed size, however many lamps the building has', async
   expect(moved.mounted, 'the light count moved with the player').toBe(cabin.mounted)
 
   /**
-   * Switching a lamp off has to make the room *cheaper*, not merely darker: an
-   * unlit lamp is not a candidate and can never hold a slot.
-   *
-   * The count itself does not move — the freed slots refill with window
-   * reveals, which is the pool working rather than leaking.
+   * Switching a lamp off makes the room cheaper rather than merely darker: an
+   * unlit lamp is no candidate. The count itself does not move — freed slots
+   * refill with window reveals, which is the pool working rather than leaking.
    */
   const lamps = await page.evaluate(() =>
     Object.entries(window.__app.lights())
@@ -1724,12 +1625,9 @@ test('the view zooms while the key is held, and opens back out', async ({ page }
 })
 
 /**
- * Stand in the loft and find the tape crate, or the television.
- *
- * Derived from the world rather than written down, like `faceTheShelves`: the
- * default map is a document somebody edits, and a test that knows where the
- * television *was* fails the day it is moved. So this asks where the piece is,
- * stands a stride back from it, and sweeps until the crosshair reports.
+ * Derived from the world like `faceTheShelves`, because a test that knows where
+ * the television was fails the day it is moved: asks where the piece is, stands
+ * a stride back, and sweeps until the crosshair reports.
  */
 async function facePiece(page: Page, kind: string, found: () => boolean) {
   const pieces = await page.evaluate(
@@ -1787,12 +1685,9 @@ test('a tape comes out of the crate and goes into the television', async ({ page
   expect(inTheMachine, 'E did not put the tape in').toBe(true)
 
   /**
-   * And it says what happened.
-   *
-   * The placeholder tapes point at nothing, so playback *fails* — which is the
-   * interesting case, and the same one a real container the WebView cannot decode
-   * produces. What must not happen is silence: the tape leaves your hand either
-   * way, so a failure nobody reports is a television that ate your cassette.
+   * The placeholder tapes point at nothing, so playback fails — the interesting
+   * case, and the one a container the WebView cannot decode produces. What must
+   * not happen is silence: a failure nobody reports ate your cassette.
    */
   const reported = await settled(
     page,
@@ -1966,10 +1861,8 @@ test('the marker draws on the whiteboard, and the board keeps it', async ({ page
   const aimed = await settled(page, () => window.__app.boardTarget() !== null, 8000)
   expect(aimed, 'never found the whiteboard with the marker in hand').toBe(true)
 
-  // Hold the button and sweep the crosshair: the line follows the head. The
-  // sweep waits for *frames*, not for slices of wall clock — the stroke gains
-  // a point per rendered frame, and on the software rasteriser a fixed sleep
-  // can span zero of them, which was a five-pose sweep recorded as one dot.
+  // Hold the button and sweep: the line follows the head. Waited for in frames,
+  // since the stroke gains a point per frame and a sleep can span zero of them.
   await page.mouse.down()
   for (const yaw of [-0.12, -0.06, 0, 0.06, 0.12]) {
     await page.evaluate((y) => window.__app.look(Math.PI + y, 0), yaw)
@@ -2043,11 +1936,9 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
   await page.keyboard.press('Escape')
   await settled(page, () => window.__app.stats().mode === 'walk', 8000)
 
-  // Before anything is pinned: the board is hung at head height, not propped on
-  // the skirting. `y` in the document is the centre of a hung thing, and the
-  // renderer used to read it as the base — which put the office board's top edge
-  // at 1.5 m, under the eye line of anybody standing in front of it, with the
-  // pen tray by their knees.
+  // The board is hung at head height, not propped on the skirting. `y` is the
+  // centre of a hung thing; read as the base, the top edge lands under the eye
+  // line of anybody standing in front of it, with the pen tray by their knees.
   const boards = await page.evaluate(() => window.__app.boards())
   expect(boards.length, 'no whiteboard in the office').toBeGreaterThan(0)
   for (const board of boards) {
@@ -2057,12 +1948,9 @@ test('a page torn out of a book pins to a wall, and the book keeps its own', asy
   }
 
   // Somewhere with plaster on it: the south wall between the window and the
-  // porch door, which is solid from the floor to the ceiling. Waited for the
-  // *settled* aim, not the first non-null target: closing the book eases the
-  // camera back to your eyes over a few frames, and on the software rasteriser
-  // those frames take seconds — an E fired at the first hit pinned the page
-  // wherever the camera happened to be pointing mid-glide, and the last check
-  // of this test then looked for it at the aim it never landed on.
+  // porch door. Waited for the settled aim, not the first non-null target —
+  // closing the book eases the camera back over several frames, and an E fired
+  // at the first hit pins the page wherever it was pointing mid-glide.
   await page.evaluate(() => window.__app.teleport(1.5, 3.2, Math.PI, 0))
   await page.evaluate(() => window.__app.look(Math.PI, 0))
   const aimed = await settled(
@@ -2130,12 +2018,9 @@ test('a note is written, stuck up, and is still there after a reload', async ({ 
 })
 
 /**
- * The EPUB half of read mode.
- *
- * Everything above `reader/source.ts` is format-blind, which is the whole point
- * of that file — so what this proves is that a book with no pages until it is
- * set in type arrives in the same reader, with the same turn, and answers the
- * same questions about itself.
+ * Everything above `reader/source.ts` is format-blind, so this proves that a
+ * book with no pages until it is set in type arrives in the same reader, with
+ * the same turn, answering the same questions.
  */
 test('an EPUB opens, is set in type, and turns like any other book', async ({ page }) => {
   const errors: string[] = []
@@ -2151,11 +2036,9 @@ test('an EPUB opens, is set in type, and turns like any other book', async ({ pa
   expect(opened.showing).toEqual([0, 1])
 
   await page.keyboard.press('ArrowRight')
-  // The leaf falls in *rendered frames* — the per-frame step is clamped at
-  // 1/20 s, so the 0.85 s fall needs seventeen of them plus both faces
-  // rasterising first. On the software rasteriser a frame can be most of a
-  // second, which makes this a minute-scale budget like `walkUntil`'s: it is
-  // here to catch a leaf that never lands, not to time one.
+  // The leaf falls in rendered frames — the step is clamped, so the fall needs
+  // seventeen of them plus both faces rasterising. A minute-scale budget like
+  // `walkUntil`'s: here to catch a leaf that never lands, not to time one.
   await page.waitForFunction(() => window.__app.reader().spread === 1, null, { timeout: 60_000 })
   expect(await page.evaluate(() => window.__app.reader().showing)).toEqual([2, 3])
 
@@ -2173,10 +2056,8 @@ test('the catalogue finds a book and says where it is', async ({ page }) => {
   await boot(page)
   await unpackEverything(page)
 
-  // The terminal is furniture, so where it is comes from the world rather than
-  // from a coordinate written down here. Approached from the *north*, because
-  // the desk it stands on is against the south end of the office and the poses
-  // south of it are through a wall.
+  // Where it is comes from the world. Approached from the north, because its
+  // desk is against the south end of the office and poses there are in a wall.
   const terminal = (await page.evaluate(() => window.__app.furniture())).find(
     (item) => item.kind === 'computer',
   )
@@ -2261,12 +2142,9 @@ test('the cat comes when called, and can be asked for a book', async ({ page }) 
   )
   expect(coming, 'the cat ignored every call').toBe(true)
 
-  // And it actually crosses the room to you rather than only intending to.
-  //
-  // The budget is wall-clock but the walk is not: the frame delta is clamped at
-  // 1/20 s, so on a software rasteriser running at two frames a second the cat
-  // advances a tenth of a second of simulation per second of test. Ten metres
-  // is minutes, not seconds.
+  // And it actually crosses the room rather than only intending to. The budget
+  // is wall-clock but the walk is not: with the frame delta clamped, ten metres
+  // at two frames a second is minutes rather than seconds.
   const before = await page.evaluate(() => window.__app.cat())
   const you = await page.evaluate(() => window.__app.player())
   const away = Math.hypot(before.x - you.x, before.z - you.z)
@@ -2287,10 +2165,8 @@ test('the cat comes when called, and can be asked for a book', async ({ page }) 
   const shelvedBefore = await page.evaluate(() => window.__app.stats().shelved)
   expect(await page.evaluate(() => window.__app.fetchBookForTest())).toBe(true)
 
-  // It ends with the book on the floor at your feet, where it becomes an
-  // ordinary loose book you can pick up. Waited for as one condition rather than
-  // two, because the fetch and the delivery are a single errand and catching it
-  // mid-carry is a race with a walking animal.
+  // It ends with the book at your feet, an ordinary loose book. One condition
+  // rather than two: catching it mid-carry is a race with a walking animal.
   const delivered = await settled(
     page,
     () => Object.keys(window.__app.looseBooks()).length > 0,

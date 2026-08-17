@@ -1,8 +1,5 @@
-# Everything the build does not need, which is most of the repo.
-#
-# The Rust target directories matter most: a local `cargo build` leaves gigabytes
-# in them, and sending that to the daemon as build context is a minute of nothing
-# happening before the first stage even starts.
+# Everything the build does not need. The target directories matter most: a local
+# `cargo build` leaves gigabytes there, and it all goes to the daemon as context.
 node_modules
 dist
 core/target
@@ -10,8 +7,7 @@ server/target
 src-tauri/target
 src-tauri/gen
 
-# Generated at build time inside the image, so a stale local copy would only
-# shadow the fresh one.
+# Generated inside the image; a local copy would only shadow the fresh one.
 public/standard_fonts
 public/cmaps
 public/sample-book.pdf
@@ -27,8 +23,7 @@ tests/screenshots
 .idea
 docs
 assets
-# 28 MB of books, records and video that no build stage reads. A library folder
-# is something you *mount*; there is no reason to send one to the daemon.
+# 28 MB no build stage reads — a library folder is mounted, not baked in.
 demo-data
 *.md
 Dockerfile

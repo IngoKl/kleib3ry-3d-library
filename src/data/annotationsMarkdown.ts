@@ -1,11 +1,8 @@
 import type { AnnotationsDocument } from '../services/types'
 
 /**
- * The annotations as prose: a Markdown digest of every bookmark and note,
- * ordered by title, for reading anywhere that is not the app.
- *
- * Pure, so the tests can hold its output still. The date arrives as an
- * argument for the same reason.
+ * A Markdown digest of every bookmark and note, ordered by title, for reading
+ * anywhere that is not the app. Pure — the date is an argument — so it tests.
  */
 export function composeAnnotationsMarkdown(doc: AnnotationsDocument, exportedAt: Date): string {
   const lines: string[] = ['# Annotations', '', `Exported ${exportedAt.toISOString().slice(0, 10)}.`]

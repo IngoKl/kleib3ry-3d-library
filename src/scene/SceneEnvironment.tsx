@@ -7,26 +7,18 @@ import { useAppStore } from '../state/store'
 import { useSettings } from '../state/settings'
 
 /**
- * The environment map: a 64×32 equirect painted from the same weather the sky
- * shows, prefiltered through PMREM and set as `scene.environment`, so brass,
- * glass and above all the lake have something to reflect — metalness with no
- * environment is paint. 64×32 is PMREM's documented minimum input, and enough:
- * the prefilter blurs everything to "bright sky over dark ground", which is
- * all a reflection this soft can say. The stops here approximate the dome's
- * rather than importing them, for the same reason.
+ * A 64×32 equirect painted from the weather the sky shows, prefiltered through
+ * PMREM, so brass, glass and above all the lake have something to reflect —
+ * metalness with no environment is paint. 64×32 is PMREM's minimum input and
+ * enough, since the prefilter blurs everything to "bright sky over dark ground".
  *
- * Regenerated only when the ambience blend settles — plus once mid-transition
- * if it has drifted far, so a seven-second dusk does not reflect noon all the
- * way down — into a reused render target: a regen is a handful of offscreen
- * passes, never per-frame work. Off in Low Performance Mode: cubeUV sampling
- * is a per-fragment cost every standard material in the frame pays.
+ * Regenerated only when the ambience blend settles, plus once mid-transition if
+ * it has drifted far, into a reused target: never per-frame work. Off in Low
+ * Performance Mode, where cubeUV sampling is a cost every material pays.
  *
- * And unhooked while a book is open. The reader pays for pages, not
- * reflections: mid-turn the rasteriser and the renderer share one CPU on the
- * machines that struggle, a reflection buys nothing behind an open book, and
- * unhooking returns exactly the budget the turn needs. Both shader variants
- * are compiled once at boot (the first frame renders before the environment
- * arrives), so the toggle swaps cached programs rather than recompiling.
+ * Unhooked while a book is open: a reflection buys nothing behind a page, and
+ * the turn needs exactly that budget. Both shader variants are compiled at boot,
+ * so the toggle swaps cached programs rather than recompiling.
  */
 
 const ZENITH = colorCorners({ day: '#4d7fb5', dayRain: '#5d6771', night: '#0a1024', nightRain: '#141721' })
@@ -89,10 +81,8 @@ function Prefiltered() {
   const baked = useRef({ night: -1, rain: -1 })
   const prev = useRef({ night: 0, rain: 0 })
 
-  // A plain effect, not a layout one: the first frame must render *without*
-  // the environment so the no-envmap programs exist in the cache — they are
-  // what the reader swaps back to. The recompile wave for the env variants
-  // lands a frame later, still inside the load.
+  // A plain effect, not a layout one: the first frame must render without the
+  // environment, so the no-envmap programs the reader swaps back to are cached.
   useEffect(() => {
     bake()
     baked.current = { night: ambienceBlend.night, rain: ambienceBlend.rain }
@@ -109,16 +99,13 @@ function Prefiltered() {
   const warmed = useRef(0)
 
   useFrame(() => {
-    // Frame one renders without the environment on purpose: it is what puts
-    // the no-envmap shader programs in the cache, so the reader's unhook
-    // below swaps programs instead of compiling them — a compile wave on a
-    // software rasteriser is seconds, mid-page-turn.
+    // Frame one is deliberately env-free, so the unhook below swaps cached
+    // programs: a compile wave on a software rasteriser is seconds, mid-turn.
     warmed.current += 1
     const reading = useAppStore.getState().mode === 'read'
-    // Unhooked for the first couple of the headlamp's warm frames too, so the
-    // beam's programs get compiled without the map as well as with it: that
-    // pair is what opening a book while wearing the lamp would otherwise
-    // compile on the spot. See `shaderWarm`.
+    // Unhooked for the headlamp's first warm frames too, so the beam's programs
+    // exist both with and without the map — the pair opening a book while
+    // wearing the lamp would otherwise compile on the spot.
     const warmingBeam = shaderWarm.spotlight > 0 && shaderWarm.spotlight <= 2
     const want =
       warmed.current <= 1 || reading || warmingBeam ? null : (rig.target?.texture ?? null)

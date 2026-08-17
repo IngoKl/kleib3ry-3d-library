@@ -2,22 +2,16 @@ import * as THREE from 'three'
 import type { DerivedLight } from '../world/derive'
 
 /**
- * A fixed number of point lights, standing in for however many the building
- * declares.
+ * A fixed number of point lights standing in for however many the building
+ * declares. Three.js forward rendering has no per-object light culling, so every
+ * point light is a term in every lit fragment's shader — with forty lamps, each
+ * pixel of the cabin is shaded against the lake house's pendants.
  *
- * Three.js forward rendering has no per-object light culling: every point light
- * is a term in *every* lit fragment's shader, wherever it hangs. The default
- * map declares nearly forty, so without this each pixel of the cabin is shaded
- * against the lake house's pendants.
- *
- * Mounting only nearby lights would not work: the *count* is what the shader is
- * compiled against, and changing it recompiles every material in the scene. So
- * the count is held constant and the *bindings* move — a fixed set of slots,
- * re-pointed at the nearest lit lamps as you walk. Switching a lamp off then
- * makes the room genuinely cheaper rather than merely darker.
- *
- * The cost: a lamp beyond the pool lights nothing. With walls between rooms
- * that is close to the desired behaviour anyway.
+ * Mounting only nearby lights would not help: the count is what every material
+ * is compiled against, so changing it recompiles the scene. The count is held
+ * constant and the bindings move instead, which also makes switching a lamp off
+ * genuinely cheaper rather than merely darker. The cost is that a lamp beyond
+ * the pool lights nothing, which walls make close to right anyway.
  */
 
 export type PoolLight = {
@@ -25,28 +19,17 @@ export type PoolLight = {
   position: readonly [number, number, number]
   /** Roughly how far it carries. Ranking only — `apply` sets the real range. */
   reach: number
-  /**
-   * Writes colour and range onto the light and returns the intensity it wants
-   * this frame. Live, because a reveal follows the ambience and a fire breathes.
-   */
+  /** Live, because a window reveal follows the ambience and a fire breathes. */
   apply: (light: THREE.PointLight) => number
 }
 
 /** Metres of slack a bound light gets before a closer one may evict it. */
 const HOLD = 0.75
 
-/**
- * Which candidate each slot is showing, for the probe and the tests.
- *
- * A plain array beside the pool, for the same reason `state/metrics.ts` is one:
- * it is written every frame and must not re-render anything.
- */
+/** A plain array, like `state/metrics.ts`: written every frame, re-renders nothing. */
 export const poolBindings: (string | null)[] = []
 
-/**
- * Rank by how far *outside* its own reach you are, so a dim close lamp does not
- * beat the pendant lighting the room you are standing in.
- */
+/** Rank by how far outside its reach you are, or a dim close lamp beats the room's pendant. */
 function score(light: PoolLight, camera: THREE.Vector3, bound: boolean): number {
   const [x, y, z] = light.position
   const d = Math.hypot(camera.x - x, camera.y - y, camera.z - z) - light.reach
@@ -63,9 +46,8 @@ export type Slot = {
 export const emptySlot = (): Slot => ({ currentId: null, wantedId: null, level: 0 })
 
 /**
- * Decide which candidate each slot should be showing. Sticky: a slot keeps its
- * lamp whenever that lamp is still wanted, so walking about does not shuffle
- * bindings and make the room flicker.
+ * Sticky: a slot keeps its lamp while that lamp is still wanted, so walking
+ * about does not shuffle bindings and make the room flicker.
  */
 export function assign(slots: Slot[], candidates: PoolLight[], camera: THREE.Vector3): void {
   const bound = new Set<string>()
@@ -102,11 +84,9 @@ const LAMP_COLOUR = {
 }
 
 /**
- * The lamps that are actually alight, as pool candidates.
- *
- * Rebuilt when the world or the switches change — a React-level event — rather
- * than per frame, which is what lets a lamp that is off simply not be a
- * candidate. That is where "off is cheaper" comes from.
+ * The lamps that are alight, as pool candidates. Rebuilt on a React-level event
+ * rather than per frame, which is what lets an unlit lamp simply not be a
+ * candidate — where "off is cheaper" comes from.
  */
 export function lampCandidates(lights: DerivedLight[], on: Record<string, boolean>): PoolLight[] {
   const out: PoolLight[] = []

@@ -4,15 +4,11 @@ import type { DerivedShelf, DerivedWorld } from '../world/derive'
 import { INTERIOR_WIDTH, SHELF, rowMetrics } from '../world/shelf'
 
 /**
- * Turning a saved layout into positions on shelves.
- *
- * The layout stores nothing but an ordered list of book ids per shelf row, keyed
- * by the shelf's *id* rather than its position in the document. That is the
- * whole reason editing `library.json` does not shuffle your library: move a
- * bookcase, reorder the file, insert another one above it — the key is
- * unchanged, so the books stay where you put them. Where each book physically
- * sits is derived by packing its row left to right, so a book that gets fatter
- * after a re-index pushes its neighbours along instead of overlapping them.
+ * Turning a saved layout into positions on shelves. The layout is an ordered
+ * list of book ids per row, keyed by shelf id rather than document position,
+ * which is why editing `library.json` never shuffles a library. Position is
+ * derived by packing left to right, so a book that gets fatter after a re-index
+ * pushes its neighbours along instead of overlapping them.
  */
 
 export { INTERIOR_WIDTH }
@@ -70,9 +66,8 @@ export function rowFits(
 }
 
 /**
- * Positions for one row. Books that do not fit are dropped rather than allowed
- * to spill through the side panel — callers that care where the overflow went
- * (reconciliation does) compare the result against what they passed in.
+ * Positions for one row. Books that do not fit are dropped rather than spilling
+ * through the side panel; callers that care compare the result to their input.
  */
 export function packRow(
   shelf: DerivedShelf,
@@ -107,18 +102,13 @@ export function packRow(
     cursor += size.thickness
   }
 
-  // A row with slack in it leans *back* — the whole run tips towards the closed
-  // end until its innermost spine is resting on the side panel, feet sliding
-  // into the gap. Tipping the other way, out into the empty half, is a book
-  // resting on nothing; and tipping one book while its neighbour stands plumb
-  // opens a wedge of air between two spines, which is the artefact this shape
-  // exists to avoid. Sheared as one, every spine stays in face contact with the
-  // next whatever their heights differ by, and there is no wedge anywhere.
+  // A slack row leans back, the whole run tipping towards the closed end until
+  // its innermost spine rests on the side panel. Sheared as one, so every spine
+  // stays in face contact with the next; tipping books individually opens a
+  // wedge of air between them, which is the artefact this exists to avoid.
   //
-  // The angle is what the slack allows, up to `SETTLE_MAX`: a nearly full row
-  // barely moves, a full one stands plumb, and a half-empty one leans like a
-  // half-empty shelf. Keyed to the row rather than to a book, so putting one
-  // more book away does not re-pitch the whole shelf.
+  // The angle is what the slack allows, up to `SETTLE_MAX`, and is keyed to the
+  // row rather than the book, so one more book does not re-pitch the shelf.
   const free = limit - cursor
   if (settle && packed.length > 0 && free > 0.008) {
     // The innermost book's top corner is what meets the panel, so its height is
@@ -131,9 +121,8 @@ export function packRow(
       for (const item of packed) {
         const size = dims(item.id)!
         item.lean = tilt
-        // The instance turns about the book's *centre*, which swings its foot
-        // the other way; taking that back off leaves every foot where the
-        // packing put it, so the run stays flush along the shelf.
+        // The instance turns about the book's centre, swinging its foot the
+        // other way; taking that back off keeps the run flush along the shelf.
         item.localX += slide - Math.sin(tilt) * (size.height / 2)
       }
     }
@@ -158,16 +147,12 @@ export function packLayout(
 }
 
 /**
- * Add books to the shelves, filling whatever space is left.
+ * Append into the rows as they already stand, so a later scan's books land in
+ * the gaps rather than being dropped for colliding with an occupied row.
+ * Returns the ids it could not place.
  *
- * Takes the rows as they already stand and appends into them, so books added by
- * a later scan land in the gaps rather than being dropped for colliding with an
- * occupied row. Returns the ids it could not place.
- *
- * `order` is which rows to try and in what order, defaulting to the order the
- * document lists them in. Emptying a box passes its own order — see
- * `emptyRowsFirst` — so a boxful lands somewhere in the room rather than
- * always filling the first bookcase by the door.
+ * `order` is which rows to try, defaulting to document order; emptying a box
+ * passes its own so a boxful does not always fill the first case by the door.
  */
 export function arrangeInto(
   world: DerivedWorld,
@@ -192,9 +177,8 @@ export function arrangeInto(
       continue
     }
 
-    // First fit over every row rather than a cursor that only advances: the
-    // books arrive in box-stack order, not by thickness, so one fat book must
-    // not disqualify a row for every thin one behind it.
+    // First fit over every row rather than an advancing cursor: books arrive in
+    // stack order, so one fat book must not disqualify a row for the thin ones.
     const slot = free.find((row) => row.used + size.thickness <= ROW_CAPACITY)
     if (!slot) {
       leftOver.push(id)
@@ -209,17 +193,11 @@ export function arrangeInto(
 }
 
 /**
- * An order to fill rows in that puts the empty ones first, shuffled.
+ * Empty rows first, shuffled, so unpacking spreads round the library instead of
+ * stacking a boxful into the first case by the door. Occupied rows come after in
+ * document order, so nothing is dropped for want of a tidy place to go.
  *
- * Filling in document order would stack a boxful into the first bookcase by
- * the door and leave the rest of the room bare; going to empty shelves first
- * spreads the unpacking around the library the way carrying an armful across
- * the room does. Rows that already hold books come after, in document order,
- * so nothing is dropped for want of a tidy place to go. Unpacking a *box* uses
- * `nearestRowsFirst` instead — the box knows where it is standing.
- *
- * `random` is a seeded generator, so emptying the same box twice does the same
- * thing and a screenshot is reproducible.
+ * `random` is seeded, so emptying the same box twice does the same thing.
  */
 export function emptyRowsFirst(
   world: DerivedWorld,
@@ -242,18 +220,12 @@ export function emptyRowsFirst(
 }
 
 /**
- * The same order, but from somewhere: empty rows first, nearest bookcase first.
+ * The same order, but from somewhere: empty rows first, nearest case first, so
+ * carrying a box to the case you mean to fill and pressing G fills that one.
+ * Rows within a case go top to bottom; ties fall back to document order.
  *
- * This is what unpacking a box uses now that a box can be carried. Carrying it
- * across the room to the case you mean to fill and pressing G should fill *that*
- * case — the seeded shuffle `emptyRowsFirst` does instead scattered the boxful
- * over the whole building, which read as the room ignoring where you were
- * standing. Within a case, rows fill top to bottom; cases at the same distance
- * fall back to document order.
- *
- * The climb to another storey is weighted double, because a case up a flight of
- * stairs is farther than the metres say — a box set down in the loft should
- * fill the loft before it fills the room directly below it.
+ * A storey costs double, because a case up a flight is farther than the metres
+ * say — a box in the loft should fill the loft before the room below it.
  */
 export function nearestRowsFirst(
   world: DerivedWorld,

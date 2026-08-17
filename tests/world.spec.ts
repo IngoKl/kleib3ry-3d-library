@@ -41,11 +41,9 @@ import { mulberry32 } from '../src/lib/rng'
 import type { IndexedBook } from '../src/services/types'
 
 /**
- * The world document, and — the part worth being careful about — what happens
- * to a library you have arranged by hand when you edit the room underneath it.
- *
- * These run in the browser project because the source is TypeScript modules
- * Playwright transpiles; none of them need a page.
+ * The world document, and what happens to a library you arranged by hand when
+ * you edit the room underneath it. In the browser project because the source is
+ * TypeScript Playwright transpiles; none of them need a page.
  */
 
 const DOC = parseWorldText(DEFAULT_WORLD_TEXT)
@@ -78,10 +76,8 @@ function worldWith(edit: (doc: WorldDocument) => void) {
 
 test.describe('world document', () => {
   test('the default the app writes for you actually parses', () => {
-    // The cabin: a great room, the loft inside its volume, a reading corner
-    // with the bedroom on top of it, a kitchen, a bathroom off it, an office
-    // and a porch — and then, a trail away, the lake house and its deck. Two
-    // buildings in one document, which the format always allowed.
+    // The cabin and its rooms, then a trail away the lake house and its deck:
+    // two buildings in one document, which the format always allowed.
     expect(WORLD.rooms.map((r) => r.id)).toEqual([
       'main',
       'loft',
@@ -114,10 +110,9 @@ test.describe('world document', () => {
   })
 
   test('no window has the floor of the room above running through it', () => {
-    // A window whose head reaches past a floor slab above it shows a plank
-    // across the view from outside, while looking like plain wall from inside.
-    // Checked generally: the mistake is available in every room with a storey
-    // over part of it.
+    // A window whose head reaches past a floor slab shows a plank across the
+    // view outside while looking like plain wall inside. Checked generally,
+    // because the mistake is available in every room with a storey over it.
     const problems: string[] = []
 
     for (const room of WORLD.rooms) {
@@ -144,10 +139,8 @@ test.describe('world document', () => {
           const b = roomBounds(over)
           if (at.x < b.minX || at.x > b.maxX || at.z < b.minZ || at.z > b.maxZ) continue
 
-          // The slab hangs between these two; the opening runs from its sill to
-          // its head. What is forbidden is the two *overlapping* — an opening
-          // wholly above the slab is a window in the upper room's own wall,
-          // which is what the loft's north window is.
+          // What is forbidden is the slab and the opening overlapping. One
+          // wholly above the slab is a window in the upper room's own wall.
           const underside = over.elevation - FLOOR_SLAB
           const sill = room.elevation + opening.sill
           if (head > underside + 1e-6 && sill < over.elevation - 1e-6) {
@@ -164,11 +157,9 @@ test.describe('world document', () => {
   })
 
   test('two openings never share a stretch of wall', () => {
-    // `wallPanels` walks a wall's openings in order and cuts the leftovers into
-    // piers, aprons and lintels. Two that overlap along the wall cut each
-    // other's panels to ribbons — the apron of the second is drawn straight
-    // across the glass of the first — and the heights do not save you, because
-    // the cut is made in plan.
+    // `wallPanels` cuts the leftovers into piers, aprons and lintels, so two
+    // openings overlapping along the wall cut each other's panels to ribbons.
+    // Differing heights do not save you: the cut is made in plan.
     for (const room of WORLD.rooms) {
       for (const wall of ['north', 'south', 'east', 'west'] as const) {
         const on = room.openings.filter((o) => o.wall === wall).sort((a, b) => a.at - b.at)
@@ -185,9 +176,8 @@ test.describe('world document', () => {
   })
 
   test('the loft has a window of its own, in the wall the great room builds', () => {
-    // The loft stands inside the great room's volume and builds only its
-    // balustrade, so a window for it is an opening in *this* room's north wall,
-    // sitting above the loft floor. From below it is hidden behind the boards.
+    // The loft builds only its balustrade, so its window is an opening in the
+    // great room's north wall, above the loft floor and hidden from below.
     const loft = WORLD.rooms.find((room) => room.id === 'loft')!
     const main = WORLD.rooms.find((room) => room.id === 'main')!
     const window = main.openings.find(
@@ -220,13 +210,10 @@ test.describe('world document', () => {
     expect(stair.bottom).toBe(0)
     expect(stair.top).toBeCloseTo(loft.elevation, 5)
 
-    // The climb is continuous: no step bigger than one, all the way up — for
-    // *every* flight in the cabin, the bedroom's included. The trace is
-    // collected first so a failure names *where* the flight breaks — "a 0.6 m
-    // step two thirds of the way up" is a fixable report and "expected 0.42"
-    // is not. Walked along the flight's own up-vector rather than assuming it
-    // climbs +Z, so re-orienting a staircase in the default map does not
-    // falsify the test.
+    // No step bigger than one, all the way up, for every flight. The trace is
+    // collected first so a failure names where the flight breaks — "a 0.6 m
+    // step two thirds up" is fixable and "expected 0.42" is not. Walked along
+    // the flight's own up-vector, so re-orienting one does not falsify this.
     for (const flight of WORLD.stairs) {
       const climb: { z: number; floor: number | null }[] = []
       const at = (t: number) => ({
@@ -252,11 +239,9 @@ test.describe('world document', () => {
   })
 
   test('the treads reach as far up as the ramp does', () => {
-    // The renderer draws a flight `height` tall and the walk controller climbs
-    // `rise`, and for a while those were two different numbers: `rise` was read
-    // from the document while `height` fell back to the kind's default 2.6. The
-    // bedroom flight climbs 3.22, so its treads stopped 62 cm under the floor
-    // they deliver you onto — walkable, and visibly not joined.
+    // The renderer draws a flight `height` tall and the controller climbs
+    // `rise`. Let those differ and the treads stop short of the floor they
+    // deliver you onto — walkable, and visibly not joined.
     for (const flight of WORLD.stairs) {
       const drawn = WORLD.furniture.find((item) => item.id === flight.id)!
       expect(drawn.height, `the ${flight.id} treads do not reach the landing`).toBeCloseTo(
@@ -267,12 +252,10 @@ test.describe('world document', () => {
   })
 
   test('what is hung on a wall hangs where the document says', () => {
-    // `y` on a picture or a whiteboard is the centre of the thing — that is how
-    // anybody hanging one thinks about it, and it is what custom-maps.md
-    // promises. The derived `y` is the *base*, like every other piece, so the
-    // two differ by half the height and nothing else. The renderer's half of
-    // this — that a hung body is actually *drawn* about that centre — is in
-    // smoke.spec.ts, which can see the meshes.
+    // `y` on a hung piece is its centre, which is how anybody hanging one
+    // thinks about it and what custom-maps.md promises; the derived `y` is the
+    // base, so the two differ by half the height and nothing else. That a hung
+    // body is actually drawn about that centre is smoke.spec.ts's half.
     for (const room of WORLD.rooms) {
       for (const spec of room.furniture) {
         if (!WALL_MOUNTED.has(spec.kind) || spec.y === undefined) continue
@@ -374,9 +357,8 @@ test.describe('the roof', () => {
   const roofOf = (id: string) => WORLD.roofs.find((roof) => roof.roomId === id)
 
   test('only the topmost room over a patch of ground is roofed', () => {
-    // The loft stands inside the great room's volume and shares its ceiling
-    // exactly; the reading corner has the bedroom on top of it. Neither may
-    // grow a roof, or the building has roofs indoors.
+    // The loft shares the great room's ceiling and the reading corner has the
+    // bedroom on top. Neither may grow a roof, or the building has one indoors.
     expect(roofOf('loft')).toBeUndefined()
     expect(roofOf('reading')).toBeUndefined()
 
@@ -399,9 +381,8 @@ test.describe('the roof', () => {
   })
 
   test('a roof does not overhang into the building it leans on', () => {
-    // The porch's shed roof climbs north to meet the cabin. Given an overhang
-    // on that side it reached 45 cm through the south wall and came out over
-    // the great room, which is the bug this asserts against.
+    // The porch's shed roof climbs north to meet the cabin. With an overhang on
+    // that side it comes out through the south wall over the great room.
     const porch = roofOf('porch')!
     const room = WORLD.rooms.find((r) => r.id === 'porch')!
     const wall = room.origin[1] - room.size[1] / 2
@@ -427,9 +408,8 @@ test.describe('the roof', () => {
   })
 
   test('nothing you can stand on is under a roof slope', () => {
-    // Every roof begins at its own room's ceiling, so no floor in the building
-    // is ever within reach of one. Cheap to state, and the thing that would
-    // break first if the plane were ever anchored anywhere else.
+    // Every roof begins at its room's ceiling, so no floor is ever within reach
+    // of one — the first thing to break if the plane were anchored elsewhere.
     for (const roof of WORLD.roofs) {
       const room = WORLD.rooms.find((r) => r.id === roof.roomId)!
       expect(roof.eaves).toBeGreaterThanOrEqual(room.elevation + room.height - 1e-6)
@@ -457,10 +437,8 @@ test.describe('outside', () => {
   })
 
   test('you can walk out of the porch and down onto the grass', () => {
-    // Straight out of the cabin's south door at world x = 2.6, across the
-    // decking and down the steps directly below it, so leaving does not mean
-    // threading between the porch furniture. The 24 cm drop off the decking is
-    // a step rather than a fall.
+    // Straight out of the south door, across the decking and down the steps, so
+    // leaving does not mean threading between the porch furniture.
     let stance: Stance = { x: 2.6, z: 5.6, floor: 0 }
     for (let i = 0; i < 60; i++) {
       stance = stepPlayer(WORLD, solids, stance, { x: stance.x, z: stance.z + 0.05 }, 0.28)
@@ -765,9 +743,8 @@ test.describe('furniture you carry off', () => {
     expect(folding.map((item) => item.id).sort()).toEqual(['folding-chair', 'folding-table'])
     for (const item of folding) expect(item.roomId).toBe('porch')
 
-    // Both are solid, so you walk round them wherever they end up; the chair is
-    // something to sit on and the table something to put a book on. Being
-    // ordinary furniture is the whole point of them.
+    // Solid wherever they end up, one to sit on and one to put a book on:
+    // being ordinary furniture is the whole point of them.
     const chair = folding.find((item) => item.kind === 'foldingchair')!
     const table = folding.find((item) => item.kind === 'foldingtable')!
     expect(SITTABLE.has(chair.kind)).toBe(true)
@@ -845,9 +822,8 @@ test.describe('moving boxes', () => {
 
 test.describe('the lake', () => {
   test('the shore you see is the shore you stand at', () => {
-    // The renderer builds the water from `lakePoint`; the walk controller
-    // refuses steps with `lakeRadius`. Every point on the drawn waterline must
-    // measure as exactly the waterline, or the two have come apart.
+    // The renderer builds water from `lakePoint` and the controller refuses
+    // steps by `lakeRadius`, so every drawn waterline point must measure as one.
     for (let i = 0; i < 96; i++) {
       const angle = (i / 96) * Math.PI * 2
       const [wx, wz] = lakePoint(angle, 1)
@@ -906,10 +882,8 @@ test.describe('unpacking to the nearest case', () => {
   })
 
   test('a storey away is farther than the metres say', () => {
-    // Stand directly under a loft case. It is 2.5 m up, which the ordering
-    // weights double: any ground-floor case within that weighted reach must
-    // fill before the one overhead — a box set down in the great room should
-    // not start the unpacking upstairs.
+    // Standing under a loft case, whose storey the ordering weights double: a
+    // box set down in the great room must not start the unpacking upstairs.
     const upstairs = WORLD.shelves.find((shelf) => shelf.y > 1)!
     const from = { x: upstairs.x, y: 0, z: upstairs.z }
     const order = nearestRowsFirst(WORLD, {}, from)

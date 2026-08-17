@@ -1,14 +1,8 @@
 /**
- * The cat.
- *
- * A plain mutable object rather than a zustand store, for the same reason
- * `player.ts` is one: it changes every frame, and a React render per frame for
- * an animal wandering about the room would cost more than everything else in
- * the building put together. What the UI needs to know — is it under the
- * crosshair, is it purring — goes through the app store, which changes rarely.
- *
- * The behaviour lives in `scene/Cat.tsx`, next to the walking; this is only what
- * it is doing and where.
+ * A plain mutable object rather than a store, like `player.ts`: it changes every
+ * frame, and a React render per frame for a wandering animal would cost more
+ * than the rest of the building. What the UI needs goes through the app store.
+ * The behaviour is in `scene/Cat.tsx`; this is only what it is doing and where.
  */
 
 export type CatMood =
@@ -49,9 +43,8 @@ export type Cat = {
   /** How long it has been failing to get anywhere, so it can give up gracefully. */
   stuck: number
   /**
-   * A doorway to head for before the real target. Set when it walks into a
-   * wall, because it steers straight at where it is going and a room whose door
-   * faces away from the rest of the building is otherwise a trap.
+   * A doorway to head for first, set when it walks into a wall: it steers
+   * straight at its target, so a room whose door faces away is a trap.
    */
   via: [number, number] | null
   /** True once the world has been up long enough to put it somewhere sensible. */

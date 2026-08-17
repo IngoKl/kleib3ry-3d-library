@@ -34,7 +34,7 @@ Point the app at it like any other library folder: **Choose Folder…**, then
 shelf, put a record on and read something. The container can use it too:
 
 ```bash
-docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
+docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
 ```
 
 Whichever you use writes into that folder's `.library/`, so the demo library

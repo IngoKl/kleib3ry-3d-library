@@ -1,16 +1,9 @@
 /**
- * Writes the two real books the browser driver can open: one of each format.
+ * The two real books the browser driver can open, one of each format. Without
+ * them read mode is only exercised by `test:desktop`, which needs a built
+ * installer and a real library folder; this puts the reader inside `npm test`.
  *
- * Without them the no-filesystem driver has no readable book at all, so read
- * mode — the page cache, the turn, the commit, and now the type setter that
- * makes an EPUB a book — is only ever exercised by `test:desktop`, which needs
- * a built installer and a real library folder. This puts the whole reader
- * inside `npm test`.
- *
- * Generated rather than committed, like the pdf.js cmaps beside it: the repo
- * stays text-only.
- *
- *   node scripts/make-sample-book.mjs
+ * Generated rather than committed, like the pdf.js cmaps: the repo stays text.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'

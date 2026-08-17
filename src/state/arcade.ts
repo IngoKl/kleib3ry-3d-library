@@ -4,19 +4,13 @@ import { library } from '../services'
 import type { IndexedRom } from '../services/types'
 
 /**
- * The `roms/` folder, and what is in the arcade machine.
+ * The `roms/` folder, and what is in the machine. A near-copy of `video.ts` for
+ * the reason that is a near-copy of `media.ts`: the shape is shared and nothing
+ * else — a tape streams, a ROM is a few hundred bytes computed with sixty times
+ * a second.
  *
- * A near-copy of `video.ts` for the same reason that is a near-copy of
- * `media.ts`: the shape is shared — a list from a folder, one thing in the
- * machine, an error to report — and nothing else is. A tape streams through a
- * video element; a ROM is a few hundred bytes read once and then *computed*
- * with, sixty times a second.
- *
- * Which is why the running machine itself is a module-level mutable object and
- * not store state: it changes hundreds of times a second, and the scene steps
- * and paints it per frame the way `player.ts` and `cat.ts` are handled. The
- * store keeps only the facts the HUD and the save-nothing lifecycle care
- * about — what is listed, what is slotted, what went wrong.
+ * Which is why the running machine is a module-level mutable object like
+ * `player.ts`, and the store keeps only what the HUD cares about.
  */
 
 type ArcadeState = {

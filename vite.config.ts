@@ -1,8 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Tauri drives this dev server, so the port has to be fixed and the host has to
-// be predictable. `TAURI_DEV_HOST` is set by the CLI for mobile/remote targets.
+// Tauri drives this dev server, so the port and host must be predictable.
 const host = process.env.TAURI_DEV_HOST
 
 export default defineConfig({

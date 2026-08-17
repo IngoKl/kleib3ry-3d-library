@@ -1,10 +1,7 @@
 /**
- * `beforeDevCommand` for Tauri.
- *
- * Starting the desktop shell while a browser dev server is already running used
- * to fail on "port in use", because Vite is pinned to a strict port. Reuse the
- * running server instead: the desktop window and the browser tab then share one
- * Vite process and one HMR stream.
+ * `beforeDevCommand` for Tauri. Vite is pinned to a strict port, so starting the
+ * shell beside a running dev server would fail on "port in use"; reusing it lets
+ * the desktop window and the browser tab share one HMR stream.
  */
 import { spawn } from 'node:child_process'
 

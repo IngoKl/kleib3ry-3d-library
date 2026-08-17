@@ -88,3 +88,7 @@ My Library/
 
 Only `books/` is needed. The app never writes among your books and never rewrites
 `library.json`. See [docs/library-folder.md](docs/library-folder.md).
+
+## A Note on the Name
+
+The name, derived from my last name "Kleiber," is incredibly silly and, well, cringe. It's Sergej's fault who came up with it, argued for the "3" (3D, obviously), and ultimately talked me into it.

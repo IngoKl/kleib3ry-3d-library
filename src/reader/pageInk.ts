@@ -2,16 +2,13 @@ import { inkAt } from '../data/inks'
 import type { BoardStroke } from '../services/types'
 
 /**
- * Ink drawn on a page of a book, with the whiteboard's own conventions:
- * strokes in page space — `u` across, `v` up, 0 to 1 — a live stroke as a
- * plain mutable object outside the store, and a commit once, on letting go.
+ * Ink on a page, with the whiteboard's conventions: strokes in page space, a
+ * live stroke outside the store, and one commit on letting go. Page space
+ * because the same page rasterises differently on every monitor.
  *
- * Page space rather than canvas pixels because the same page rasterises at a
- * different size on every monitor, and the ink has to land in the same place
- * on all of them. Unlike a whiteboard the ground truth is not a canvas the
- * painter owns: it is the rasterised page itself, so strokes are drawn *onto*
- * the page's canvas — live a segment at a time, and in full when a page is
- * rendered fresh (see the decorate hook in `pageTextures.ts`).
+ * Unlike a whiteboard the ground truth is the rasterised page itself, so strokes
+ * are drawn onto its canvas — live a segment at a time, and in full when a page
+ * is rendered fresh (see `pageTextures.ts`).
  */
 
 /** The pen the margins are written in. One of the marker inks, not a choice. */
@@ -76,10 +73,9 @@ function path(ctx: CanvasRenderingContext2D, points: readonly number[], w: numbe
 }
 
 /**
- * A rasterised page's context is reused, and the rasteriser may have left a
- * transform on it — the EPUB type setter draws in abstract units through a
- * `scale()` it never resets. The ink speaks device pixels, so it draws under
- * an identity transform and puts everything back afterwards.
+ * A page's context is reused and the rasteriser may have left a transform on it
+ * — the EPUB type setter draws through a `scale()` it never resets. The ink
+ * speaks device pixels, so it draws under identity and restores afterwards.
  */
 function withInkContext(canvas: HTMLCanvasElement, draw: (ctx: CanvasRenderingContext2D) => void) {
   const ctx = canvas.getContext('2d')

@@ -1,16 +1,11 @@
 /**
- * A CHIP-8 interpreter, whole, in one file: thirty-five two-byte instructions,
- * 4 KiB of memory, sixteen registers, a 64×32 one-bit screen and a sixteen-key
- * pad.
+ * A CHIP-8 interpreter, whole, in one file. Nothing here knows about textures,
+ * keyboards or audio: the machine is a plain mutable object stepped from
+ * outside, and outside any store because it changes hundreds of times a second.
  *
- * Nothing here knows about textures, keyboards or audio. The machine is a plain
- * mutable object stepped from outside — the cabinet renders `screen`, feeds
- * `keys` and listens to `soundTimer`. Outside any store, like `drop.ts`: it
- * changes hundreds of times a second and must never trigger a React render.
- *
- * Where the COSMAC VIP and later interpreters disagree (shift and load/store,
- * mostly), this takes the modern behaviour the common test ROMs expect: shifts
- * operate on VX alone, and FX55/FX65 leave I unchanged.
+ * Where the COSMAC VIP and later interpreters disagree, this takes the modern
+ * behaviour the common test ROMs expect: shifts operate on VX alone, and
+ * FX55/FX65 leave I unchanged.
  */
 
 export const SCREEN_WIDTH = 64
@@ -59,10 +54,7 @@ export type Chip8 = {
   screen: Uint8Array
   /** The sixteen-key pad, indexed by CHIP-8 digit, held-down state. */
   keys: boolean[]
-  /**
-   * FX0A parks the destination register here and the machine stands still —
-   * cheaper than replaying the instruction — until `pressKey` delivers one.
-   */
+  /** FX0A parks its destination here and stalls until `pressKey` delivers one. */
   waitingRegister: number | null
   /** Set on a bad opcode or an overrun; the cabinet shows it rather than looping. */
   halted: boolean
@@ -104,19 +96,15 @@ export function createChip8(rom: Uint8Array, random: () => number = Math.random)
 }
 
 /**
- * Advance both timers by one tick. Called at 60 Hz by whoever owns the clock —
- * the timers belong to the display's cadence, not the CPU's, which is why this
- * is not part of `step`.
+ * Called at 60 Hz by whoever owns the clock: the timers belong to the display's
+ * cadence rather than the CPU's, which is why this is not part of `step`.
  */
 export function tickTimers(chip: Chip8) {
   if (chip.delayTimer > 0) chip.delayTimer--
   if (chip.soundTimer > 0) chip.soundTimer--
 }
 
-/**
- * A key going down, routed here rather than written straight into `keys` so
- * that a machine parked on FX0A wakes up. Key releases can just clear `keys`.
- */
+/** Routed here rather than straight into `keys`, so a machine parked on FX0A wakes. */
 export function pressKey(chip: Chip8, key: number) {
   chip.keys[key] = true
   if (chip.waitingRegister !== null) {
@@ -126,9 +114,8 @@ export function pressKey(chip: Chip8, key: number) {
 }
 
 /**
- * One frame's worth of machine: a batch of instructions, then a timer tick.
- * ~11 instructions per 60 Hz frame is the speed the original ran at; the games
- * were tuned to it, so it is the default rather than "as fast as possible".
+ * A batch of instructions, then a timer tick. ~11 per frame is the original's
+ * speed, which the games were tuned to — hence the default.
  */
 export function runFrame(chip: Chip8, instructions = 11) {
   for (let i = 0; i < instructions; i++) step(chip)
@@ -282,9 +269,8 @@ export function step(chip: Chip8) {
           chip.i = FONT_START + (vx & 0xf) * 5
           return
         case 0x33:
-          // Binary-coded decimal: the only way a CHIP-8 game prints a score.
-          // Masked like FX55/FX65, so a store at the top of memory wraps
-          // instead of silently vanishing off the end of the array.
+          // Binary-coded decimal, the only way a game prints a score. Masked
+          // like FX55/FX65, so a store at the top of memory wraps.
           chip.memory[chip.i & 0xfff] = Math.floor(vx / 100)
           chip.memory[(chip.i + 1) & 0xfff] = Math.floor(vx / 10) % 10
           chip.memory[(chip.i + 2) & 0xfff] = vx % 10
@@ -305,11 +291,9 @@ export function step(chip: Chip8) {
 }
 
 /**
- * DXYN: XOR an 8×N sprite onto the screen and raise VF if any lit pixel went
- * out — that flag *is* CHIP-8 collision detection, which is why Pong needs no
- * geometry to know the ball met a paddle. Sprites start wrapped (drawing at
- * x=68 means x=4) but clip at the edges rather than wrapping around, which is
- * what the original display did and what the games expect.
+ * DXYN: XOR an 8×N sprite on and raise VF if any lit pixel went out — that flag
+ * is CHIP-8 collision detection, which is why Pong needs no geometry. Sprites
+ * start wrapped but clip at the edges, as the original display did.
  */
 function draw(chip: Chip8, originX: number, originY: number, rows: number) {
   const startX = originX % SCREEN_WIDTH

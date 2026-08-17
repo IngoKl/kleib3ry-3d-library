@@ -1,7 +1,6 @@
 /**
- * A hand-stepped volume ramp out of a playing media element: `pause()` cuts
- * mid-waveform, which is a click, and an element has no ramp of its own. One
- * fader per element — each store makes its own, so their timers cannot cross.
+ * A hand-stepped volume ramp: `pause()` cuts mid-waveform, which is a click, and
+ * an element has no ramp of its own. One fader each, so timers cannot cross.
  */
 
 const FADE_OUT_MS = 150
@@ -12,9 +11,8 @@ export type Fader = {
   /** Abandon a fade mid-way: the element keeps playing at the pre-fade volume. */
   cancelFade: (player: HTMLMediaElement) => void
   /**
-   * Change where the volume is restored to. A slider moved during the lift
-   * would otherwise be snapped back to the pre-fade level when the fade ends.
-   * Returns false when no fade is running, so the caller writes the element.
+   * Change where the volume is restored to, or a slider moved during the lift
+   * snaps back. False when no fade runs, so the caller writes the element.
    */
   retarget: (volume: number) => boolean
   /** Whether a fade currently owns the element's volume. */

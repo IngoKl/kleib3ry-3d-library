@@ -4,15 +4,10 @@ import { sceneRefs } from './refs'
 import { metrics } from '../state/metrics'
 
 /**
- * Writes render stats into the shared metrics object once per frame.
- *
- * The split between our own JavaScript and the draw is the part worth having:
- * it is what says whether a slow frame is the frame loop's fault or the GPU's,
- * and those have nothing in common as problems. Getting the boundary means
- * wrapping `gl.render` rather than timing from a second subscriber, because a
- * *positive* `useFrame` priority switches R3F's automatic rendering off and
- * hands us the job of doing it. Negative priorities are safe, and -10000 is
- * how the stamp below gets to run before every other subscriber.
+ * Render stats, once per frame. The split between our JavaScript and the draw is
+ * the part worth having: it says whether a slow frame is the loop's fault or the
+ * GPU's. That boundary means wrapping `gl.render`, because a positive `useFrame`
+ * priority switches R3F's automatic rendering off; -10000 runs first instead.
  */
 export function Probe() {
   const gl = useThree((s) => s.gl)

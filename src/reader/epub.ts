@@ -2,19 +2,13 @@ import { openZip, readEntry, readText, ZipError, type ZipEntry } from './zip'
 
 /**
  * An EPUB reduced to an ordered list of headings and paragraphs — the most a
- * reader with no browser engine can use.
+ * reader with no browser engine can use. Rendering one properly would mean a CSS
+ * engine that cannot be pointed at a page mesh, so the author's stylesheet is
+ * lost and the reading order kept.
  *
- * These are the limits of "EPUB support" here. Rendering one properly would
- * mean a CSS engine that cannot be pointed at a page mesh, so the author's
- * stylesheet is lost and the reading order is kept. Deliberately dropped:
- *
- *   - **CSS**, per above;
- *   - **images** — flowing one round text needs a layout engine; alt text is
- *     kept;
- *   - **footnote links, indexes, page lists** — navigation, and the only
- *     navigation here is a page number, which `J` already does.
- *
- * Spine order is honoured, and each document in it starts a new page.
+ * Deliberately dropped: CSS; images, which need a layout engine to flow (alt
+ * text is kept); and footnote links, indexes and page lists, which are
+ * navigation, and the only navigation here is `J`.
  */
 
 export type BlockKind = 'title' | 'heading' | 'subheading' | 'paragraph' | 'quote' | 'break'
@@ -40,10 +34,8 @@ export class EpubError extends Error {
 }
 
 /**
- * Percent-decode where possible. A literal `%` in a name — legal in a zip
- * entry, seen in the wild (`100%.xhtml`) — makes `decodeURIComponent` throw
- * `URI malformed`; the raw string is then the better guess, not a book that
- * refuses to open.
+ * A literal `%` in a name is legal in a zip and makes `decodeURIComponent`
+ * throw, and the raw string is then a better guess than a book that will not open.
  */
 function percentDecode(text: string): string {
   try {
@@ -67,11 +59,9 @@ function resolve(base: string, href: string): string {
 }
 
 /**
- * A zip is case-sensitive and some producers are not.
- *
- * Worth the fallback rather than worth an argument: an EPUB whose OPF says
- * `Text/chapter1.xhtml` and whose zip says `text/chapter1.xhtml` is a book
- * somebody owns, and refusing it teaches them nothing.
+ * A zip is case-sensitive and some producers are not. An EPUB whose OPF and zip
+ * disagree about a capital is a book somebody owns, and refusing it teaches
+ * them nothing.
  */
 function find(entries: Map<string, ZipEntry>, path: string): ZipEntry | undefined {
   const direct = entries.get(path)
@@ -84,9 +74,8 @@ function find(entries: Map<string, ZipEntry>, path: string): ZipEntry | undefine
 function parseXml(text: string, kind: DOMParserSupportedType): Document {
   const doc = new DOMParser().parseFromString(text, kind)
   if (doc.querySelector('parsererror')) {
-    // XHTML in the wild is frequently not well-formed. HTML parsing never
-    // fails, so a strict pass that trips is retried leniently rather than
-    // costing somebody their book.
+    // XHTML in the wild is frequently not well-formed, and HTML parsing never
+    // fails — so a strict pass that trips is retried leniently.
     if (kind !== 'text/html') return new DOMParser().parseFromString(text, 'text/html')
     throw new EpubError('this file is not readable as markup')
   }
@@ -116,11 +105,8 @@ const SELECTOR = Object.keys(BLOCK_TAGS).join(',')
 const tidy = (text: string) => text.replace(/\s+/g, ' ').trim()
 
 /**
- * The text of one document in the spine.
- *
- * A block element whose ancestor is also a block element is skipped, because
- * its text is already inside its ancestor's — otherwise a `<blockquote>` full
- * of `<p>`s is set twice, once as a quote and once as prose.
+ * A block whose ancestor is also a block is skipped, since its text is already
+ * inside its ancestor's — otherwise a `<blockquote>` of `<p>`s is set twice.
  */
 function harvest(doc: Document): Block[] {
   const body = doc.body ?? doc.documentElement

@@ -1,16 +1,10 @@
 /**
- * Writes the one real ROM the browser driver can boot: the assembled Pong.
+ * The one real ROM the browser driver can boot. Without it the whole arcade path
+ * — cartridge, slot, boot, screen — is only exercised against a real library
+ * folder; this puts it inside `npm test`, as the sample book does the reader.
  *
- * Without it the no-filesystem driver has no runnable game at all, so the
- * whole arcade path — cartridge, slot, boot, screen — is only ever exercised
- * against a real library folder. This puts it inside `npm test`, exactly as
- * the sample book does for the reader.
- *
- * Generated rather than committed, like the sample book beside it: the repo
- * stays text-only. (The copy in `demo-data/demo-library/roms/ch8/` *is*
- * committed, with the rest of that library's media.)
- *
- *   node scripts/make-pong-rom.mjs
+ * Generated rather than committed, so the repo stays text-only. (The copy in the
+ * demo library is committed, with the rest of that library's media.)
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'

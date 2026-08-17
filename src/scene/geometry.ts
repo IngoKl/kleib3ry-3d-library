@@ -1,8 +1,6 @@
 /**
- * The shared geometry vocabulary. Everything assembled out of boxes — the cat,
- * the body, a shelf carcass, a room shell, a staircase — is merged into one
- * geometry per material through these helpers, plus a chamfered box and a
- * turned profile.
+ * The shared geometry vocabulary: everything assembled out of boxes merges into
+ * one geometry per material through these, plus a chamfered box and a lathe.
  */
 
 import * as THREE from 'three'
@@ -37,12 +35,10 @@ export function mergePanels(panels: readonly Panel[]): THREE.BufferGeometry | nu
 }
 
 /**
- * A box with its twelve edges chamfered: the difference between joinery and
- * CG. Hand-built rather than an ExtrudeGeometry bevel because extrusion's
- * UVs are shape-space — a grain map would smear differently on every box —
- * and these carry the box convention: each face projected 0..1, chamfer
- * strips reusing the nearest edge texel. Indexed, position/normal/uv only,
- * so it merges cleanly with plain BoxGeometry parts. 44 triangles.
+ * A box with its twelve edges chamfered: the difference between joinery and CG.
+ * Hand-built rather than an ExtrudeGeometry bevel, whose UVs are shape-space and
+ * would smear a grain map differently on every box; these keep the box
+ * convention, so they merge cleanly with plain BoxGeometry parts.
  */
 export function chamferBox(w: number, h: number, d: number, c = 0.012): THREE.BufferGeometry {
   // A chamfer can never eat a face: cap it well below the smallest half-side.
@@ -61,9 +57,8 @@ export function chamferBox(w: number, h: number, d: number, c = 0.012): THREE.Bu
   const normals: number[] = []
   const uvs: number[] = []
 
-  // Project a point to the face UV its normal mostly belongs to — on the
-  // chamfers the pick is arbitrary between the two faces, which lands the
-  // strip on an edge texel either way.
+  // Projected to the face its normal mostly belongs to. On a chamfer the pick
+  // is arbitrary between two faces, landing on an edge texel either way.
   const uvFor = (p: P, n: P): readonly [number, number] => {
     const ax = Math.abs(n[0])
     const ay = Math.abs(n[1])
@@ -139,9 +134,8 @@ export function chamferBlock(
 }
 
 /**
- * A turned profile — table leg, lamp base — as radius/height pairs read
- * bottom-up. Eight radial segments by default: flat-shaded low-poly turning,
- * in step with the six-to-sixteen-segment cylinders everywhere else.
+ * A turned profile as radius/height pairs, read bottom-up. Eight radial segments
+ * by default, in step with the cylinders everywhere else.
  */
 export function lathe(
   profile: readonly (readonly [number, number])[],

@@ -1,12 +1,9 @@
 /**
- * The room's small noises — a lit fire, the cat's purr, the dust on a record,
- * the lake at its shore — and its one-shots — a footfall, a landed book, a
- * turned page — synthesised like the rain: shaped noise, no samples, no
- * dependencies. Every failure falls back to silence rather than throwing.
+ * The room's loops and one-shots, synthesised like the rain: shaped noise, no
+ * samples, no dependencies, and every failure falling back to silence.
  *
- * One AudioContext shared by all of them, opened when the first sound is
- * needed and closed once the loops and the one-shots are both done: browsers
- * cap live contexts, and the rain already holds one of its own.
+ * One AudioContext shared by all of them, opened on the first sound and closed
+ * when nothing needs it: browsers cap live contexts, and the rain holds one.
  */
 
 import { useSettings } from '../state/settings'
@@ -70,9 +67,8 @@ function deSeam(data: Float32Array, sampleRate: number) {
 }
 
 /**
- * A fire: a low rumble with sparse pops riding on it. The pops are baked into
- * the loop rather than scheduled — three seconds of them is enough that the
- * repeat is never picked out over the rumble.
+ * A low rumble with sparse pops baked in rather than scheduled: three seconds
+ * is enough that the repeat is never picked out over the rumble.
  */
 function makeFire(ctx: AudioContext): AudioBuffer {
   const seconds = 3
@@ -102,9 +98,8 @@ function makeFire(ctx: AudioContext): AudioBuffer {
 }
 
 /**
- * A purr: low noise with its loudness swung at ~24 Hz. The swing is baked in —
- * 24 cycles a second over a 4-second loop is a whole number, so the loop seam
- * lands on the same phase and no LFO node has to live anywhere.
+ * Low noise swung at ~24 Hz, baked in: a whole number of cycles over the loop
+ * means the seam lands on phase, so no LFO node has to live anywhere.
  */
 function makePurr(ctx: AudioContext): AudioBuffer {
   const seconds = 4
@@ -145,11 +140,7 @@ function makeVinyl(ctx: AudioContext): AudioBuffer {
   return buffer
 }
 
-/**
- * The lake at the shore: deep low-passed noise whose loudness swells and draws
- * back once per loop. The swell is baked in, the purr's trick — one cycle over
- * the seven seconds is a whole number, so the seam lands on the same phase.
- */
+/** Deep low-passed noise swelling once per loop, baked in with the purr's trick. */
 function makeLake(ctx: AudioContext): AudioBuffer {
   const seconds = 7
   const length = Math.floor(ctx.sampleRate * seconds)
@@ -171,10 +162,8 @@ function makeLake(ctx: AudioContext): AudioBuffer {
 }
 
 /**
- * Wind in the trees: the lake's dark wash with its loudness gusting rather
- * than swelling. Two gusts beat against each other, at one and three cycles a
- * loop — whole numbers, the purr's trick, so the seam lands on phase — and
- * their phases are drawn once so both channels ride the same weather.
+ * The lake's dark wash, gusting rather than swelling: two gusts beating against
+ * each other at whole-number rates, phased once so both channels agree.
  */
 function makeWind(ctx: AudioContext): AudioBuffer {
   const seconds = 13
@@ -193,9 +182,8 @@ function makeWind(ctx: AudioContext): AudioBuffer {
         0.5 +
         0.34 * Math.sin((2 * Math.PI * t) / seconds + slow) +
         0.16 * Math.sin((2 * Math.PI * 3 * t) / seconds + quick)
-      // A floor under the gusts: the wind never quite dies between them. Kept
-      // dark, with only a trace of white on top — audible hiss out here reads
-      // as tape noise rather than as air in trees.
+      // A floor under the gusts, kept dark: audible hiss out here reads as
+      // tape noise rather than as air in trees.
       data[i] = (low * 2.4 + white * 0.015) * (0.42 + 0.58 * clamp(gust, 0, 1))
     }
     deSeam(data, ctx.sampleRate)
@@ -242,9 +230,8 @@ function startLoop(name: LoopName): Loop | null {
 }
 
 /**
- * Set one loop's level, 0 to 1, ramped so a step never clicks. A zero level on
- * a loop that has not started stays silent for free — walking past a cold
- * hearth must not open an audio graph.
+ * Set one loop's level, ramped so a step never clicks. Zero on a loop that never
+ * started stays silent for free: a cold hearth must not open an audio graph.
  */
 export function placeLoop(name: LoopName, volume: number) {
   const level = clamp(volume, 0, 1)
@@ -283,10 +270,9 @@ const shots = new Map<ShotName, AudioBuffer>()
 let liveShots = 0
 
 /**
- * Give the context back once nothing — loop or one-shot — still needs it,
- * after a quiet spell rather than at once: footsteps end sixty milliseconds
- * apart, and opening a fresh AudioContext per stride is how a browser's
- * context cap gets hit and every sound here goes permanently silent.
+ * Give the context back once nothing needs it, after a quiet spell rather than
+ * at once: footsteps end milliseconds apart, and a fresh AudioContext per stride
+ * hits the browser's cap and silences everything for good.
  */
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -304,10 +290,9 @@ function closeIfIdle() {
 }
 
 /**
- * A one-shot is the loops' shaped noise, over in a fraction of a second: white
- * noise between two one-pole low-passes (what `keep` passes, minus what `cut`
- * passes — a crude band-pass), under an attack and an exponential tail.
- * Everything that reads as a material is in these numbers.
+ * The loops' shaped noise, over in a fraction of a second: white noise between
+ * two one-pole low-passes — `keep` minus `cut`, a crude band-pass — under an
+ * attack and an exponential tail. The material is entirely in these numbers.
  */
 type ShotRecipe = {
   seconds: number
@@ -329,11 +314,9 @@ const SHOTS: Record<Exclude<ShotName, 'thunder'>, ShotRecipe> = {
   /** A page of paper: mid-band hiss that swells and settles. */
   swish: { seconds: 0.25, keep: 0.82, cut: 0.97, attack: 0.09, tail: 0.09, gain: 2.4 },
   /**
-   * A boot on boards. Deliberately dark and soft-edged with a couple of grains
-   * of grit in it: a bright band under a 16 ms decay is a struck tin can, which
-   * is exactly what the first version of this sounded like. The weight is in
-   * the low end (`cut` near 1 keeps it) and the tail is long enough to be a
-   * board flexing rather than a tick.
+   * Dark and soft-edged with a little grit: a bright band under a 16 ms decay
+   * is a struck tin can. The weight is in the low end and the tail is long
+   * enough to be a board flexing rather than a tick.
    */
   'step-wood': {
     seconds: 0.11,
@@ -410,10 +393,9 @@ function makeShot(ctx: AudioContext, recipe: ShotRecipe): AudioBuffer {
     const env = Math.min(1, t / recipe.attack) * Math.exp(-t / recipe.tail)
     data[i] = (kept - cut) * env * recipe.gain
   }
-  // The crackle: the fire's pops in miniature — what turns smooth noise into
-  // paper crinkling, a latch snapping home, or the grit under a sole. Each
-  // grain is scaled by the envelope where it lands, or a grain landing in the
-  // tail of a short sound is a detached tick after the sound has finished.
+  // The fire's pops in miniature, which turn smooth noise into paper or grit.
+  // Each grain is scaled by the envelope where it lands, or one in the tail is
+  // a detached tick after the sound has finished.
   for (let c = 0; c < (recipe.crackle ?? 0); c++) {
     const at = Math.floor(Math.random() * Math.max(1, length - 40))
     const t = at / ctx.sampleRate
@@ -429,11 +411,9 @@ function makeShot(ctx: AudioContext, recipe: ShotRecipe): AudioBuffer {
 }
 
 /**
- * Distant thunder: at this range only the rumble arrives, so it is the shot
- * machinery's noise slowed right down — energy at 20 to 90 Hz — under a slow
- * attack and a long tail, with a few baked swells for the rolling. Fired at a
- * random rate and loudness by the mixer, so one cached buffer never plays the
- * same strike twice.
+ * At this range only the rumble arrives, so this is the shot machinery slowed
+ * right down, with baked swells for the rolling. The mixer varies rate and
+ * loudness, so one cached buffer never plays the same strike twice.
  */
 function makeThunder(ctx: AudioContext): AudioBuffer {
   const seconds = 3.2
@@ -468,12 +448,10 @@ const SPECIAL: Partial<Record<ShotName, (ctx: AudioContext) => AudioBuffer>> = {
 }
 
 /**
- * Fire one short sound — a footfall, a landed book, a turned page — at
- * `loudness`, 0 to 1, scaled here by the master and Small Sounds sliders so no
- * call site can forget the bus. A zero level never opens the context, the same
- * bargain `placeLoop` makes. `rate` bends the cached buffer's pitch — cheap
- * variety with nothing rebaked — and `rain` moves the shot onto the Rain
- * slider: thunder is the rain, and silencing one silences the other.
+ * Fire one short sound, scaled here by the master and Small Sounds sliders so no
+ * call site can forget the bus, and never opening the context at zero. `rate`
+ * bends the cached buffer's pitch for cheap variety; `rain` moves the shot onto
+ * the Rain slider, because thunder is the rain.
  */
 export function playOneShot(
   name: ShotName,
@@ -518,11 +496,9 @@ export function playOneShot(
 }
 
 /**
- * A chorus is the third kind of sound here: not a loop — a repeated melodic
- * phrase is picked out in a minute, unlike fire pops — and not one shot but a
- * scheduler, synthesising a fresh phrase every so often and sleeping between.
- * The timers run off the frame loop entirely, so a slow renderer never thins
- * the dawn chorus.
+ * The third kind of sound: not a loop, because a repeated melodic phrase is
+ * picked out in a minute, but a scheduler synthesising a fresh phrase and
+ * sleeping between. Off the frame loop, so a slow renderer never thins it.
  */
 type ChorusName = 'birds' | 'crickets'
 
@@ -531,9 +507,8 @@ type Chorus = { level: number; timer: ReturnType<typeof setTimeout> | null }
 const choruses = new Map<ChorusName, Chorus>()
 
 /**
- * Set one chorus's level, 0 to 1. Zero on a chorus that never started stays
- * silent for free, the loops' bargain; the level is re-read at each firing, so
- * dusk shows up phrase by phrase rather than at the next scheduling.
+ * Zero on a chorus that never started stays silent for free. The level is
+ * re-read at each firing, so dusk shows up phrase by phrase.
  */
 export function placeChorus(name: ChorusName, volume: number) {
   const level = clamp(volume, 0, 1)
@@ -571,9 +546,8 @@ function scheduleChorus(name: ChorusName, entry: Chorus) {
 }
 
 /**
- * One bird phrase: a few sine notes, each sliding up or down as it decays, at
- * a pitch and a place drawn fresh every time — no two phrases alike, which is
- * what keeps synthesised birds from reading as a ringtone.
+ * A few sine notes sliding as they decay, at a pitch and place drawn fresh each
+ * time — no two alike, which is what keeps synthesised birds off a ringtone.
  */
 function singBird(level: number) {
   const ctx = ensure()
@@ -627,10 +601,7 @@ function singBird(level: number) {
   }
 }
 
-/**
- * One cricket: a high carrier pulsed into syllables — the classic chirp train
- * — from a random direction, so one scheduler reads as a field of them.
- */
+/** A high carrier pulsed into syllables, from a random direction, so one reads as a field. */
 function chirpCricket(level: number) {
   const ctx = ensure()
   if (!ctx || level <= 0) return

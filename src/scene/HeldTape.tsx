@@ -12,15 +12,10 @@ const HEIGHT = 0.234
 const DEPTH = 0.129
 
 /**
- * The label on the tape in your hand, drawn at a size you can actually read.
- *
- * A tape in the crate is printed through the book atlas, which gives it a cell
- * about a hundred pixels across — plenty at arm's length across a room, and not
- * enough for something held up in front of your face. So the one in hand gets
- * its own full-resolution canvas, exactly as the sleeve in hand does.
- *
- * Handwriting on a sticky label rather than a printed sleeve, because that is
- * what almost every tape anybody owns actually has on it.
+ * A tape in the crate gets an atlas cell a hundred pixels across, which is
+ * plenty from a room away and not enough held in front of your face — so the one
+ * in hand gets its own canvas, as the sleeve in hand does. Handwriting on a
+ * sticky label, because that is what almost every tape anybody owns has on it.
  */
 function labelTexture(tape: IndexedTape): THREE.CanvasTexture {
   const width = 512
@@ -80,11 +75,7 @@ function labelTexture(tape: IndexedTape): THREE.CanvasTexture {
   return texture
 }
 
-/**
- * The tape currently in hand, carried in front of you the way you carry a
- * cassette you are about to put in a machine. Rides the camera each frame like
- * `HeldBook` and `HeldRecord`.
- */
+/** Carried the way you carry a cassette, riding the camera like `HeldBook`. */
 export function HeldTape() {
   const group = useRef<THREE.Group>(null)
   const camera = useThree((s) => s.camera)

@@ -1,12 +1,8 @@
 //! Track metadata, read directly rather than through a tagging crate.
 //!
-//! Only two containers are worth the code: ID3v2 (MP3) and FLAC Vorbis
-//! comments. Both are a length-prefixed list of key/value pairs a short way
-//! into the file, so reading them here adds no dependency.
-//!
-//! Everything else falls back to the filename, and to the folder above it for
-//! the artist — `music/Nina Simone/Wild Is the Wind/03 Four Women.mp3` is how
-//! music folders are actually laid out.
+//! Only ID3v2 (MP3) and FLAC Vorbis comments are worth the code: both are a
+//! length-prefixed list of key/value pairs near the front of the file, so no
+//! dependency. Everything else falls back to the filename and its folders.
 
 use std::fs;
 use std::path::Path;
@@ -24,9 +20,8 @@ impl Tags {
     }
 }
 
-/// How much of a file to read looking for tags. ID3v2 is at the very front and
-/// a FLAC comment block is within the first few blocks; a megabyte is generous
-/// for both and bounded for a folder of thousands of tracks.
+/// How much of a file to read looking for tags: generous for both containers,
+/// and bounded for a folder of thousands of tracks.
 const HEAD_BYTES: usize = 1024 * 1024;
 
 pub fn read(path: &Path) -> Tags {
@@ -136,9 +131,8 @@ fn id3v2(bytes: &[u8]) -> Tags {
     let size = syncsafe(&bytes[6..10]);
     let end = (10 + size).min(bytes.len());
 
-    // Unsynchronisation stuffs a zero byte after every 0xFF so the tag can
-    // never look like an MPEG frame sync; the stuffing has to come out before
-    // the frame walk or every length lands mid-frame.
+    // Unsynchronisation stuffs a zero after every 0xFF so the tag cannot look
+    // like a frame sync; undo it first or every length lands mid-frame.
     let body: std::borrow::Cow<[u8]> = if flags & 0x80 != 0 {
         let raw = &bytes[10..end];
         let mut out = Vec::with_capacity(raw.len());
@@ -152,8 +146,8 @@ fn id3v2(bytes: &[u8]) -> Tags {
         std::borrow::Cow::Borrowed(&bytes[10..end])
     };
 
-    // The optional extended header sits where the first frame would be; walked
-    // over as a frame it reads as garbage and ends the scan.
+    // The optional extended header sits where the first frame would be, and
+    // reads as garbage if walked as one.
     let mut cursor = 0;
     if flags & 0x40 != 0 && body.len() >= 4 {
         // v2.4 counts the size field in its length, v2.3 does not.
@@ -191,11 +185,8 @@ fn id3v2(bytes: &[u8]) -> Tags {
     tags
 }
 
-/// The last 128 bytes of an MP3, if somebody's collection predates ID3v2.
-///
-/// Seeks rather than reads: this fallback runs for every untagged file, and a
-/// music folder full of multi-gigabyte lossless rips must not be slurped whole
-/// just to look at their tails.
+/// The last 128 bytes of an MP3, for collections predating ID3v2. Seeks rather
+/// than reads: this runs for every untagged file, and lossless rips are large.
 fn id3v1(path: &Path) -> Option<Tags> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = fs::File::open(path).ok()?;
@@ -358,8 +349,7 @@ mod tests {
         assert_eq!(tags.artist.as_deref(), Some("Nina Simone"));
     }
 
-    /// The extended header sits where the first frame would be; the walk has
-    /// to step over it rather than read it as a frame.
+    /// The walk has to step over the extended header, not read it as a frame.
     #[test]
     fn an_extended_header_does_not_hide_the_frames() {
         let mut body = vec![3u8]; // UTF-8

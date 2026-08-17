@@ -1,6 +1,5 @@
-// Generates the 1024x1024 source PNG that `tauri icon` expands into the
-// platform icon set. Hand-rolled encoder so the repo stays text-only and the
-// icon is regenerable rather than an opaque binary someone has to re-draw.
+// The 1024x1024 source PNG `tauri icon` expands into the platform icon set.
+// Hand-rolled, so the icon is regenerable rather than an opaque binary.
 import { deflateSync } from 'node:zlib'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

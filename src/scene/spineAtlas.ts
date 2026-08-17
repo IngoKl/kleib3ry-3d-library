@@ -1,42 +1,33 @@
 import * as THREE from 'three'
 
 /**
- * Printed spines and covers, in one texture, so the whole library stays one
- * draw call.
- *
- * Cells are recycled nearest-first: only books near enough to read get one, and
- * a cell is redrawn when reassigned. A book with no cell falls back to plain
- * cloth, which is what everything past four metres is anyway.
+ * Printed spines and covers in one texture, so the library stays one draw call.
+ * Cells are recycled nearest-first, and a book with no cell falls back to plain
+ * cloth — which is what everything past four metres is anyway.
  */
 
 /**
- * Each cell holds one book: a spine strip down the left, its cover on the
- * right. Both share a cell because an instance carries a single UV rectangle —
- * the geometry's own uvs pick out which region each face reads from.
+ * One book per cell: a spine strip down the left, its cover on the right. Both
+ * share a cell because an instance carries a single UV rectangle.
  *
- * BUDGET: the atlas re-uploads whole whenever any cell changes, so its total
- * size is a per-pass cost. ~15 MB is what the frame times carry; 23 MB was
- * enough to time out Playwright's clicks on the software rasteriser. Cell size
- * therefore trades directly against cell count — keep the product here.
+ * BUDGET: the atlas re-uploads whole whenever any cell changes, so its size is a
+ * per-pass cost. ~15 MB is what the frame times carry; 23 MB timed out
+ * Playwright on the software rasteriser. Keep the product of the two here.
  */
 const CELL_W = 176
 const CELL_H = 240
 
 /** The spine strip, down the left-hand edge of the cell. */
 const SPINE_W = 52
-/**
- * The cover panel, board-shaped (depth by height) and pushed to the edges of
- * what the cell has left — margin here is wasted cover resolution.
- */
+/** Board-shaped and pushed to the cell's edges: margin here is wasted resolution. */
 const COVER_X = 56
 const COVER_W = 116
 const COVER_Y = 28
 const COVER_H = 182
 
 /**
- * How many cells an atlas is cut into. A parameter because `Tapes` shares this
- * machinery with a much smaller grid — a crate of a dozen cassettes must not
- * allocate a second 15 MB texture.
+ * A parameter because `Tapes` shares this machinery with a much smaller grid: a
+ * dozen cassettes must not allocate a second 15 MB texture.
  */
 export type AtlasGrid = { columns: number; rows: number }
 
@@ -45,10 +36,7 @@ const BOOK_GRID: AtlasGrid = { columns: 11, rows: 8 }
 
 export const SLOT_COUNT = BOOK_GRID.columns * BOOK_GRID.rows
 
-/**
- * Never assigned to a book. It is plain white, so an unslotted instance
- * pointing at it shows its own instance colour unchanged.
- */
+/** Plain white, so an unslotted instance pointing at it keeps its own colour. */
 const BLANK_SLOT = 0
 
 export type SpineArt = {
@@ -61,10 +49,7 @@ export type SpineArt = {
   cover: HTMLImageElement | null
 }
 
-/**
- * Where each face reads from, as a fraction of its cell. Baked into the
- * geometry; the per-instance rectangle then places them in the atlas.
- */
+/** Baked into the geometry; the per-instance rectangle then places them in the atlas. */
 export const CELL_REGIONS = {
   spine: [0, 0, SPINE_W / CELL_W, 1] as const,
   cover: [
@@ -85,11 +70,7 @@ export type SpineAtlas = {
   rect(slot: number): [number, number, number, number]
   blank: [number, number, number, number]
   draw(slot: number, art: SpineArt): void
-  /**
-   * Upload the cells drawn since the last call. Separate from `draw` because
-   * marking the texture dirty re-uploads the whole atlas — batch, or that
-   * happens once per cell.
-   */
+  /** Separate from `draw` because a dirty texture re-uploads whole: batch, or pay per cell. */
   commit(): void
   dispose(): void
 }

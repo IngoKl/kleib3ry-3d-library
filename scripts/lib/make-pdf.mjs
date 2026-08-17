@@ -1,10 +1,6 @@
 /**
- * A minimal, genuinely parseable PDF writer — raw syntax, no dependencies and
- * no binary fixtures in the repo.
- *
- * Shared by `make-test-library.mjs`, which builds the desktop corpus, and
- * `make-sample-book.mjs`, which builds the one readable book the browser
- * driver serves so the reader can be smoke tested headlessly.
+ * A minimal but genuinely parseable PDF writer — raw syntax, no dependencies, no
+ * binary fixtures. Shared by `make-test-library.mjs` and `make-sample-book.mjs`.
  */
 
 const esc = (s) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')

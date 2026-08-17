@@ -17,14 +17,10 @@ import { PLAYER_RADIUS, player } from '../state/player'
 import type { LoosePlacement } from '../services/types'
 
 /**
- * Books that are neither shelved nor boxed: put down on a table, or dropped on
- * the floor.
- *
- * The simulation lives here rather than in the store because it runs per frame
- * and a book settling must not re-render React thirty times a second; the store
- * is told once, when it comes to rest. That is also why the saved placement is
- * where a book *stopped*, not where it was let go of — reloading the library
- * should not replay a drop.
+ * Books neither shelved nor boxed: put down on a table, or dropped on the floor.
+ * The simulation is here rather than in the store because a settling book must
+ * not re-render React thirty times a second — the store is told once, when it
+ * rests, which is also why a saved placement is where a book stopped.
  */
 
 /** How close you have to be to kick one out of the way. */
@@ -91,11 +87,8 @@ function OpenBook({ id, at }: { id: string; at: LoosePlacement }) {
 }
 
 /**
- * The cover artwork on top of a closed book lying about.
- *
- * The block itself is an instance in one mesh and cannot carry a texture of its
- * own. There are only ever a handful of loose books, so each cover is its own
- * small plane, posed by the same code that writes the instance matrix.
+ * The block is an instance and cannot carry its own texture. There are only ever
+ * a handful of loose books, so each cover is its own small plane.
  */
 function LooseCover({
   id,
@@ -173,18 +166,14 @@ export function LooseBooks() {
   const capacity = useMemo(() => Math.max(32, blocks * 32), [blocks])
 
   /**
-   * The live simulation, keyed by book id.
-   *
-   * Seeded from the saved placement — which is always a resting one — so a book
-   * that was on the table at shutdown is on the table at startup rather than
-   * falling onto it again.
+   * Seeded from the saved placement, which is always a resting one, so a book on
+   * the table at shutdown is on the table at startup rather than falling again.
    */
   const bodies = useRef(new Map<string, Body>())
   const support = useMemo(() => (world ? supportFrom(world) : null), [world])
 
-  // What a flying book can hit: the same solids the walker hits, bucketed into
-  // a coarse grid so a substep tests a handful of boxes rather than the whole
-  // forest. Rebuilt when a door swings, which is an edit.
+  // The same solids the walker hits, bucketed into a coarse grid so a substep
+  // tests a handful of boxes rather than the whole forest.
   const ambienceOn = useAmbienceStore((s) => s.on)
   const blocked = useMemo(() => {
     if (!world) return undefined
@@ -212,20 +201,16 @@ export function LooseBooks() {
   }, [world, ambienceOn])
 
   /**
-   * Bring the simulation in line with the saved placements.
-   *
-   * Called from the layout effect *before* the instance matrices are written,
-   * not from an effect of its own. A book put straight down on a table is
-   * seeded at rest, and a body at rest is never touched again by the frame
-   * loop — so if its matrix has not been written by the time it settles into
-   * being ignored, it is simply never drawn.
+   * Called from the layout effect before the matrices are written, not from an
+   * effect of its own: a book put down on a table is seeded at rest, and the
+   * frame loop never touches a resting body — so an unwritten matrix stays that
+   * way and the book is never drawn.
    */
   const reseed = () => {
     const live = bodies.current
     for (const [id, at] of closed) {
-      // A drop hands over its whole body, velocity and all — a placement alone
-      // cannot say "falling", so without this the book would freeze in the air
-      // where your hand was.
+      // A drop hands over its whole body, velocity and all: a placement alone
+      // cannot say "falling", so the book would freeze where your hand was.
       const thrown = takeLaunchedBody(id)
       if (thrown) {
         live.set(id, thrown)
@@ -235,9 +220,8 @@ export function LooseBooks() {
       // A placement that moved under us — a reload, or a book put down
       // somewhere else — wins over whatever the simulation thought.
       if (!existing || Math.hypot(existing.x - at.x, existing.z - at.z) > 0.5) {
-        // A saved placement should be a resting one, but a save written
-        // mid-throw leaves a book recorded in the air; seed those falling so a
-        // reload lands them instead of hanging them where the throw stopped.
+        // A save written mid-throw records a book in the air; seed those
+        // falling, so a reload lands them rather than hanging them there.
         const size = dims.get(id)
         const rest =
           support && size ? support(at.x, at.z, at.y + size.thickness) + size.thickness / 2 : at.y
@@ -342,10 +326,9 @@ export function LooseBooks() {
     const nudge = useLibraryStore.getState().nudge
     let dirty = false
 
-    // The crosshair tint is baked into the instance colour by `write`, and the
-    // loop below skips bodies at rest — which is every book you can actually
-    // point at. Repaint the one gaining and the one losing focus explicitly,
-    // or resting books never highlight (and one focused mid-fall sticks).
+    // The tint is baked into the instance colour by `write`, and the loop below
+    // skips resting bodies — which is every book you can point at. So the ones
+    // gaining and losing focus are repainted explicitly.
     const focused = useAppStore.getState().focusedBook
     if (focused !== lastFocused.current) {
       for (let i = 0; i < closed.length; i++) {
@@ -364,10 +347,9 @@ export function LooseBooks() {
       const body = bodies.current.get(id)
       if (!size || !body) continue
 
-      // Kick it out of the way if you are standing on it. Only ever done to a
-      // book at rest: one already in flight has somewhere it is going. Only a
-      // book on the *floor*: one on a footstool or a bench is at knee height,
-      // where feet do not reach — leaning on the stool must not punt it off.
+      // Kicked out of the way if you stand on it. Only at rest — one in flight
+      // has somewhere it is going — and only on the floor, since leaning on a
+      // stool must not punt the book off it.
       let current = body
       if (current.resting && held !== id) {
         const feet = Math.abs(current.y - player.floor)
@@ -385,9 +367,8 @@ export function LooseBooks() {
       }
       // Write down where it stopped, once, rather than every frame of the fall.
       if (!wasResting && current.resting) {
-        // Audible only when it actually fell: a shoved book settling under
-        // your feet re-crosses this transition every frame, and that is a
-        // shuffle, not a landing.
+        // Only when it actually fell: a shoved book settling under your feet
+        // re-crosses this every frame, and that is a shuffle, not a landing.
         if (fall > 0.3) {
           const away = Math.hypot(current.x - player.x, current.y - player.eye, current.z - player.z)
           playOneShot('thud', Math.min(1, 0.15 + fall * 0.3) * falloff(away))

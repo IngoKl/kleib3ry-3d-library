@@ -1,10 +1,8 @@
 /**
  * Just enough ZIP to open an EPUB: the central directory, stored entries, and
- * deflate through the platform's own `DecompressionStream('deflate-raw')`.
- *
- * No dependency, deliberately. A zip library would add a hundred kilobytes and
- * a licence for the parts of the format an e-book never uses — spanning,
- * encryption, zip64.
+ * deflate through the platform's own `DecompressionStream`. No dependency
+ * deliberately — a zip library adds a hundred kilobytes and a licence for the
+ * parts of the format an e-book never uses.
  */
 
 const EOCD_SIGNATURE = 0x06054b50
@@ -29,12 +27,9 @@ export class ZipError extends Error {
 }
 
 /**
- * The central directory, by name.
- *
  * Read from the end backwards, which is how a zip is meant to be read: the
- * directory at the end is authoritative and the local headers are a
- * convenience. Reading the local headers forwards instead is how you end up
- * fooled by a file that has been appended to.
+ * directory is authoritative and the local headers are a convenience. Reading
+ * forwards instead is how you are fooled by a file that has been appended to.
  */
 export function openZip(bytes: Uint8Array): Map<string, ZipEntry> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -80,10 +75,9 @@ export function openZip(bytes: Uint8Array): Map<string, ZipEntry> {
 /** The bytes of one entry, decompressed. */
 export async function readEntry(bytes: Uint8Array, entry: ZipEntry): Promise<Uint8Array> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  // The offset came out of the central directory unchecked. A truncated archive
-  // points it past the end, where `DataView` would throw a `RangeError` — which
-  // reaches the reader as a stack rather than as the sentence this file writes
-  // for every other way an archive can be wrong.
+  // The offset is unchecked, and a truncated archive points it past the end —
+  // where `DataView` throws a `RangeError`, which reaches the reader as a stack
+  // rather than as the sentence this file writes for every other failure.
   if (entry.header + 30 > bytes.length) {
     throw new ZipError(`${entry.name}: its local header is past the end of the file`)
   }

@@ -10,12 +10,10 @@ import { useLibraryStore } from '../state/library'
 import { terrainAt } from '../world/terrain'
 
 /**
- * The delivery courier, drawn only while a delivery is under way — the meshes
- * unmount when he is gone, so an idle library pays nothing for him. He walks a
- * straight lane out of the trees (see `state/courier.ts`), stands at the steps
- * for a moment, puts the box down, and walks back the way he came. No
- * collision: he is on the grass the whole way, and a courier stuck on a
- * planter is a worse story than one who brushes past it.
+ * Drawn only while a delivery is under way, so an idle library pays nothing. He
+ * walks a straight lane out of the trees, puts the box down at the steps and
+ * walks back. No collision: a courier stuck on a planter is a worse story than
+ * one who brushes past it.
  */
 const WALK_SPEED = 1.5
 /** The forward hold of the arms while the parcel is in them. */
@@ -28,9 +26,8 @@ export function Courier() {
 }
 
 function Walker() {
-  // What he is carrying, read once per delivery: `courier.parcel` is set before
-  // he sets off and does not change on the way, so this is mount-time state
-  // rather than something the frame loop has to look at.
+  // Read once: `courier.parcel` is set before he sets off and does not change,
+  // so this is mount-time state rather than something the frame loop reads.
   const book = courier.parcel.kind === 'book'
   const group = useRef<THREE.Group>(null)
   const legL = useRef<THREE.Group>(null)
@@ -41,9 +38,8 @@ function Walker() {
   const standing = useRef(0)
   const armsFree = useRef(0)
 
-  // One geometry where nothing moves apart — torso, cap and brim are all the
-  // uniform's red. The limbs hang from the origin, so a group rotation is the
-  // joint; one geometry serves both sides.
+  // One geometry where nothing moves apart. The limbs hang from the origin, so
+  // a group rotation is the joint and one geometry serves both sides.
   const parts = useMemo(() => {
     const cap = new THREE.CylinderGeometry(0.115, 0.115, 0.06, 10)
     cap.translate(0, 1.64, 0.01)
@@ -87,9 +83,8 @@ function Walker() {
         // The parcel lands, and only now: the delivery is him, not a timer.
         const shelf = useLibraryStore.getState()
         if (courier.parcel.kind === 'book') {
-          // It reconciled into a box when it was indexed, which is where a new
-          // book goes; he takes it back out and stands it on the ground, so
-          // what you find at the steps is the paper itself.
+          // Indexing put it in a box, where a new book goes; he takes it out
+          // and stands it on the ground, so the steps hold the paper itself.
           shelf.unshelve(courier.parcel.id)
           shelf.putDown(courier.parcel.id, { ...courier.target, open: false, spread: 0 })
         } else {
@@ -170,9 +165,8 @@ function Walker() {
       {/* What he is bringing, in his hands until it is yours. */}
       <group name="parcel" position={[0, 1.02, 0.33]}>
         {book ? (
-          // A book rather than a takeaway: hand-sized, and held flat the same
-          // way the box is. Its own slab rather than the real book's mesh —
-          // `Books` draws what is *in* the room, and this is not in it yet.
+          // Its own slab rather than the real book's mesh: `Books` draws what
+          // is in the room, and this is not in it yet.
           <mesh castShadow>
             <boxGeometry args={[0.2, 0.05, 0.28]} />
             <meshStandardMaterial color="#7d3b32" roughness={0.85} />

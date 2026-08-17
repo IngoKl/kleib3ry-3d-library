@@ -2,15 +2,10 @@ import type { BookDimensions } from '../data/dimensions'
 import type { DerivedFurniture, DerivedWorld } from './derive'
 
 /**
- * Books lying flat in the moving boxes.
- *
- * Where a book *is* when it has no shelf — which, for a freshly indexed
- * library, is all of them. Stacking them in a box rather than hiding them in a
- * list is the point: a library you have not unpacked should look like one, and
- * the pile should be in your way until you deal with it.
- *
- * A book lies with its spine up: height across the box, depth into it, and
- * thickness stacking vertically.
+ * Books lying flat in the moving boxes — where a book is when it has no shelf,
+ * which for a fresh library is all of them. A pile you have to deal with is the
+ * point. A book lies spine up: height across the box, depth into it, thickness
+ * stacking vertically.
  */
 
 const WALL = 0.014
@@ -62,14 +57,10 @@ function columnsIn(box: DerivedFurniture): number {
 }
 
 /**
- * Stack each box's own books into it, flat, starting a new column when the
- * current one reaches the rim.
- *
- * `contents` is which books are in which box — the same per-box lists the
- * layout stores — so a book you drop into the box by the door is in *that* box
- * and stays there. A box holds more books than it can show: what does not fit
- * comes back as `hidden` rather than being spilled onto the floor or quietly
- * moved somewhere it was not put.
+ * Stack each box's own books flat, starting a column when one reaches the rim.
+ * `contents` is the layout's per-box lists, so a book dropped in the box by the
+ * door stays in that box; what will not fit comes back as `hidden` rather than
+ * being spilled on the floor or moved somewhere it was not put.
  */
 export function packBoxes(
   world: DerivedWorld,

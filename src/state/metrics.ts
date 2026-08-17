@@ -1,15 +1,13 @@
 /**
- * Live render stats, kept outside React so the probe can write every frame
- * without re-rendering the tree. The HUD polls it; the smoke test reads it to
- * prove the scene actually drew something.
+ * Live render stats, outside React so the probe writes every frame without
+ * re-rendering. The HUD polls it; the smoke tests read it to prove a draw.
  */
 export type RenderMetrics = {
   fps: number
   fpsMin: number
   /**
-   * Wall-clock milliseconds per frame. On a machine with headroom this is the
-   * refresh rate and nothing else — `requestAnimationFrame` is locked to the
-   * display, so 16.7 means "fast enough", never "exactly fast enough".
+   * Wall-clock milliseconds per frame. With headroom this is the refresh rate
+   * and nothing else, so 16.7 means "fast enough", never "exactly fast enough".
    */
   frameMs: number
   /** The worst frame in the recent window. An average hides the hitches. */
@@ -38,13 +36,9 @@ export const metrics: RenderMetrics = {
 }
 
 /**
- * What the numbers say is limiting the frame.
- *
- * The question worth answering is which of the three costs to go after, and the
- * split answers it: a 200 ms frame with 8 ms of JavaScript in it is waiting on
- * the GPU, and no amount of tightening the frame loop will move it. Below the
- * refresh interval there is nothing to diagnose, because vsync is the only
- * thing being measured.
+ * Which cost to go after. A 200 ms frame with 8 ms of JavaScript in it is
+ * waiting on the GPU, and no amount of tightening the loop will move it. Below
+ * the refresh interval there is nothing to diagnose but vsync.
  */
 export function frameVerdict(m: RenderMetrics): 'vsync' | 'cpu' | 'gpu' {
   if (m.frameMs <= 17.5) return 'vsync'

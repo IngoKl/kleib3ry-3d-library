@@ -22,23 +22,14 @@ import { rowKey } from './shelving'
 import { approach, shortestTurn } from '../lib/ease'
 
 /**
- * A cat, which lives here.
+ * A cat, which lives here. It wanders, sits, sleeps, comes when called more
+ * often than not, and can be persuaded to fetch a book — which is what makes a
+ * room of a thousand books read as lived in rather than as a warehouse.
  *
- * It wanders between the rooms, sits down, sleeps, comes when you call it more
- * often than not, and can be persuaded to bring you a book. None of that is a
- * feature of the library; it is the thing that makes a room with a thousand
- * books in it feel like somewhere lived in rather than a warehouse you have
- * privileges at.
- *
- * The steering is deliberately stupid: it points itself at where it is going and
- * walks, through exactly the same `stepPlayer` you do, so it slides along walls,
- * climbs the stairs, and cannot walk into the lake or off the loft. There is no
- * pathfinding, and there will not be — a cat that gets stuck behind the sofa and
- * gives up on you is not a bug, and building a navmesh to prevent it would be
- * building a navmesh.
- *
- * It is drawn from the same boxes and cylinders as the furniture, for the same
- * reasons: the repo stays text and the proportions stay arguable.
+ * The steering is deliberately stupid: it points at where it is going and walks
+ * through the same `stepPlayer` you do, so it slides along walls, climbs stairs
+ * and cannot get into the lake. There is no pathfinding and there will not be —
+ * a cat that gets stuck behind the sofa is not a bug.
  */
 
 /** Metres a second. A cat's walk, and the trot it does when it wants something. */
@@ -70,15 +61,10 @@ const HEAD_YAW = 0.6
 const HEAD_PITCH = 0.35
 
 /**
- * Its own body, as merged geometries — one per colour, plus one per diagonal
- * pair of legs.
- *
- * The head is at the +Z end, which is the same convention as every `facing` in
- * the building: `cat.yaw` points local +Z at where the cat is going. It is its
- * own group, pivoted at the neck, so it can turn to you before the body does.
- *
- * The legs are two groups rather than four so a walk is two draw calls: a cat
- * moves diagonal pairs together, so front-left swings with back-right.
+ * Merged geometries: one per colour, plus one per diagonal pair of legs. The
+ * head is at the +Z end, on the building's own `facing` convention, and is its
+ * own group so it can turn to you before the body does. Two leg groups rather
+ * than four, because a cat moves diagonal pairs together anyway.
  */
 function CatBody({
   head,
@@ -199,12 +185,9 @@ function CatBody({
 }
 
 /**
- * A doorway out of the room it is standing in, a step beyond the threshold.
- *
- * It steers straight at where it is going, so a room whose only door faces away
- * from the rest of the building is a trap: it presses into the wall between
- * itself and the target until it gives up. When that happens it heads for the
- * door nearest the target first.
+ * A doorway out of the room, a step beyond the threshold. Steering straight at a
+ * target makes a room whose door faces away a trap — it presses into the wall
+ * until it gives up — so when that happens it heads for the nearest door first.
  */
 function wayOut(
   world: DerivedWorld,
@@ -336,9 +319,8 @@ export function Cat() {
         cat.mood = 'sit'
         cat.patience = 6
       } else if (cat.mood === 'fetch') {
-        // Only a case it actually reached hands over a book. Stuck behind the
-        // sofa on the way to one, it tries a different bookcase — otherwise the
-        // book would arrive in its mouth from across the room.
+        // Only a case it actually reached hands over a book, or the book
+        // arrives in its mouth from across the room.
         const taken = arrived ? takeFromShelf(cat.fetchingFrom) : null
         if (taken) {
           cat.fetchingFrom = null
@@ -402,9 +384,8 @@ export function Cat() {
       cat.yaw += shortestTurn(Math.atan2(dx, dz) - cat.yaw) * approach(6, delta)
     } else {
       cat.speed = 0
-      // Sitting near you, it looks at you. Asleep, it does not — a sleeping
-      // cat that tracks you round the room is a security camera in a fur coat.
-      // Unhurried, because the head has already got there.
+      // Sitting near you, it looks at you; asleep it does not, or it is a
+      // security camera in a fur coat.
       if (distanceToYou < 3 && cat.mood !== 'sleep') {
         cat.yaw += shortestTurn(Math.atan2(player.x - cat.x, player.z - cat.z) - cat.yaw) *
           approach(2, delta)
@@ -414,9 +395,8 @@ export function Cat() {
     // ---- drawing ----
     bob.current += delta * cat.speed * 6
     breath.current += delta
-    // A sitting cat settles onto its haunches and a sleeping one is a loaf. It
-    // is done by dropping the whole animal rather than by folding its legs,
-    // which at this size is the same picture and no bones.
+    // Done by dropping the whole animal rather than folding its legs, which at
+    // this size is the same picture and no bones.
     const crouch = cat.mood === 'sleep' ? 0.055 : cat.mood === 'sit' ? 0.025 : 0
     // The gait bob is distance-driven and stops with the cat, so an asleep cat
     // would be perfectly still — the flank has to rise on its own clock.
@@ -424,9 +404,8 @@ export function Cat() {
     node.position.set(cat.x, cat.floor + Math.sin(bob.current) * 0.012 - crouch + breathing, cat.z)
     node.rotation.y = cat.yaw
 
-    // The book in its mouth: one box, re-dressed only when the errand changes,
-    // wearing the real book's size and cloth so what lands at your feet is
-    // recognisably what it fetched.
+    // One box re-dressed when the errand changes, wearing the real book's size
+    // and cloth so what lands at your feet is what it fetched.
     if (carried.current && carriedId.current !== cat.carrying) {
       carriedId.current = cat.carrying
       if (cat.carrying) {
@@ -511,11 +490,8 @@ export function Cat() {
 }
 
 /**
- * Take a book off a shelf, for the cat to carry.
- *
- * Goes through the same `unshelve` a hand does, so the layout is written down
- * and the book is genuinely off the shelf rather than duplicated. A cat that
- * conjured books would be a cat that quietly doubled your library.
+ * Through the same `unshelve` a hand uses, so the book is genuinely off the
+ * shelf. A cat that conjured books would quietly double your library.
  */
 function takeFromShelf(shelfId: string | null): string | null {
   const shelf = useLibraryStore.getState()
@@ -549,11 +525,9 @@ function drop(world: DerivedWorld, id: string) {
 }
 
 /**
- * Call the cat. It comes if it feels like it, which is most of the time.
- *
- * The refusal is not a joke at your expense: without it, `V` is a teleport with
- * a delay, and the one thing that makes an animal read as an animal is that it
- * is not a button. It will always come if it is already awake.
+ * It comes if it feels like it, which is most of the time. Without the refusal
+ * `V` is a teleport with a delay, and what makes an animal read as an animal is
+ * that it is not a button. Always comes if already awake.
  */
 export function callCat(): boolean {
   if (cat.mood === 'fetch' || cat.mood === 'deliver') return true
@@ -579,12 +553,9 @@ export function petCat() {
 }
 
 /**
- * Ask it for a book.
- *
- * It goes to a bookcase that actually has something on it, takes one down and
- * brings it to you. Which one is its choice, and that is the whole point —
- * "bring me a book" is a question you ask when you do not know what you want,
- * and an answer you chose would not be an answer.
+ * It goes to a stocked bookcase, takes one down and brings it. Which one is its
+ * choice, which is the point: "bring me a book" is what you ask when you do not
+ * know what you want, and an answer you chose would not be an answer.
  */
 export function askCatForBook(): boolean {
   const world = useWorldStore.getState().world
@@ -598,9 +569,8 @@ export function askCatForBook(): boolean {
   )
   if (stocked.length === 0) return false
 
-  // The nearest stocked case it has not just failed at, rather than any of them.
-  // With no pathfinding, a case in the other building is an errand it cannot
-  // finish — and a cat sent across a valley for a book is not what was asked.
+  // The nearest stocked case it has not just failed at: with no pathfinding, a
+  // case in the other building is an errand it cannot finish.
   const chosen = stocked.reduce((best, unit) => {
     if (unit.id === cat.fetchingFrom) return best
     const to = (u: DerivedShelf) => Math.hypot(u.x - cat.x, u.z - cat.z) + Math.abs(u.y - cat.floor) * 8

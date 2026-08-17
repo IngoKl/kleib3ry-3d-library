@@ -9,11 +9,9 @@ import { GROUND_Y, lakePoint } from '../world/terrain'
 import { useSettings } from '../state/settings'
 
 /**
- * Fireflies on a clear night: most along the shore band where the open ground
- * is, the rest scattered through the near meadow. One instanced mesh wandering
- * seeded lissajous paths, exactly like the dust motes indoors — and blinking
- * by *scale*, because the swarm shares one material and one opacity. The whole
- * mesh gates itself off by day and in rain, the way the stars do.
+ * Fireflies on a clear night, mostly along the open shore band. One instanced
+ * mesh on seeded lissajous paths like the dust motes, blinking by scale because
+ * the swarm shares one opacity, and gated off by day and in rain.
  */
 
 const SHORE_FLIES = 28

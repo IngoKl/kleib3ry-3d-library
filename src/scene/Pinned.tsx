@@ -16,26 +16,18 @@ import { useLibraryStore } from '../state/library'
 import type { PinnedSheet } from '../services/types'
 
 /**
- * The pages and notes stuck to the walls.
- *
- * Real meshes rather than instances, unlike almost everything else you can point
- * at in here — and deliberately so. Every sheet carries a *different* texture:
- * a page out of a different book, a note with different words on it. An atlas
- * cell of the size a page needs to be readable is most of an atlas, so there is
- * nothing to gain by batching them, and there are a dozen of these rather than a
- * thousand. Two draw calls each, and you made each one by hand.
+ * Real meshes rather than instances, unlike everything else you can point at
+ * here: every sheet carries a different texture, and a cell big enough to make a
+ * page readable is most of an atlas. There are a dozen of these, not a thousand.
  */
 
 /** How far off the wall a sheet sits, so it never z-fights the plaster. */
 const STANDOFF = 0.004
 
 /**
- * How thick the paper is.
- *
- * A single plane would be right up until you stand beside
- * one: a note seen from the side was a coloured line, and a board of them at a
- * glancing angle disappeared entirely. Paper has a body. A note is a small pad
- * of them stuck down, so it gets rather more than a page does.
+ * A single plane is right until you stand beside one: a note seen edge-on is a
+ * coloured line, and a board of them at a glancing angle disappears. A note is a
+ * small pad stuck down, so it gets rather more than a page does.
  */
 const PAGE_BODY = 0.0009
 const NOTE_BODY = 0.0035
@@ -61,9 +53,8 @@ function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
     void pageTextureFor(sheet.bookId, page).then((loaded) => {
       if (!cancelled) setTexture(loaded)
     })
-    // A page that arrives while several sheets show the same one has to reach
-    // all of them, and only one of them started the render — and the same for a
-    // page rasterised again because it was drawn on since.
+    // A page arriving must reach every sheet showing it, not just the one that
+    // started the render — and likewise a page re-rasterised after being drawn on.
     const bookId = sheet.bookId
     const listener = (key: string) => {
       if (key === pageKey(bookId, page)) setTexture(peekPage(bookId, page) ?? null)

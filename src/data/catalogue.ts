@@ -1,12 +1,9 @@
 import { between, mulberry32, pick, type Random } from '../lib/rng'
 
 /**
- * Placeholder catalogue.
- *
- * These are NOT your books — the Rust indexer that reads the real library
- * folder is written but not yet wired to a command. Everything downstream
- * (shelving, spines, picking a book up) consumes this shape, so swapping in the
- * real index is a data change rather than a scene change.
+ * The placeholder catalogue `browserDriver` generates — not your books. Shelving,
+ * spines and picking a book up all consume this shape, so a real index is a data
+ * change rather than a scene change.
  */
 export type CatalogueBook = {
   id: string

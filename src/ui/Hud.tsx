@@ -67,13 +67,10 @@ const PROP_NAMES: Record<string, { full: string; empty: string; consume: string 
 }
 
 /**
- * The overlay. Two things only:
- *
- *   - what is under the crosshair, and which key acts on it — the cards;
- *   - what the app is doing that nobody asked for: a scan, a parse error, a
- *     library still in its boxes.
- *
- * Choosing a library is the main menu; the switches are the settings panel.
+ * The overlay, and two things only: what is under the crosshair and which key
+ * acts on it, and what the app is doing that nobody asked for — a scan, a parse
+ * error, a library still in its boxes. Choosing a library is the main menu's
+ * job; the switches are the settings panel's.
  */
 export function Hud() {
   const mode = useAppStore((s) => s.mode)
@@ -150,9 +147,8 @@ export function Hud() {
   const ordering = useAppStore((s) => s.ordering)
   const placedProps = useLibraryStore((s) => s.props)
 
-  // Why the reader is showing nothing, on the same poll as the render stats:
-  // `readerStatus` lives outside React, and the failure plane in the scene has
-  // no way to carry text — without this the message existed only for tests.
+  // On the same poll as the render stats, because `readerStatus` lives outside
+  // React and the scene's failure plane has no way to carry text.
   const [readerFailure, setReaderFailure] = useState<string | null>(null)
   /** The open spread, on the same poll, so the card can list its notes. */
   const [readerSpread, setReaderSpread] = useState(0)
@@ -218,10 +214,8 @@ export function Hud() {
   const portableKind = kindOf(focusedPortable)
 
   /**
-   * The record the crosshair is offering: the sleeve itself, or — aimed at the
-   * crate — the one you have riffled to, which is the one standing out in front
-   * of it and the one E takes. One card either way, the way a book in a box
-   * carries the box's keys rather than raising a second card.
+   * The sleeve itself, or — aimed at the crate — the one riffled to, which is
+   * what E takes. One card either way, as a book in a box carries the box's keys.
    */
   const crateView = focusedCrate ? crateViews[focusedCrate] : undefined
   const shownRecord = focusedRecord ?? crateView?.record ?? null
@@ -235,9 +229,8 @@ export function Hud() {
     ? world?.furniture.find((item) => item.id === focusedFixture)
     : undefined
   const fixtureLit = fixture ? (lightsOn[fixture.id] ?? (fixture.on ?? true)) : false
-  // What a switch plate would do next. Only asked when one is under the
-  // crosshair — it walks every lamp in the building.
-  // The campfire is not on the house circuit — see the switch in `Player.tsx`.
+  // Only asked when a plate is under the crosshair, since it walks every lamp
+  // in the building. The campfire is not on the house circuit.
   const anyLightOn =
     fixture?.kind === 'lightswitch' &&
     (world?.lights ?? [])

@@ -1,21 +1,16 @@
 /**
- * Assembles the demo Pong ROM for the arcade cabinet.
+ * Assembles the demo Pong ROM. Shipping one as demo data means either a
+ * freeware binary of unclear ancestry or writing our own; this is our own — a
+ * two-pass assembler small enough to read, and a Pong under it. Left paddle is
+ * yours, right is a beatable machine reacting every other frame.
  *
- * A CHIP-8 game is a few hundred bytes of 1977-shaped bytecode, and shipping
- * one as demo data means either finding a freeware binary of unclear ancestry
- * or writing our own. This is our own: a two-pass assembler small enough to
- * read, and a Pong under it — left paddle is yours (CHIP-8 keys 5/8, which the
- * cabinet maps to W/S), right paddle is a deliberately beatable machine that
- * only reacts every other frame. First to ten wipes the board.
- *
- * Shared by `make-pong-rom.mjs` (which `npm run assets` runs, for `public/`),
- * `make-test-library.mjs` (the desktop probe's corpus) and `tests/chip8.spec.ts`
- * — which runs the ROM for real on the interpreter in src/arcade/chip8.ts.
+ * Shared by `make-pong-rom.mjs`, `make-test-library.mjs` and
+ * `tests/chip8.spec.ts`, which runs the ROM on the real interpreter.
  */
 
 /**
  * Two passes: lay the bytes down with holes where labels are named, then fill
- * the holes once every label has an address. Programs load at 0x200.
+ * them once every label has an address.
  */
 function assembler() {
   const bytes = []
@@ -75,10 +70,8 @@ function assembler() {
   return a
 }
 
-// Register plan — CHIP-8 has sixteen and Pong needs most of them:
-// V1/V2 ball position, V3/V4 ball velocity (0x01 or 0xff, i.e. ±1),
-// V5/V6 the two paddle tops, V7/V8 the two scores, V9 the AI's frame parity,
-// V0/VA/VB scratch. VF belongs to the machine (borrow and collision flags).
+// Register plan — V1/V2 ball position, V3/V4 velocity, V5/V6 paddle tops,
+// V7/V8 scores, V9 the AI's frame parity, V0/VA/VB scratch. VF is the machine's.
 const [V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, VA, VB] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 const VF = 15
 
@@ -93,9 +86,8 @@ export function buildPongRom() {
   a.ld(V7, 0)
   a.ld(V8, 0)
 
-  // A fresh serve redraws the whole board from nothing — after a point the
-  // screen may carry XOR scars where the ball crossed a digit, and a clear
-  // costs less than remembering what to repair.
+  // A fresh serve redraws from nothing: after a point the screen carries XOR
+  // scars, and a clear costs less than remembering what to repair.
   a.label('newRound')
   a.cls()
   a.call('drawScores')
@@ -173,9 +165,8 @@ export function buildPongRom() {
   a.ld(V4, 0xff)
   a.ret()
 
-  // At a paddle column: bounce if the ball's row is within the six the paddle
-  // covers, otherwise the other side scores. Both tests are the same trick —
-  // subtract and read the borrow flag, CHIP-8's only comparison.
+  // Bounce if the ball's row is within the six the paddle covers, else the
+  // other side scores. Both tests subtract and read the borrow flag.
   a.label('leftWall')
   a.ldr(VB, V2)
   a.sub(VB, V5)

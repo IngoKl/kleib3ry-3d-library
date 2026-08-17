@@ -3,16 +3,10 @@ import { NOTE_COLOURS } from '../scene/pinArt'
 import { useAppStore } from '../state/store'
 
 /**
- * Writing a note.
- *
- * The same one-line field as a shelf label, and for the same reason: it takes the
- * keyboard entirely while it is open, because `W` has to be a letter for as long
- * as somebody is typing a word. The walk controller and the reader both bail out
- * when `noting` is set.
- *
- * The note goes into your *hand*, not onto a wall. Where it ends up is a separate
- * decision, made by looking at somewhere and pressing E — which is also what
- * lets one note be moved around the house afterwards.
+ * The same one-line field as a shelf label, taking the keyboard entirely while
+ * open because `W` has to be a letter while somebody types a word. The note goes
+ * into your hand rather than onto a wall: where it ends up is a separate
+ * decision, which is also what lets one be moved afterwards.
  */
 export function NoteField() {
   const noting = useAppStore((s) => s.noting)

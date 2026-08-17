@@ -1,18 +1,10 @@
-//! Index a library folder from the command line.
+//! Index a library folder from the command line — the same indexer the app runs,
+//! writing into `<folder>/.library/`. Useful ahead of time, over ssh, and for
+//! reproducing a failing scan with a filename instead of a vanished window.
 //!
-//! The same indexer the app runs, without the app: it walks a folder, reads
-//! metadata out of every PDF and EPUB it finds, extracts EPUB cover art, and
-//! writes both into `<folder>/.library/`.
+//!     npm run scan -- "D:\\Books" [--quiet]
 //!
-//! Useful for indexing a large collection ahead of time, over ssh or from a
-//! script, and for reproducing a failing scan with a stack trace and a filename
-//! rather than a window disappearing.
-//!
-//!     npm run scan -- "D:\\Books"
-//!     npm run scan -- "D:\\Books" --quiet
-//!
-//! It cannot produce PDF cover art: those first pages are rasterised by pdf.js
-//! inside the app, so the build need not ship a native PDF renderer.
+//! No PDF cover art: those pages are rasterised by pdf.js inside the app.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -58,9 +50,8 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    // Which folder is read is worth saying out loud: `music/` and `artwork/`
-    // are part of a library folder too, and a scan that quietly indexed the
-    // sleeve notes would look like the book count being wrong for no reason.
+    // Worth saying out loud: a scan that quietly indexed the sleeve notes looks
+    // like the book count being wrong for no reason.
     match index::books_root(&root) {
         Some(books) => println!("scanning {}", books.display()),
         None => println!(
@@ -71,8 +62,8 @@ fn main() -> ExitCode {
     println!("index    {}", index_path.display());
     println!("covers   {}", covers.display());
 
-    // The file being read is printed *before* it is parsed, so if a book takes
-    // the process down its name is the last thing on screen.
+    // Printed before parsing, so a book that takes the process down leaves its
+    // name as the last thing on screen.
     let report = |progress: index::ScanProgress| {
         if quiet {
             return;
@@ -96,10 +87,8 @@ fn main() -> ExitCode {
                 println!("(unreadable books are still indexed, under their filename)");
             }
 
-            // The rest of the library folder. Music and artwork are deliberately
-            // not in the index — the app walks them on demand — but a scan should
-            // still read them, because this is where you find out the folder
-            // layout is wrong *before* the record shelf stands empty.
+            // Not indexed, but still counted here: this is where you find out
+            // the folder layout is wrong, before the record shelf stands empty.
             match media::music_root(&root) {
                 Some(_) => {
                     let tracks = media::list_tracks(&root);

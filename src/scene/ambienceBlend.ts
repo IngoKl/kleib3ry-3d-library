@@ -2,16 +2,10 @@ import * as THREE from 'three'
 import { approach } from '../lib/ease'
 
 /**
- * Day fading into night rather than switching to it: two values easing towards
- * whatever the ambience store says.
- *
- * Advanced once per frame by `Outside`, the one component always mounted with
- * the world, and read by everyone else in their own `useFrame`. A reader one
- * frame behind is invisible; a second advancer would double the speed, so there
- * is exactly one.
- *
- * Outside zustand for the reason `state/player.ts` is: it changes every frame
- * of a transition and must not trigger React renders.
+ * Day fading into night rather than switching: two values easing towards what
+ * the ambience store says. Advanced once per frame by `Outside`, the one
+ * component always mounted — a reader a frame behind is invisible, but a second
+ * advancer would double the speed. Outside zustand, like `state/player.ts`.
  */
 export const ambienceBlend = {
   /** 0 is day, 1 is night. */
@@ -23,9 +17,9 @@ export const ambienceBlend = {
 }
 
 /**
- * How many e-foldings a second. Weather still arrives briskly, but dusk takes
- * its time — about seven seconds — because a two-second sunset reads as a
- * light switch, and the golden hour below needs somewhere to happen.
+ * E-foldings a second. Weather arrives briskly, but dusk takes about seven
+ * seconds: a two-second sunset reads as a light switch, and the golden hour
+ * below needs somewhere to happen.
  */
 const NIGHT_RATE = 0.6
 const RAIN_RATE = 2.2
@@ -43,9 +37,8 @@ export function advanceAmbience(night: boolean, rain: boolean, delta: number): b
   if (Math.abs(wantNight - ambienceBlend.night) < 0.002) ambienceBlend.night = wantNight
   if (Math.abs(wantRain - ambienceBlend.rain) < 0.002) ambienceBlend.rain = wantRain
 
-  // The flash decays here but is deliberately no part of the return value:
-  // the ambient light carries it, and the sky canvas must not repaint twenty
-  // times per strike.
+  // Decays here but is deliberately not returned: the ambient light carries it,
+  // and the sky canvas must not repaint twenty times per strike.
   ambienceBlend.lightning *= Math.exp(-7 * delta)
   if (ambienceBlend.lightning < 0.01) ambienceBlend.lightning = 0
 
@@ -58,10 +51,8 @@ export function strikeLightning(strength = 1) {
 }
 
 /**
- * The amber the day passes through on its way down: zero at both settled
- * poles — a settled day and a settled night are pixel-identical with or
- * without this — peaking mid-transition, and rained off. A curve on the
- * existing blend, not a fifth corner.
+ * The amber the day passes through on its way down: zero at both settled poles,
+ * peaking mid-transition, rained off. A curve on the blend, not a fifth corner.
  */
 export function goldenWarmth(): number {
   const s = Math.sin(Math.PI * ambienceBlend.night)

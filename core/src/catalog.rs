@@ -1,12 +1,8 @@
 //! The book index: what the last scan found, kept as JSON beside the books.
 //!
-//! A *cache*: every field is recovered by rescanning, and the documented repair
-//! is to delete the file. JSON rather than a database because the library
-//! folder is the save file — plain text diffs cleanly in version control, reads
-//! without the app, and leaves no side files for a sync client to half-copy.
-//!
-//! Paths are relative to the library root, so copying a folder to another
-//! machine or OS strands nothing.
+//! A cache — every field is recovered by rescanning, and the repair is to delete
+//! the file. JSON so it diffs in version control and reads without the app.
+//! Paths are relative to the root, so a folder copied elsewhere strands nothing.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -17,9 +13,8 @@ use crate::Error;
 
 type Result<T> = std::result::Result<T, Error>;
 
-/// Cover art extensions, best first. A book can have both an extracted cover
-/// and a rendered one; the order decides which wins, so the choice is stable
-/// rather than whatever the directory listing happened to yield.
+/// Cover art extensions, best first. A book can have both an extracted and a
+/// rendered cover, and the order decides which wins regardless of listing order.
 pub const COVER_EXTENSIONS: [&str; 5] = ["jpg", "png", "gif", "webp", "svg"];
 
 /// Windows refuses — or worse, aliases to a device — these as file names, so an
@@ -32,13 +27,10 @@ fn is_reserved_name(id: &str) -> bool {
             && matches!(upper.as_bytes()[3], b'1'..=b'9'))
 }
 
-/// Whether an id may become a file name in the cover cache.
-///
-/// A rendered cover's id arrives from the WebView — over IPC on the desktop, in
-/// a URL on the server — and `Path::join` follows `..` and absolute paths, so
-/// anything that is not a plain name would write outside the cache. Here rather
-/// than in either shell because both need exactly this check and a guard that
-/// exists twice is a guard that can come to mean two things.
+/// Whether an id may become a file name in the cover cache. Cover ids arrive
+/// untrusted from the WebView and `Path::join` follows `..` and absolute paths,
+/// so anything but a plain name would write outside the cache. Shared by both
+/// shells: a guard that exists twice can come to mean two things.
 pub fn is_cover_id(id: &str) -> bool {
     !id.is_empty()
         && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -70,8 +62,7 @@ impl Format {
 }
 
 /// A book as the front end sees it. `path` is absolute and `cover` is a
-/// cache-relative file name, not a URL -- turning it into something loadable is
-/// the driver's job.
+/// cache-relative file name; making it loadable is the driver's job.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Book {
@@ -85,10 +76,8 @@ pub struct Book {
     pub size_bytes: u64,
 }
 
-/// One book as the index file records it.
-///
-/// No cover: that is derived from the cache directory instead (see
-/// [`Catalog::list_books`]). No indexed-at: nothing ever read it.
+/// One book as the index file records it. No cover field — that is derived from
+/// the cache directory in [`Catalog::list_books`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Entry {
@@ -106,10 +95,8 @@ pub struct Entry {
     pub probe_version: i64,
 }
 
-/// Everything the last scan found, keyed by book id.
-///
-/// A `BTreeMap` rather than a list so the file is byte-identical for identical
-/// content: a diff is then exactly the books that changed, and a rescan that
+/// Everything the last scan found, keyed by book id. A `BTreeMap` rather than a
+/// list so identical content serialises byte-identically, and a rescan that
 /// finds nothing new writes nothing at all.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,12 +106,9 @@ pub struct Catalog {
 }
 
 impl Catalog {
-    /// Read the index. A missing file is an empty index -- that is a library
-    /// that has not been scanned yet, not an error.
-    ///
-    /// A file that does not parse *is* an error, and deliberately: the index is
-    /// meant to be hand-editable, and a typo must stop the app rather than be
-    /// silently overwritten with a fresh scan. Deleting it is the reset.
+    /// Read the index. A missing file is an empty index — a library not yet
+    /// scanned. A file that does not parse is an error, deliberately: the index
+    /// is hand-editable, so a typo must stop rather than be overwritten.
     pub fn load(path: &Path) -> Result<Self> {
         match std::fs::read(path) {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
@@ -139,10 +123,8 @@ impl Catalog {
         Ok(text)
     }
 
-    /// Write the index, atomically, and only if it changed.
-    ///
-    /// Skipping an identical write leaves even the modified time alone, so a
-    /// rescan of an unchanged library gives a sync client nothing to copy.
+    /// Write the index, atomically, and only if it changed — skipping the write
+    /// leaves the mtime alone, so a rescan gives a sync client nothing to copy.
     pub fn save(&self, path: &Path) -> Result<()> {
         let text = self.to_json()?;
         if std::fs::read_to_string(path).map(|old| old == text).unwrap_or(false) {
@@ -154,10 +136,9 @@ impl Catalog {
 
     /// Record a freshly probed book. `rel_path` comes from [`relative_path`].
     pub fn upsert(&mut self, book: &Book, rel_path: &str, mtime: i64) {
-        // A file replaced in place gets a new id but keeps its path. The old
-        // entry describes content that is no longer there, so it goes; if that
-        // content still exists elsewhere, the same walk re-adds it under its
-        // own id.
+        // A file replaced in place keeps its path but gets a new id, so the old
+        // entry describes content that is gone. The same walk re-adds it if that
+        // content still exists elsewhere.
         self.books.retain(|id, entry| id == &book.id || entry.path != rel_path);
         self.books.insert(
             book.id.clone(),
@@ -175,12 +156,9 @@ impl Catalog {
     }
 
     /// Keep the stored path in step with a file that moved without changing.
-    ///
-    /// `is_current` matches on content identity alone, so a renamed or moved
-    /// book skips re-probing -- but the entry would keep pointing at the dead
-    /// old path and the book could never be opened again. Any other entry
-    /// squatting on the destination is dropped: it describes a file that is
-    /// gone or moved, and the same scan re-adds or prunes it.
+    /// `is_current` matches on content alone, so a move skips re-probing and
+    /// would otherwise leave the entry pointing at a dead path. Any other entry
+    /// squatting on the destination is dropped; the same scan re-adds it.
     pub fn refresh_path(&mut self, id: &str, rel_path: &str) {
         let moved = self.books.get(id).map(|e| e.path != rel_path).unwrap_or(false);
         if !moved {
@@ -192,15 +170,10 @@ impl Catalog {
         }
     }
 
-    /// True when the file on disk is unchanged since the last index *and* the
-    /// entry was written by the current probes, so the expensive probe can be
-    /// skipped. `mtime` is in milliseconds -- whole seconds missed a
-    /// same-length rewrite landing within one clock second.
-    ///
-    /// The probe version is part of it because a file that has not changed can
-    /// still be described wrongly: an entry written before the EPUB probe
-    /// measured length carries no page count, and no amount of rescanning would
-    /// ever have replaced it.
+    /// True when the file is unchanged and the entry came from the current
+    /// probes, so the expensive probe can be skipped. Milliseconds because whole
+    /// seconds missed a same-length rewrite inside one clock second; the probe
+    /// version because an unchanged file can still be described wrongly.
     pub fn is_current(&self, id: &str, size: u64, mtime: i64) -> bool {
         self.books
             .get(id)
@@ -212,16 +185,11 @@ impl Catalog {
             .unwrap_or(false)
     }
 
-    /// Drop entries whose file is no longer on disk. Returns the removed ids so
-    /// their cover files can be cleaned up too.
-    ///
-    /// `unreadable` is the paths the scan found but could not open — a lock held
-    /// by a sync client or antivirus, not a deletion. A book that both moved and
-    /// was unreadable this scan looks exactly like a deletion: its stored path
-    /// is gone and nothing ties the entry to the locked file at the new path.
-    /// Rather than guess, skip the prune entirely when anything was unreadable —
-    /// a stale entry self-heals on the next clean scan, a book that lost its
-    /// place on your shelves does not.
+    /// Drop entries whose file is gone, returning the removed ids so their
+    /// covers can go too. `unreadable` is paths that were locked rather than
+    /// deleted; a book that moved *and* was locked is indistinguishable from a
+    /// deletion, so nothing is pruned at all when any path was unreadable — a
+    /// stale entry self-heals next scan, a lost shelf position does not.
     pub fn prune_missing(&mut self, seen: &[String], unreadable: &[String]) -> Vec<String> {
         if !unreadable.is_empty() {
             return Vec::new();
@@ -259,12 +227,9 @@ impl Catalog {
     }
 
     /// Every book, in listing order, with absolute paths and covers filled in.
-    ///
-    /// The cover is derived from what is in the cache rather than stored, which
-    /// leaves the scan the index file's only writer: a cover rendered by the
-    /// front end lands on disk and simply shows up in the next listing. It also
-    /// means a re-probe that finds no cover cannot lose one that was rendered
-    /// earlier, because the file is the record.
+    /// Covers are read from the cache rather than stored, which leaves the scan
+    /// the index's only writer and means a re-probe finding no cover cannot lose
+    /// one the front end rendered earlier.
     pub fn list_books(&self, root: &Path, covers_dir: &Path) -> Vec<Book> {
         let covers = covers_on_disk(covers_dir);
         let mut books: Vec<Book> = self
@@ -294,10 +259,8 @@ impl Catalog {
     }
 }
 
-/// The cover cache as a map from book id to file name.
-///
-/// One directory read rather than a `stat` per book per extension: this runs on
-/// load and after a scan, never per frame.
+/// The cover cache as a map from book id to file name. One directory read
+/// rather than a `stat` per book per extension.
 fn covers_on_disk(covers_dir: &Path) -> HashMap<String, String> {
     let mut best: HashMap<String, (usize, String)> = HashMap::new();
     let Ok(entries) = std::fs::read_dir(covers_dir) else {
@@ -319,13 +282,9 @@ fn covers_on_disk(covers_dir: &Path) -> HashMap<String, String> {
     best.into_iter().map(|(id, (_, name))| (id, name)).collect()
 }
 
-/// A path as the index stores it: relative to the library root, with forward
-/// slashes so the same book reads the same on either operating system.
-///
-/// Rebuilding is `root.join(...)`, which accepts forward slashes on Windows
-/// too. A path outside the root — which `discover` cannot produce, but a
-/// hand-edited index could name — stays absolute and native, and `join` on an
-/// absolute path yields it unchanged, so it still resolves.
+/// A path as the index stores it: relative to the root with forward slashes, so
+/// the same book reads the same on either OS. A path outside the root — only a
+/// hand-edited index can name one — stays absolute, which `join` also resolves.
 pub fn relative_path(root: &Path, path: &Path) -> String {
     let Ok(rel) = path.strip_prefix(root) else {
         return path.to_string_lossy().to_string();
@@ -364,8 +323,7 @@ mod tests {
         format!("books/{title}.epub")
     }
 
-    /// An index written before the probes learned something has to be
-    /// re-probed, or the improvement never reaches a library already indexed.
+    /// Without this, a probe improvement never reaches an indexed library.
     #[test]
     fn an_entry_from_an_older_probe_is_not_current() {
         let mut cat = Catalog::default();
@@ -421,9 +379,8 @@ mod tests {
         assert_eq!(cat.len(), 2);
     }
 
-    /// A book that moved *and* was unreadable this scan: its stored path is
-    /// gone and the unreadable path does not match the entry. Nothing may be
-    /// pruned, or the move would cost the book its place on the shelves.
+    /// A book that moved *and* was locked looks exactly like a deletion, so
+    /// nothing may be pruned or the move costs it its place on the shelves.
     #[test]
     fn an_unreadable_scan_prunes_nothing_at_all() {
         let mut cat = Catalog::default();
@@ -505,8 +462,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The whole point of JSON over a database: an unchanged library produces
-    /// an unchanged file, so version control shows only the books that moved.
+    /// An unchanged library must produce an unchanged file, or version control
+    /// shows churn instead of the books that moved.
     #[test]
     fn saving_twice_is_byte_identical() {
         let dir = temp_dir("deterministic");
@@ -542,8 +499,7 @@ mod tests {
         assert_eq!(root.join(&stored), outside);
     }
 
-    /// The guard both shells write a cover through. Traversal, absolute paths and
-    /// the Windows device names all have to be refused in one place, not two.
+    /// Traversal, absolute paths and Windows device names, refused in one place.
     #[test]
     fn a_cover_id_is_a_plain_name_and_nothing_else() {
         assert!(is_cover_id("239516aa5c3083e3"));
@@ -553,11 +509,11 @@ mod tests {
         assert!(!is_cover_id("../escape"));
         assert!(!is_cover_id("with/slash"));
         assert!(!is_cover_id("with.dot"));
-        // Reserved on Windows, in any casing, with or without an extension to come.
+        // Reserved on Windows, in any casing.
         for reserved in ["CON", "con", "NUL", "com1", "LPT9"] {
             assert!(!is_cover_id(reserved), "{reserved} was accepted");
         }
-        // Only the four-character forms are reserved; these are ordinary names.
+        // Only the four-character forms are reserved.
         assert!(is_cover_id("COM"));
         assert!(is_cover_id("COM10"));
         assert!(is_cover_id("COM0"));
@@ -575,8 +531,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The cover lives on disk, not in the index, so a re-probe that extracts
-    /// nothing cannot lose one the front end rendered earlier.
+    /// The cover lives on disk, so a re-probe extracting none cannot lose it.
     #[test]
     fn a_cover_on_disk_surfaces_and_survives_a_reprobe() {
         let dir = temp_dir("covers");
@@ -597,8 +552,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Both an extracted and a rendered cover can exist; the winner must not
-    /// depend on directory order.
+    /// With both an extracted and a rendered cover, directory order must not decide.
     #[test]
     fn the_best_cover_extension_wins_stably() {
         let dir = temp_dir("cover-order");

@@ -7,18 +7,11 @@ import { useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 
 /**
- * Dust drifting in the lamplight.
- *
- * A handful of specks wandering slowly under each lit floor lamp and pendant —
- * the cheapest thing that makes still air read as air. One instanced mesh for
- * every mote in the building; a mote under an unlit lamp is scaled to nothing
- * rather than unmounted, so flipping a switch never rebuilds anything. The
- * paths are closed lissajous curves off a seeded generator: no allocation and
- * no randomness in the frame loop, and the same lamp gathers the same dust on
- * every visit.
- *
- * Only fittings with a bulb get dust — a fireplace has smoke and fairy lights
- * are a string, not a beam.
+ * A handful of specks under each lit lamp: the cheapest thing that makes still
+ * air read as air. One instanced mesh for the building, with an unlit lamp's
+ * motes scaled to nothing rather than unmounted, so a switch rebuilds nothing.
+ * The paths are seeded lissajous curves, so no frame allocates and the same
+ * lamp gathers the same dust every visit.
  */
 const MOTES_PER_LAMP = 6
 /** The volume the dust wanders, centred under the fitting. */

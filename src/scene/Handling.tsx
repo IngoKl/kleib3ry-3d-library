@@ -11,23 +11,18 @@ import { useWorldStore } from '../state/world'
 import { player } from '../state/player'
 
 /**
- * The verbs that are not "take" and "put on a shelf".
- *
- * Kept out of the walk controller because they are about *things*, not about
- * walking, and because the walk controller was already the file everything got
- * bolted onto. What lives here:
+ * The verbs that are not "take" and "put on a shelf", kept out of the walk
+ * controller because they are about things rather than about walking:
  *
  *   Q  drop what you are holding, on the floor, with gravity
  *   O  put it down open at the page you were on
  *   L  write a label on the bookcase you are looking at
  *   T  write a note, to stick on a wall
- *   X  pick a moving box, a folding chair or a folding table up and carry it,
- *      or set it down again
+ *   X  pick up or set down a box, a folding chair or a folding table
  *   Backspace  break down the empty box you are looking at
  *
- * `E` is still the walk controller's, because it is the same reach that takes a
- * book off a shelf and it belongs next to that — and pinning a sheet to a wall
- * is that same reach.
+ * `E` stays the walk controller's: it is the same reach that takes a book off a
+ * shelf, and pinning a sheet to a wall is that same reach.
  */
 
 /** How far in front of you what you are carrying floats, and how far below your eyes. */
@@ -66,9 +61,8 @@ export function Handling() {
           app.setHeldMarker(null)
           return
         }
-        // A record has no loose life on the floor: letting go of one sends it
-        // back to the crate the folder deals it into, forgetting wherever you
-        // had filed or put it. Putting one somewhere on purpose is E.
+        // A record has no loose life on the floor: letting go sends it back to
+        // the crate the folder deals it into. Putting one somewhere is E.
         if (app.heldRecord) {
           shelf.freeRecord(app.heldRecord)
           app.setHeldRecord(null)
@@ -84,16 +78,14 @@ export function Handling() {
           app.setHeldRom(null)
           return
         }
-        // A sheet you have decided against is screwed up and thrown away. Only
-        // when your hands are otherwise empty, because with a book in one hand
-        // Q plainly means the book.
+        // Screwed up and thrown away — only with your hands otherwise empty,
+        // because with a book in one of them Q plainly means the book.
         if (app.heldPin && !app.held) {
           app.setHeldPin(null)
           return
         }
-        // A cup, can or box goes down at your feet — on the floor, or on
-        // whatever tabletop happens to be there. Nothing bounces: none of it
-        // is worth a physics body.
+        // Down at your feet, on the floor or on whatever tabletop is there.
+        // Nothing bounces: none of it is worth a physics body.
         if (app.heldProp && live) {
           const x = player.x - Math.sin(player.yaw) * 0.5
           const z = player.z - Math.cos(player.yaw) * 0.5
@@ -109,9 +101,8 @@ export function Handling() {
           app.setHeldProp(null)
           return
         }
-        // Drop it. Somewhere in front of you, and then wherever it rolls to —
-        // the one thing in the room that is not where you put it. Kneeling, the
-        // same key is placing rather than throwing: down there, Q means "here".
+        // In front of you, then wherever it rolls — the one thing in the room
+        // that is not where you put it. Kneeling, Q places rather than throws.
         if (!app.held) return
         const size = shelf.dims.get(app.held)
         if (!size) return
@@ -146,11 +137,9 @@ export function Handling() {
           x,
           y: y + 0.004,
           z,
-          // Your own yaw, not the reverse of it. A page laid flat has its head
-          // pointing along -Z at rest, and the group's yaw turns that with you —
-          // so `yaw` alone points the top of the spread away from you, which is
-          // the way round you read it. Turning it through 180° as well laid the
-          // book down upside down, and swapped the verso and the recto.
+          // Your own yaw, not the reverse: a page laid flat rests with its head
+          // along -Z, so `yaw` alone points the top of the spread away from you.
+          // A further 180° lays the book down upside down.
           yaw: player.yaw,
           open: true,
           spread,
@@ -161,10 +150,9 @@ export function Handling() {
 
       if (e.code === 'KeyL') {
         e.preventDefault()
-        // Label the case you are aiming at. Holding a book that is the shelf
-        // position under the crosshair; otherwise the case the focused book is
-        // standing in; failing both, the carcass itself — which is what makes
-        // an *empty* bookcase labellable at all.
+        // The shelf position under the crosshair, else the case the focused
+        // book stands in, else the carcass — which is what makes an empty
+        // bookcase labellable at all.
         const shelfId =
           app.shelfTarget?.shelfId ??
           shelf.packed.find((item) => item.id === app.focusedBook)?.shelfId ??
@@ -175,12 +163,9 @@ export function Handling() {
 
       if (e.code === 'KeyT') {
         e.preventDefault()
-        // Write a note. It arrives in your hand rather than on the wall, because
-        // where it goes is a separate decision and one you make by looking.
-        //
-        // Refused rather than queued when your hand is already full: silently
-        // replacing the sheet you were about to stick up would throw away work,
-        // and the HUD says which key clears it.
+        // It arrives in your hand rather than on the wall, because where it
+        // goes is a separate decision you make by looking. Refused rather than
+        // queued with a full hand: replacing a sheet silently throws away work.
         if (app.heldPin) return
         app.setNoting(true)
         return
@@ -192,10 +177,8 @@ export function Handling() {
           setDown(app.carried)
           return
         }
-        // Only with your hands free: a box needs both, and a book in one of
-        // them is exactly the thing you would put down first. The folding chair
-        // and table are picked up by the same key for the same reason — it is
-        // the one verb that means "take this with you".
+        // Only with your hands free: a box needs both. The folding chair and
+        // table share the key because it is the one verb meaning "take this".
         const pickUp = app.focusedPortable ?? app.focusedBox
         if (app.held === null && pickUp) {
           app.setCarried(pickUp)
@@ -207,10 +190,9 @@ export function Handling() {
       }
 
       if (e.code === 'Backspace') {
-        // Break down the empty box under the crosshair. Its own key, and one
-        // with "delete" written into it: G on the same box shelves a boxful,
-        // and the two must not sit on neighbouring meanings of one key.
-        // `deleteBox` refuses a box with books in it.
+        // Its own key, with "delete" written into it: G on the same box shelves
+        // a boxful, and the two must not share one key. `deleteBox` refuses a
+        // box with books in it.
         if (app.held === null && app.carried === null && app.focusedBox) {
           e.preventDefault()
           // Only a break-down that happened sounds: `deleteBox` refuses a boxful.
@@ -220,12 +202,9 @@ export function Handling() {
     }
 
     /**
-     * Put down what you are carrying, where you are standing.
-     *
-     * Committed once, here, rather than every frame while it is carried:
-     * moving furniture re-derives the whole world and re-reconciles the
-     * library, which is the right thing to do for an edit and quite the wrong
-     * thing to do at sixty hertz.
+     * Committed once here rather than every frame while carried: moving
+     * furniture re-derives the world and re-reconciles the library, which is
+     * right for an edit and quite wrong at sixty hertz.
      */
     const setDown = (id: string) => {
       const app = useAppStore.getState()
@@ -237,9 +216,8 @@ export function Handling() {
       const yaw = carryYaw.current
       const x = player.x - Math.sin(yaw) * CARRY_AHEAD
       const z = player.z - Math.cos(yaw) * CARRY_AHEAD
-      // Snapped to a quarter turn so a set-down box reads as *placed* rather
-      // than dropped. (The collision AABBs now cover any facing, so this is a
-      // look, not a constraint.)
+      // Snapped to a quarter turn so a set-down box reads as placed rather than
+      // dropped. A look, not a constraint: the AABBs cover any facing.
       const facing = Math.round((yaw * 180) / Math.PI / 90) * 90
 
       // A box fresh off the stack becomes real furniture here, where it first
@@ -253,10 +231,9 @@ export function Handling() {
       const room = live?.rooms.find((candidate) => candidate.id === piece?.roomId)
       if (!piece || !room) return
 
-      // Stored room-local, the frame the document is written in: a box recorded
-      // in world metres would jump the first time its room moved. The elevation
-      // rides along because the document room only knows its own storey, and a
-      // box carried up to the loft would otherwise derive at ground level.
+      // Room-local, the frame the document uses: world metres would jump the
+      // first time its room moved. The elevation rides along, or a box carried
+      // up to the loft derives at ground level.
       useLibraryStore
         .getState()
         .moveFurniture(id, [x - room.origin[0], z - room.origin[1]], facing, player.floor)
@@ -266,13 +243,11 @@ export function Handling() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // What you are carrying rides in front of you on the hand's lagged yaw, like
-  // everything else held. Only a preview: the real one stands where it was
-  // until you set this one down — at this same yaw, so the preview is honest.
+  // Carried on the hand's lagged yaw, like everything held. Only a preview: the
+  // real piece stands where it was until you set this one down, at this yaw.
   const camera = useThree((s) => s.camera)
-  // Remade per carry: the hand only advances while something is held, so a fresh
-  // pickup needs a fresh prime or it swings in from the last carry's facing —
-  // the exact artefact `primed` exists to prevent.
+  // Remade per carry: the hand only advances while something is held, so a
+  // fresh pickup needs a fresh prime or it swings in from the last facing.
   const hand = useRef(makeHand())
   const lastCarry = useRef<string | null>(null)
   useFrame((_, delta) => {
@@ -295,10 +270,8 @@ export function Handling() {
 
   if (!piece) return null
 
-  // Folded, because that is what you would do before picking it up: the leaf
-  // shut on its frame, carried at a tilt in front of you. Two boxes, like the
-  // moving box's preview — this is a preview and not a second piece of
-  // furniture, and it exists only while it is off the ground.
+  // Folded, because that is what you would do before picking it up. Two boxes,
+  // like the moving box's preview: this exists only while it is off the ground.
   if (folded) {
     const leaf = piece.height + 0.06
     return (

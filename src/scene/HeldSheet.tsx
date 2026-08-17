@@ -15,12 +15,9 @@ import {
 import { useAppStore } from '../state/store'
 
 /**
- * The page or note in your hand, held up in front of you the way you hold a
- * sheet of paper you are about to stick to something.
- *
- * Rides the camera each frame like `HeldBook`, and sits lower and further left
- * than the book does, because a sheet in one hand and a book in the other is a
- * thing that happens: `heldPin` and `held` are deliberately not exclusive.
+ * The page or note in your hand. Rides the camera like `HeldBook`, but lower and
+ * further left, because a sheet in one hand and a book in the other happens:
+ * `heldPin` and `held` are deliberately not exclusive.
  */
 export function HeldSheet() {
   const group = useRef<THREE.Group>(null)
@@ -46,9 +43,8 @@ export function HeldSheet() {
     void pageTextureFor(bookId, page).then((loaded) => {
       if (!cancelled) setPage(loaded)
     })
-    // Drawing on the page you are holding a copy of re-rasterises it, and the
-    // sheet in your hand is not re-mounted by that — so it listens, like a
-    // pinned one does.
+    // Drawing on the page you hold a copy of re-rasterises it without
+    // re-mounting the sheet, so it listens like a pinned one does.
     const listener = (key: string) => {
       if (key === pageKey(bookId, page)) setPage(peekPage(bookId, page) ?? null)
     }

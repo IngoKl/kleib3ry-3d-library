@@ -9,9 +9,8 @@ import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
 /**
- * Shows where the book in your hand would land: a slot marker between the two
- * books it would sit between, plus a wash over the whole compartment. Without
- * this, placing is guesswork — you cannot see an insertion point.
+ * Where the book in your hand would land: a slot marker between its neighbours,
+ * plus a wash over the compartment. Without it, placing is guesswork.
  */
 export function PlacementGhost() {
   const target = useAppStore((s) => s.shelfTarget)

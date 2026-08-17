@@ -1,9 +1,8 @@
 //! Indexing, the JSON index, format and tag probes, and the media folders.
 //!
-//! No Tauri, no WebView, no GUI toolkit: both the desktop shell and the HTTP
-//! server want exactly these modules, and keeping them free of a GUI is what
-//! lets the container be a binary rather than a Linux image carrying a browser
-//! engine in order to read a directory.
+//! No Tauri, no WebView, no GUI toolkit — both shells want exactly these
+//! modules, and that is what lets the container be a binary rather than a Linux
+//! image carrying a browser engine in order to read a directory.
 
 pub mod catalog;
 pub mod index;
@@ -11,9 +10,8 @@ pub mod media;
 pub mod paper;
 pub mod probe;
 
-/// What can go wrong below the shell. No `Tauri` variant — nothing here can
-/// fail that way. The desktop app wraps this in an error that has one; the
-/// server maps it to a status code.
+/// What can go wrong below the shell. No `Tauri` variant, deliberately: the
+/// desktop app wraps this, the server maps it to a status code.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -39,14 +37,12 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// The folder inside a library folder that holds everything the app owns, so
-/// the rest of the folder stays the user's. Skipped by name when scanning (see
-/// `index::SKIP_DIRS`).
+/// Everything the app owns, so the rest of the folder stays the user's. Skipped
+/// by name when scanning — see `index::SKIP_DIRS`.
 pub const CONFIG_DIR: &str = ".library";
 
-/// Where a library folder keeps the things the app writes. One definition, so
-/// the desktop shell and the server cannot disagree about where a library is
-/// saved.
+/// Where a library folder keeps what the app writes. One definition, so the two
+/// shells cannot disagree about where a library is saved.
 pub struct SaveFiles {
     /// The room, hand-edited, comments and all.
     pub world: std::path::PathBuf,
@@ -96,9 +92,8 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
     }
 }
 
-/// Changed-ness of a file, cheaply: modified time and length. Polled by the
-/// front end for live reload — a stamp keeps that to a stat call, and both
-/// fields together catch a same-length edit inside one clock tick.
+/// Changed-ness of a file, cheaply: mtime and length. Polled for live reload, so
+/// it must stay a stat call; both fields catch a same-length edit in one tick.
 pub fn stamp_of(path: &std::path::Path) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta

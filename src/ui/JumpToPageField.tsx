@@ -3,13 +3,9 @@ import { readerStatus } from '../reader/status'
 import { useAppStore } from '../state/store'
 
 /**
- * "Go to page 412."
- *
- * Typed as a *page*, converted to a spread here, because the reader thinks in
- * spreads and nobody else does: leaf s carries pages 2s and 2s+1, so page 412
- * is spread 206. Getting that arithmetic wrong by one is the difference between
- * landing on the page you asked for and landing on its neighbour, which is why
- * it lives in one place next to the field that produces it.
+ * Typed as a page and converted to a spread here, because the reader thinks in
+ * spreads and nobody else does. Off by one is the difference between the page
+ * you asked for and its neighbour, so the arithmetic lives in one place.
  */
 export function JumpToPageField() {
   const open = useAppStore((s) => s.jumping)

@@ -6,17 +6,13 @@ import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
 /**
- * The beam of the headlamp, while it is on your head.
+ * A spot light riding the camera, which is what a headlamp is. Mounted only
+ * while worn, like the television's glow, because every light costs every lit
+ * fragment even at zero intensity — but putting it on compiles nothing, since
+ * `Warmup` below builds the with-beam programs during the load.
  *
- * A spot light that rides the camera and points where you look — which is what
- * a headlamp is. Mounted only while the lamp is worn, like the television's
- * glow: every light in the scene is a term every lit fragment pays for even at
- * zero intensity, and the software rasteriser the tests run on cannot afford
- * that as a standing charge. Putting it on compiles nothing, though: `Warmup`
- * below builds the with-beam shader programs during the load.
- *
- * No shadows: a moving shadow-casting light re-renders the whole shadow map
- * every frame, and the beam exists to find the trail, not to win an award.
+ * No shadows: a moving caster re-renders the whole map every frame, and the
+ * beam exists to find the trail.
  */
 export function Headlamp() {
   const worn = useAppStore((s) => s.wornLamp !== null)
@@ -62,17 +58,13 @@ function Beam() {
 }
 
 /**
- * The beam's shader programs, compiled behind the menu and then let go of.
+ * The beam's shader programs, compiled behind the menu and then let go of. The
+ * spot light count is baked into every lit material, so the beam's first frame
+ * would otherwise recompile the room — seconds on a software rasteriser. A dark
+ * spot light held for a few frames of the load builds them instead.
  *
- * The spot light count is baked into every lit material's program, so three
- * recompiles the room the frame the beam first appears — a wave that is seconds
- * on a software rasteriser, and a visible stall on putting the lamp on. A dark,
- * shadowless spot light held for a few frames of the load builds them instead;
- * three keeps a program per variant per material until the material is
- * disposed, so the beam then swaps to a cached one. Zero intensity rather than
- * `visible={false}`, which would take the light out of the count and warm
- * nothing — and unmounted after, so the room carries no light while the lamp is
- * off.
+ * Zero intensity rather than `visible={false}`, which takes the light out of the
+ * count and warms nothing; unmounted after, so an unworn lamp costs nothing.
  */
 function Warmup({ done }: { done: () => void }) {
   const frames = useRef(0)
@@ -93,8 +85,8 @@ function Warmup({ done }: { done: () => void }) {
       return
     }
     // Counted where `SceneEnvironment` can see it: it drops the environment for
-    // the first two of these, so the beam is compiled both with the map and
-    // without — the second being what a book opened in the dark runs on.
+    // the first two, so the beam compiles both with the map and without — the
+    // second being what a book opened in the dark runs on.
     shaderWarm.spotlight = frames.current - 1
     if (frames.current >= 7) {
       shaderWarm.spotlight = 0

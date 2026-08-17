@@ -6,19 +6,13 @@ import { useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
 
 /**
- * Label cards on the front edge of a bookcase.
+ * Label cards on the front edge of a bookcase, written in the app because
+ * labelling is something you do while shelving — deciding a case is the poetry
+ * should not mean alt-tabbing to a text editor. The text lives in `books.json`
+ * and overrides `library.json`, so a hand-written label is a default.
  *
- * Written in the app rather than only in the document, because labelling a
- * shelf is something you do *while* you are shelving it — you have just decided
- * that this case is the poetry, and getting that out of your head and onto the
- * case should not mean alt-tabbing to a text editor. The text lives in
- * `books.json` beside the arrangement it describes and overrides whatever
- * `library.json` supplied, so a hand-written starting label is a default rather
- * than a fight.
- *
- * One canvas texture per labelled case, which is a handful of small textures
- * for a library — cheap enough not to need the atlas machinery the spines use,
- * since a case has one label and a shelf has forty books.
+ * One canvas texture per labelled case: a case has one label where a shelf has
+ * forty books, so it needs none of the atlas machinery the spines use.
  */
 
 const CARD_W = 256

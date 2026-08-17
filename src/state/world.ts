@@ -11,12 +11,10 @@ import {
 import { WorldError, parseWorldText } from '../world/schema'
 
 /**
- * The world document, live.
- *
- * The contract that matters here is what happens when an edit is wrong: the
- * broken text is *not* applied, the world already on screen keeps running, and
- * the parse error is surfaced verbatim. You cannot lose a library by mistyping
- * in `library.json`, and you find out immediately rather than on next launch.
+ * The world document, live. The contract that matters is what happens when an
+ * edit is wrong: the broken text is not applied, the running world is left
+ * alone, and the parse error is surfaced verbatim — so you cannot lose a library
+ * by mistyping, and you find out at once rather than on next launch.
  */
 
 /** How often the world file is checked for an edit, in milliseconds. */
@@ -33,19 +31,12 @@ type WorldState = {
   /** Bumped whenever a new document is applied; the layout watches this. */
   revision: number
   /**
-   * Where furniture has been shoved to, overriding the document.
-   *
-   * Only the moving boxes can be shoved, and the reason this lives here rather
-   * than in `library.json` is that `library.json` is a file a person wrote:
-   * pushing a box across the room must not rewrite their comments. The book
-   * layout owns the persistence; this store only owns the effect.
+   * Where furniture has been shoved to. Here rather than in `library.json`
+   * because that is a file a person wrote: pushing a box must not rewrite their
+   * comments. The book layout owns the persistence; this owns the effect.
    */
   placements: Record<string, FurnitureOverride>
-  /**
-   * Boxes the app has added to or taken out of the room: made up off the stack
-   * in the kitchen, or broken down. Persisted by the book layout, like the
-   * placements above, and for the same reason.
-   */
+  /** Boxes made off the stack or broken down, persisted by the layout like the placements. */
   boxEdits: BoxEdits
 
   load: () => Promise<void>
@@ -71,9 +62,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
       }))
       return true
     } catch (e) {
-      // Keep the running world exactly as it is. A half-loaded room is worse
-      // than a stale one, and a stale one is worse than neither only if you are
-      // not told — hence the error going straight to the panel.
+      // Keep the running world exactly as it is: a half-loaded room is worse
+      // than a stale one, and the error goes straight to the panel.
       set({
         error:
           e instanceof WorldError
@@ -110,9 +100,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
         }
 
         if (!apply(text)) {
-          // The file on disk is broken and there is nothing on screen yet, so
-          // fall back to the default rather than leaving a black window. The
-          // error stays visible; the file is not touched.
+          // Broken on disk with nothing on screen yet: fall back to the default
+          // rather than a black window. The error stays; the file is untouched.
           const broken = get().error
           apply(DEFAULT_WORLD_TEXT)
           set({ error: broken })

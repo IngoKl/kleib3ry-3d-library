@@ -10,19 +10,15 @@ import { roomHasKeyboard, useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
 /**
- * Writing on a whiteboard, and the marker in hand while you do it.
- *
  * Hold the left mouse button and the line follows the crosshair. Its own file
- * rather than `Player.tsx` because it is the one input that is continuous
- * rather than a one-shot verb.
+ * rather than `Player.tsx`, because it is the one continuous input in the app.
  */
 
 /** How far the crosshair reaches to write, in metres. */
 const REACH = 2.6
 
-// Whether pointer lock has ever engaged this session. Headless runs never
-// lock and must keep drawing; a desktop session that has locked before must
-// not start a stroke from the click that merely re-locks after Esc.
+// Headless runs never lock and must keep drawing; a session that has locked
+// before must not start a stroke from the click that merely re-locks.
 let everLocked = false
 if (typeof document !== 'undefined') {
   document.addEventListener('pointerlockchange', () => {
@@ -100,10 +96,9 @@ export function Drawing() {
     if (held === null || !down.current) return
     const app = useAppStore.getState()
     if (app.mode !== 'walk' || !roomHasKeyboard()) return
-    // The click that re-locks the pointer after Esc is aiming at the canvas,
-    // not at a board; without this it left a dot wherever the crosshair sat.
-    // Gated on "has ever locked" so the headless tests — where lock is
-    // unavailable and the mouse drives the stroke directly — still draw.
+    // The click that re-locks after Esc aims at the canvas, not a board, and
+    // would leave a dot wherever the crosshair sat. Gated on `everLocked`, so
+    // the headless tests — where lock is unavailable — still draw.
     if (everLocked && !document.pointerLockElement) return
 
     const boards = sceneRefs.boards

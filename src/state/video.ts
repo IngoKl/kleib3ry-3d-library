@@ -4,20 +4,11 @@ import { library } from '../services'
 import type { IndexedTape } from '../services/types'
 
 /**
- * The `video/` folder, and what is in the machine.
- *
- * Deliberately a near-copy of `media.ts` rather than a generalisation of it. The
- * two stores share a shape — a list from a folder, one thing playing, an error
- * to report — and almost nothing else: a record plays through to the next one on
- * the shelf, a tape stops at the end because that is what a tape does; a record
- * is an `<audio>` element, a tape is a `<video>` element the scene has to hand
- * to a texture. Folding them together would mean a store that is half about
- * sound and half about a texture, with a flag deciding which.
- *
- * Playback is a single `HTMLVideoElement`, for the same reasons the record
- * player is a single `HTMLAudioElement`: it streams rather than decoding a
- * gigabyte into memory, it starts on the keypress that asked for it, and it has
- * no AudioContext to be mysteriously suspended.
+ * The `video/` folder, and what is in the machine. Deliberately a near-copy of
+ * `media.ts` rather than a generalisation: the two share a shape and almost
+ * nothing else — a record plays on to the next side and a tape stops, one is an
+ * `<audio>` element and one a `<video>` the scene hands to a texture. Folded
+ * together they would be one store with a flag deciding which half applies.
  */
 
 type VideoState = {
@@ -28,16 +19,13 @@ type VideoState = {
   playing: string | null
   paused: boolean
   /**
-   * Which television it is in, by furniture id — the record player's `deck`,
-   * for the same reason: a building may have more than one set, and they share
-   * the single video element, so this is what tells the scene which screen the
-   * picture is on. Null until a tape has gone in.
+   * Which set it is in — the deck's own argument: several sets share the single
+   * video element, so this tells the scene which screen the picture is on.
    */
   crt: string | null
   /**
-   * Whether the tape has a decoded frame to show. Owned here, off the
-   * element's own events, so the glass cannot read the readyState of the tape
-   * that just came out and draw black.
+   * Whether the tape has a decoded frame. Owned here rather than read off the
+   * element, so the glass cannot see the readyState of the tape that just left.
    */
   ready: boolean
   /** Why the last attempt to play failed, for the HUD. */
@@ -56,12 +44,9 @@ type VideoState = {
 let element: HTMLVideoElement | null = null
 
 /**
- * One element, created on first use so nothing is allocated in a test run that
- * never turns the television on.
- *
- * `playsInline` and `muted: false` are the defaults we want, but `crossOrigin`
- * is the load-bearing one: without it a frame drawn from the asset protocol
- * taints the canvas the texture is uploaded through.
+ * One element, created on first use so a test that never switches the set on
+ * allocates nothing. `crossOrigin` is the load-bearing setting: without it a
+ * frame from the asset protocol taints the canvas the texture uploads through.
  */
 export function videoElement(): HTMLVideoElement {
   if (!element) {
@@ -120,9 +105,8 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     const player = videoElement()
     if (crt !== undefined) set({ crt })
 
-    // The tape already in the machine: pause, or let it run on. The store's
-    // flag rather than the element's, because during the fade out the element
-    // has not paused yet.
+    // Pause, or let it run on. The store's flag rather than the element's,
+    // because during the fade out the element has not paused yet.
     if (get().playing === id) {
       if (get().paused) {
         fader.cancelFade(player)

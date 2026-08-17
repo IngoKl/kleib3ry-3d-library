@@ -6,31 +6,22 @@ import { useWorldStore } from '../state/world'
 import type { DerivedRoof } from '../world/derive'
 
 /**
- * The roof. Three decisions worth knowing:
+ * The roof. The pitched planes are slabs rather than planes, because from under
+ * the eaves a roof has an underside and a thickness; the gable ends come from
+ * the roof's own geometry, so the pitch is owned in one place; and none of it
+ * collides, since it starts at the top of the walls.
  *
- *   - the pitched planes are *slabs*, not planes: from below the eaves a roof
- *     has an underside and a thickness, both visible from the porch;
- *   - the gable ends come from the roof's own geometry rather than taller
- *     walls, so the pitch is owned in one place;
- *   - none of it collides. A roof starts at the top of the walls and only the
- *     eaves come down, outside and over head height (see `roofsOf`).
- *
- * None of it is in the shadow pass, deliberately. These are the largest
- * surfaces in the scene, the shadow map costs texels in proportion to what is
- * rasterised into it, and the shadow lands almost nowhere — every room has a
- * ceiling, so only the strip under the eaves could darken, and the walls
- * already shade that.
+ * Deliberately out of the shadow pass: these are the largest surfaces in the
+ * scene, the map costs texels in proportion to what is rasterised into it, and
+ * every room has a ceiling — so the shadow lands almost nowhere.
  */
 
 /** How thick a roof slab is, in metres. Rafters, boards and shingles. */
 const THICKNESS = 0.11
 
 /**
- * How high the underside of the roof is over a point, measured from the eaves.
- *
- * For a shed that is the distance from the low edge; for a gable it is the
- * distance from whichever eave is nearer, which is the same thing said twice
- * about a roof with two slopes.
+ * How high the underside is over a point: for a shed, the distance from the low
+ * edge; for a gable, from whichever eave is nearer.
  */
 function riseAt(roof: DerivedRoof, along: number): number {
   if (roof.kind === 'flat') return 0
@@ -69,12 +60,9 @@ const X_AXIS = new THREE.Vector3(1, 0, 0)
 const Z_AXIS = new THREE.Vector3(0, 0, 1)
 
 /**
- * The pitched planes of one roof.
- *
- * A gable is two slabs meeting at the ridge; a shed is one; a flat roof is a lid
- * and needs no tipping at all. The length of a slope is the span it covers
- * divided by the cosine of its pitch, which is the only trigonometry in here and
- * the reason a steeper roof is not a shorter one.
+ * A gable is two slabs meeting at the ridge, a shed is one, a flat roof is a lid.
+ * A slope's length is its span over the cosine of its pitch, which is why a
+ * steeper roof is not a shorter one.
  */
 function slopesOf(roof: DerivedRoof): THREE.BufferGeometry[] {
   const { covers, eaves, pitch } = roof
@@ -85,9 +73,8 @@ function slopesOf(roof: DerivedRoof): THREE.BufferGeometry[] {
   const middle = (acrossFrom + acrossTo) / 2
   const other = roof.axis === 'z' ? (covers.minX + covers.maxX) / 2 : (covers.minZ + covers.maxZ) / 2
 
-  // Half the slab's thickness, measured vertically: a tipped slab's top face is
-  // higher than its centre line by this, so the centre is dropped by it and the
-  // *upper* surface lands exactly on the derived plane.
+  // Half the thickness, measured vertically: dropping the centre by this lands
+  // the upper surface exactly on the derived plane.
   const sink = THICKNESS / (2 * Math.cos(pitch))
 
   /** One slope, from `(fromAlong, fromY)` up to `(toAlong, toY)`. */
@@ -98,18 +85,16 @@ function slopesOf(roof: DerivedRoof): THREE.BufferGeometry[] {
     const length = run / Math.cos(pitch)
     const midAlong = (fromAlong + toAlong) / 2
     const midY = (fromY + toY) / 2 - sink
-    // The slab's long axis is its local Z for a roof falling along Z, and its
-    // local X for one falling along X; the sign of the angle is whichever tips
-    // that axis downhill.
+    // The long axis follows the fall direction; the sign of the angle is
+    // whichever tips that axis downhill.
     const downhill = toY < fromY ? 1 : -1
     return roof.axis === 'z'
       ? slab(
           [width, THICKNESS, length],
           [other, midY, midAlong],
           X_AXIS,
-          // Tipping about +X sends local +Z downwards, so a slope whose far end
-          // is lower than its near end takes a positive angle only when it also
-          // runs towards +Z. Both signs are folded together here.
+          // Tipping about +X sends local +Z down, so the sign depends on both
+          // which end is lower and which way the slope runs.
           (toAlong > fromAlong ? 1 : -1) * downhill * pitch,
         )
       : slab(
@@ -136,15 +121,11 @@ function slopesOf(roof: DerivedRoof): THREE.BufferGeometry[] {
 }
 
 /**
- * The gable end: the wall-coloured infill between the top of the wall and the
- * underside of the roof.
- *
- * Built as an explicit polygon rather than by extruding a shape, because the
- * outline is not a triangle — the overhang means the roof plane is already above
- * the eaves line where it crosses the wall, so there is a short upright at each
- * end before the pitch starts. Fanned from the first vertex, which is safe
- * because both outlines a roof can produce (triangle-on-a-plinth for a gable, a
- * trapezoid for a shed) are convex.
+ * The wall-coloured infill between the top of the wall and the underside of the
+ * roof. An explicit polygon, because the overhang means the roof plane is
+ * already above the eaves where it crosses the wall — so the outline is not a
+ * triangle. Fanned from the first vertex, which is safe: both outlines a roof
+ * can produce are convex.
  */
 function endsOf(roof: DerivedRoof): THREE.BufferGeometry[] {
   const { walls, eaves } = roof
@@ -208,10 +189,8 @@ function ridgeOf(roof: DerivedRoof): THREE.BufferGeometry[] {
 }
 
 /**
- * A fascia across the rafter ends at each eave: both low edges of a gable,
- * the one low edge of a shed. Plumb and centred on the eave line, tall enough
- * to cover the slab's raw cut end — which is what the board is for on a real
- * roof too. Timber, so it rides the ridge merge.
+ * A board across the rafter ends at each eave, tall enough to cover the slab's
+ * raw cut end — which is what a fascia is for on a real roof too.
  */
 function fasciaOf(roof: DerivedRoof): THREE.BufferGeometry[] {
   if (roof.kind === 'flat') return []
@@ -242,13 +221,11 @@ function fasciaOf(roof: DerivedRoof): THREE.BufferGeometry[] {
 }
 
 /**
- * One merged mesh per material for the whole building, not per room.
- *
- * Six roofs is a dozen slabs, a dozen gable ends and a handful of ridge boards.
- * None of them ever move relative to each other, which is the same argument the
- * room shells make for merging, and for the same payoff: two draw calls for
- * every roof in the library.
+ * One merged mesh per material for the whole building rather than per room: six
+ * roofs is a dozen slabs and as many gable ends, none of which move relative to
+ * each other. Two draw calls for every roof in the library.
  */
+
 /** A stable stand-in for "no world yet", so the memo below is not rebuilt per render. */
 const NO_ROOFS: DerivedRoof[] = []
 

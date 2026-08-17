@@ -1,7 +1,6 @@
 /**
- * Small deterministic PRNG. Every generated thing in the scene — floor grain,
- * book sizes, spine colours — runs off a seed so the room is identical on every
- * load and screenshots are comparable between runs.
+ * Small deterministic PRNG. Everything generated in the scene runs off a seed,
+ * so the room is identical on every load and screenshots compare between runs.
  */
 export function mulberry32(seed: number) {
   let state = seed

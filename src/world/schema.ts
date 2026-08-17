@@ -1,14 +1,10 @@
 /**
  * The world document: `library.json` in the library folder.
  *
- * Hand-edited, so every parse failure names the path that is wrong and what was
- * expected there. A document that does not parse is *rejected whole* — the room
- * on screen keeps running and the error goes to the HUD; half-applying an edit
- * would be a good way to lose a library.
- *
- * Not in here: which book sits on which shelf, what is lying on a table, where
- * the boxes have been pushed, which lamps are on. That is machine-written state
- * beside this file (see `reconcile.ts`). Nothing the app writes lands here.
+ * Hand-edited, so every parse failure names the offending path and what was
+ * expected. A bad document is rejected whole and the running room is left alone;
+ * half-applying an edit is a good way to lose a library. Nothing the app writes
+ * lands here — shelving, boxes and lamps live beside it.
  */
 
 /** Which wall of a room an opening sits in. +Z is south, -Z is north. */
@@ -23,18 +19,12 @@ export type Opening = {
   /** Height of the bottom edge above the floor. A door sits at 0. */
   sill: number
   kind: 'door' | 'window'
-  /**
-   * Whether a pane is fitted. Windows are glazed; an unglazed one with a
-   * waist-high sill is how a balustrade or porch railing is built.
-   */
+  /** An unglazed opening with a waist-high sill is a balustrade or a railing. */
   glazed: boolean
 }
 
 export type ShelfSpec = {
-  /**
-   * Stable across edits — this is what the book layout is keyed by. Rename it
-   * and the shelf reads as a different shelf, so its books go into boxes.
-   */
+  /** What the book layout is keyed by: rename it and its books go into boxes. */
   id: string
   /** Position in room-local metres, measured from the room's centre. */
   at: [number, number]
@@ -42,17 +32,13 @@ export type ShelfSpec = {
   facing: number
   rows: number
   /**
-   * A starting label for the case, on a card on its top edge. An in-app label
-   * overrides it and lives in `books.json`, so hand edits and app edits never
-   * contend for one file.
+   * A starting label, on a card on the case's top edge. An in-app label
+   * overrides it from `books.json`, so the two never contend for one file.
    */
   label?: string
 }
 
-/**
- * Everything that stands in a room. Each kind is a few boxes and cylinders in
- * `Furniture.tsx` — there are no model files, so the repo stays text.
- */
+/** Each kind is a few boxes and cylinders in `Furniture.tsx`; no model files. */
 export type FurnitureKind =
   // seating and surfaces
   | 'armchair'
@@ -115,37 +101,25 @@ export type FurnitureSpec = {
   kind: FurnitureKind
   at: [number, number]
   facing: number
-  /**
-   * Footprint override, in metres. For anything hung on a wall this is the
-   * mounted size, width by *height* — a wall-mounted thing has no useful depth.
-   */
+  /** Footprint in metres, or width by height for anything hung on a wall. */
   size?: [number, number]
   /** Height override, for the kinds where it is worth varying (tables, counters). */
   height?: number
   /** Centre height above the floor, for the kinds that hang on a wall. */
   y?: number
-  /**
-   * Which file in `artwork/` a picture shows. Omitted, pictures are dealt out
-   * of the folder in document order, so dropping images in is enough.
-   */
+  /** Which file in `artwork/` to show. Omitted, pictures are dealt out in order. */
   source?: string
   /** How far a flight of stairs climbs. Its `size` is [width, run]. */
   rise?: number
-  /**
-   * Whether a lamp starts lit. You can switch lights in the app, and that is
-   * remembered in `.library/ambience.json` — this is only the initial state.
-   */
+  /** Whether a lamp starts lit; switching one is remembered in `ambience.json`. */
   on?: boolean
 }
 
 /**
- * The roof over a room. Only the *topmost* room over a patch of ground is
- * roofed (see `roofsOf`), derived rather than declared, so a loft inside
- * another room's volume does not sprout a roof indoors.
- *
- * `fall` is worth setting by hand: for a gable it names the sides the eaves run
- * along (`south` runs the ridge east to west), for a shed the low side. A porch
- * roof must fall away from the building it leans on, or it drains into it.
+ * The roof over a room. Only the topmost room over a patch of ground is roofed
+ * (see `roofsOf`), so a loft does not sprout one indoors. `fall` names the sides
+ * a gable's eaves run along, or a shed's low side — and a porch roof must fall
+ * away from the building it leans on, or it drains into it.
  */
 export type RoofKind = 'none' | 'gable' | 'shed' | 'flat'
 
@@ -175,9 +149,8 @@ export type RoomSpec = {
   size: [number, number]
   height: number
   /**
-   * Height of this room's floor above the ground plane. A loft is a room with
-   * an elevation standing over another room's plan, which is why rooms may
-   * overlap as long as they are on different levels.
+   * Floor height above the ground plane. A loft is a room standing over another
+   * room's plan, which is why rooms may overlap on different levels.
    */
   elevation: number
   /** Which walls are built. A porch has none; a loft has three and a balustrade. */
@@ -252,10 +225,7 @@ function optionalStr(source: Json, key: string, path: string): string | undefine
   return value as string
 }
 
-/**
- * An id, which is used as part of a `shelfId:row` key in the book layout — so a
- * colon in one would make that key ambiguous and quietly misplace books.
- */
+/** Part of a `shelfId:row` layout key, so a colon in one would misplace books. */
 function identifier(source: Json, key: string, path: string): string {
   const value = str(source, key, path)
   if (value.includes(':')) {
@@ -437,9 +407,8 @@ function parseFurniture(raw: unknown, path: string): FurnitureSpec {
 }
 
 /**
- * The roof, with defaults chosen so no document has to mention it: a gable for
- * a room, a shed for a porch, and eaves on the *longer* pair of walls so the
- * ridge runs the length of the building rather than across it.
+ * Defaults chosen so no document has to mention the roof: a gable for a room, a
+ * shed for a porch, eaves on the longer walls so the ridge runs lengthwise.
  */
 function parseRoof(source: Json, path: string, room: { size: [number, number]; outdoor: boolean }): RoofSpec {
   const wider = room.size[0] >= room.size[1]
@@ -477,10 +446,7 @@ function parseHole(raw: unknown, path: string): FloorHole {
   return { at: pair(source, 'at', path), size }
 }
 
-/**
- * Which walls to build. Omitted means all four, because that is what a room is;
- * an explicit empty list is a porch, and is deliberately allowed.
- */
+/** Omitted means all four; an explicit empty list is a porch, and is allowed. */
 function parseWalls(source: Json, path: string): Wall[] {
   const value = source.walls
   if (value === undefined) return [...WALLS]
@@ -537,9 +503,9 @@ function parseSpawn(raw: unknown, path: string): WorldDocument['spawn'] {
 }
 
 /**
- * Parse and check a world document. Throws `WorldError` with the offending
- * path; callers surface that verbatim, because "rooms[1].shelves[3].at:
- * expected two numbers like [x, z]" is a fixable message and "invalid" is not.
+ * Parse and check a world document, throwing `WorldError` with the offending
+ * path. Callers surface it verbatim: "rooms[1].shelves[3].at: expected two
+ * numbers like [x, z]" is fixable, and "invalid" is not.
  */
 export function parseWorld(raw: unknown): WorldDocument {
   const source = object(raw, '')
@@ -584,11 +550,8 @@ export function parseWorld(raw: unknown): WorldDocument {
 }
 
 /**
- * Strip `//` and block comments, so the file you hand-edit can explain itself.
- *
- * Comments are replaced by spaces rather than removed, which keeps every
- * character at its original offset — otherwise `JSON.parse`'s "position 412"
- * would point somewhere that is not where you typed the mistake.
+ * Strip comments, so the hand-edited file can explain itself. Replaced by spaces
+ * rather than removed, so `JSON.parse`'s "position 412" still points at the typo.
  */
 export function stripJsonComments(text: string): string {
   let out = ''

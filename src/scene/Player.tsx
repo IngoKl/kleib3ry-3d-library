@@ -29,10 +29,9 @@ const ZOOM_RATE = 5.5
 const WALK = 1.6
 const RUN = 3.0
 /**
- * How much ground a stride covers, which is what sets the footstep cadence.
- * Generous because the whole room is about a quarter over life size (see
- * `data/dimensions.ts`), and longer at a run: a sprint is fewer, bigger paces,
- * not the same paces faster.
+ * How much ground a stride covers, which sets the footstep cadence. Generous
+ * because the room is a quarter over life size, and longer at a run: a sprint is
+ * fewer, bigger paces, not the same paces faster.
  */
 const WALK_STRIDE = 0.92
 const RUN_STRIDE = 1.35
@@ -53,10 +52,9 @@ const MOUSE = 0.0022
 const PITCH_LIMIT = Math.PI / 2 - 0.08
 
 /**
- * Three guards against the spurious mouse deltas pointer lock delivers after a
- * lock, a focus change or an alt-tab: a settling window in which nothing is
- * believed, a hard pixel ceiling, and a ceiling relative to how fast the hand
- * has actually been moving. Each catches what the others cannot.
+ * Three guards against the spurious deltas pointer lock delivers after a lock or
+ * a focus change: a settling window, a hard pixel ceiling, and a ceiling
+ * relative to how fast the hand has been moving. Each catches what the others cannot.
  */
 const MAX_STEP_PX = 400
 const SETTLE_MS = 180
@@ -105,11 +103,7 @@ export function Player() {
   const handoff = useRef(0)
   /** The right button, which zooms the same as `Z` — whichever hand is free. */
   const rightDown = useRef(false)
-  /**
-   * How much to scale a mouse delta by, written by the frame loop. The ratio of
-   * the tangents, so a movement of the hand covers the same distance *on screen*
-   * at any zoom.
-   */
+  /** The ratio of the tangents, so the hand covers the same screen distance at any zoom. */
   const turnScale = useRef(1)
 
   // --- input -----------------------------------------------------------
@@ -117,9 +111,8 @@ export function Player() {
     const canvas = gl.domElement
 
     /**
-     * Empty-handed, E takes the book under the crosshair. Holding one, E puts
-     * it wherever you are aiming — a shelf, or back into a box — which is how
-     * you rearrange the library.
+     * Empty-handed, E takes the book under the crosshair; holding one, E puts it
+     * where you are aiming. That is the whole of rearranging the library.
      */
     const takeOrPlace = () => {
       const state = useAppStore.getState()
@@ -149,10 +142,9 @@ export function Player() {
       } = state
       const shelf = useLibraryStore.getState()
 
-      // A sheet goes on the wall you are aiming at. First, because a wall is
-      // not somewhere anything else can go — `pinTarget` is only set when
-      // pinning is the only thing E could mean. The tilt comes from the
-      // position, so a board of pages is not a spreadsheet.
+      // First, because `pinTarget` is only set when pinning is the only thing E
+      // could mean. The tilt comes from the position, so a board of pages is
+      // not a spreadsheet.
       if (heldPin !== null) {
         if (!pinTarget) return
         const tilt = (Math.sin(pinTarget.x * 12.9898 + pinTarget.y * 78.233) % 1) * 0.09
@@ -186,9 +178,8 @@ export function Player() {
         return
       }
 
-      // Sitting down and getting up are both E, which is the same key you use
-      // for everything else you do with your hands — and a chair takes you with
-      // a book in hand, because sitting down to read is what it is for.
+      // Sitting and standing are both E, and a chair takes you with a book in
+      // hand, because sitting down to read is what it is for.
       if (seat !== null) {
         setSeat(null)
         return
@@ -205,9 +196,8 @@ export function Player() {
         return
       }
 
-      // Holding a record: the deck plays it, a crate files it, a table takes it
-      // lying down. Filing it into the crate you are looking at is what makes a
-      // record something you can arrange rather than only something you play.
+      // The deck plays it, a crate files it, a table takes it lying down.
+      // Filing is what makes a record something you arrange, not only play.
       if (heldRecord !== null) {
         if (focusedFixture) {
           useMediaStore.getState().play(heldRecord, focusedFixture)
@@ -235,11 +225,9 @@ export function Player() {
         return
       }
 
-      // Holding a tape: the television takes it, the crate takes it back. Its
-      // place in the crate comes from the folder, so putting it back is just
-      // letting go of it — exactly like filing a record. The set's id rides
-      // along so only that screen lights: reading `playing` alone put the same
-      // picture on every television in the house.
+      // The television takes it, the crate takes it back — and its place there
+      // comes from the folder, so putting it back is letting go of it. The
+      // set's id rides along, or every television shows the same picture.
       if (heldTape !== null) {
         if (focusedFixture) {
           const piece = useWorldStore
@@ -255,9 +243,8 @@ export function Player() {
         return
       }
 
-      // Holding a cartridge: the machine takes it and boots it; the box takes
-      // it back — or, held over the box, E swaps it for the next one, which is
-      // how you flick through a crate with one hand.
+      // The machine takes it and boots it; the box takes it back, or swaps it
+      // for the next one, which is how you flick through a crate one-handed.
       if (state.heldRom !== null) {
         if (focusedFixture) {
           const piece = useWorldStore
@@ -341,12 +328,10 @@ export function Player() {
           }
           return
         }
-        // Taking a record out of the crate is the same gesture as taking a book
-        // down, and it is offered only when no book is nearer — see `Interaction`.
-        // Aimed at the crate itself, E takes the one you have riffled to — the
-        // sleeve standing out in front, which is what the card names — so
-        // browsing and picking one up compose. Never the record on the deck: the
-        // riffle still counts its place, but its sleeve is not in the crate.
+        // Aimed at the crate, E takes the sleeve you riffled to — the one
+        // standing proud, which is what the card names — so browsing and
+        // picking up compose. Never the record on the deck: its sleeve is not
+        // in the crate, though the riffle still counts its place.
         const riffled = state.focusedCrate
           ? (state.crateViews[state.focusedCrate]?.record ?? null)
           : null
@@ -396,18 +381,15 @@ export function Player() {
         return
       }
 
-      // Onto a table, exactly where you are pointing. Closed: leaving one open
-      // is `O`, because which of the two you meant is not something a crosshair
-      // can tell you.
+      // Onto a table where you point, closed — leaving one open is `O`, because
+      // a crosshair cannot tell which you meant.
       if (surfaceTarget) {
         const size = shelf.dims.get(held)
         shelf.putDown(held, {
           x: surfaceTarget.x,
           y: surfaceTarget.y + (size?.thickness ?? 0.03) / 2,
           z: surfaceTarget.z,
-          // Your yaw, so the cover reads the right way up from where you are
-          // standing — the same arithmetic as a book put down open. See the
-          // note in `Handling`.
+          // Your yaw, so the cover reads right way up from where you stand.
           yaw: player.yaw,
           open: false,
           spread: 0,
@@ -444,10 +426,8 @@ export function Player() {
         })
         return
       }
-      // The switch by the door: every light in the library, on or off together.
-      // Off when anything is lit, so one press always darkens the house.
-      // Except the campfire: a switch plate indoors must not light a fire
-      // across the lake.
+      // Every light together, off when anything is lit, so one press always
+      // darkens the house. Except the campfire, which is across the lake.
       if (item.kind === 'lightswitch' && world) {
         const lights = useAmbienceStore.getState()
         const house = world.lights.filter((lamp) => lamp.kind !== 'campfire')
@@ -462,9 +442,7 @@ export function Player() {
       if (item.kind === 'recordplayer') {
         const music = useMediaStore.getState()
         // Only the deck with the record on it answers. An empty one does not
-        // help itself to the first record in the folder — a record is a thing
-        // there is one of, and carrying it here is the whole gesture. Same rule
-        // the television follows.
+        // help itself to the first in the folder: carrying it over is the gesture.
         if (music.playing && music.deck === id) music.play(music.playing, id)
         return
       }
@@ -474,9 +452,8 @@ export function Player() {
         useAppStore.getState().setHeldMarker(id)
         return
       }
-      // A flat box comes off the stack, made up and into your arms — it turns
-      // into real furniture when you set it down (X), like any carried box.
-      // The stack never runs out: cardboard is not the scarce thing here.
+      // A flat box comes off the stack and into your arms, becoming furniture
+      // when you set it down. The stack never runs out.
       if (item.kind === 'boxstack') {
         useAppStore.getState().setCarried(NEW_BOX)
         playOneShot('cardboard', 0.8)
@@ -484,17 +461,14 @@ export function Player() {
       }
       if (item.kind === 'crt') {
         const video = useVideoStore.getState()
-        // A television with a tape in it pauses and resumes; an empty one has
-        // nothing to show, and deliberately does *not* help itself to the first
-        // tape in the crate. Putting a tape in is a thing you do with your hands.
-        // Only the set the tape is actually in: the other one is empty.
+        // A set with a tape in it pauses and resumes; an empty one does not
+        // help itself to the crate. Only the set the tape is actually in.
         if (video.playing && video.crt === item.id) video.play(video.playing)
         return
       }
-      // The cabinet: with a game in it, E steps you up to the controls and the
-      // keyboard becomes the keypad — Esc steps you back. An empty machine
-      // deliberately does not help itself to a cartridge, the television's rule.
-      // A crashed one refuses too, agreeing with the HUD: eject it first.
+      // With a game in it, E steps you up and the keyboard becomes the keypad;
+      // Esc steps back. An empty machine does not help itself to a cartridge,
+      // and a crashed one refuses, agreeing with the HUD: eject it first.
       if (item.kind === 'arcade') {
         if (useArcadeStore.getState().inserted && !arcadeMachine()?.halted) {
           useAppStore.getState().setMode('play')
@@ -510,9 +484,8 @@ export function Player() {
       }
       if (item.kind === 'coffeemaker') {
         const app = useAppStore.getState()
-        // A full pot pours: E hands you the cup, coffee in it — as long as the
-        // cup is home by the machine. With the cup somewhere in the room the
-        // pot just stands ready, and the HUD says what to go and find.
+        // A full pot pours, as long as the cup is home by the machine. Left
+        // somewhere in the room, the pot stands ready and the HUD says so.
         if (app.readyPots[id]) {
           if (!('cup' in useLibraryStore.getState().props)) {
             app.drainPot(id)
@@ -548,10 +521,8 @@ export function Player() {
         useAppStore.getState().setSearching(true)
         return
       }
-      // A pad of notes: peel one off and write on it. The same field `T` opens,
-      // because it is the same note — this is only the other way to reach it,
-      // and the one you find by walking into the office rather than by reading
-      // a key legend.
+      // Peel one off and write on it — the same field `T` opens, reached by
+      // walking into the office rather than by reading a key legend.
       if (item.kind === 'postits') {
         const app = useAppStore.getState()
         if (app.heldPin) return
@@ -560,18 +531,16 @@ export function Player() {
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      // Typing a label, a note or a search is typing: W is a letter, not a step
-      // — and behind the main menu or the settings panel there is no room to
-      // walk in yet.
+      // While typing, W is a letter and not a step — and behind the menu or the
+      // settings panel there is no room to walk in yet.
       if (!roomHasKeyboard()) return
       keys.current.add(e.code)
       if (useAppStore.getState().mode !== 'walk') return
 
-      // Auto-repeat moves you; it does not act for you. Every verb below is
-      // one-shot. The movement keys are exempt: they are read from the *set*,
-      // which a repeat cannot change — and so is riffling a crate, which is
-      // precisely the key you hold down: a sleeve at a time is how you flick
-      // through one. A box is not exempt, because its step is a whole pileful.
+      // Auto-repeat moves you but does not act for you: every verb below is
+      // one-shot. Movement is exempt (read from the set, which a repeat cannot
+      // change) and so is riffling a crate, which is the key you hold down. A
+      // box is not, because its step is a whole pileful.
       const riffling =
         (e.code === 'Comma' ||
           e.code === 'Period' ||
@@ -585,21 +554,18 @@ export function Player() {
         takeOrPlace()
       } else if (e.code === 'KeyF') {
         e.preventDefault()
-        // Aimed at the cat, F asks it for a book — there is no book under the
-        // crosshair to draw out when a cat is standing in front of it, so the
-        // two never compete.
+        // Aimed at the cat, F asks it for a book. A cat in front of a shelf
+        // hides the book, so the two verbs never compete.
         const { focusedBook, focusedCat, drawn, setDrawn, heldMarker, cycleInk, heldProp } =
           useAppStore.getState()
-        // Drink or eat what is in your hand. The coffee is the one with an
-        // effect: a quarter quicker on your feet until it wears off. An empty
-        // has nothing left in it but a trip to the bin.
+        // Coffee is the one with an effect: a quarter quicker on your feet
+        // until it wears off. An empty is nothing but a trip to the bin.
         if (heldProp !== null) {
           useAppStore.getState().consume()
           return
         }
-        // With the marker in hand, F is the next pen in the tray. It cannot
-        // collide with drawing a book out: the crosshair offers nothing but
-        // whiteboards while you are holding it.
+        // F is the next pen in the tray. It cannot collide with drawing a book
+        // out: the crosshair offers only whiteboards while you hold a marker.
         if (heldMarker !== null) {
           cycleInk()
           return
@@ -608,9 +574,8 @@ export function Player() {
           askCatForBook()
           return
         }
-        // A record comes back off its deck, and a tape back out of the set.
-        // Without this neither could ever be carried away again: both are
-        // hidden while they play, so there is nothing in the crate to reach for.
+        // The only way to get either back: both are hidden while they play, so
+        // there is nothing in the crate to reach for.
         const app = useAppStore.getState()
         const music = useMediaStore.getState()
         const video = useVideoStore.getState()
@@ -652,9 +617,8 @@ export function Player() {
         else if (focusedBook) setDrawn(focusedBook)
       } else if (e.code === 'KeyV') {
         e.preventDefault()
-        // Call the cat. `C` would have been the obvious key and is already the
-        // other way to kneel, which is a thing you do at a bottom shelf far more
-        // often than you call an animal.
+        // Not `C`, which already kneels — something you do at a bottom shelf
+        // far more often than you call an animal.
         callCat()
       } else if (
         e.code === 'Comma' ||
@@ -662,14 +626,10 @@ export function Player() {
         e.code === 'BracketLeft' ||
         e.code === 'BracketRight'
       ) {
-        // Riffle through the box, or the crate, you are looking at. A box shows
-        // the top of the pile and a crate stands up a crateful of sleeves; this
-        // is how you get at the rest of either without unpacking it. The box
-        // wins where both could apply: a box in front of a crate is the thing
-        // you are looking down into.
-        // Comma and period are the advertised pair — the brackets still work,
-        // but on many layouts (QWERTZ among them) they need AltGr, which is a
-        // lot to ask of "look at the next few books".
+        // Get at the rest of a box or a crate without unpacking it. The box
+        // wins where both apply: one in front of a crate is what you are
+        // looking down into. Comma and period are advertised over the brackets,
+        // which need AltGr on many layouts.
         const { focusedBox, focusedCrate, browseBox, browseCrate } = useAppStore.getState()
         const deeper = e.code === 'Period' || e.code === 'BracketRight' ? 1 : -1
         if (focusedBox) {
@@ -679,17 +639,15 @@ export function Player() {
         } else if (focusedCrate) {
           e.preventDefault()
           browseCrate(focusedCrate, deeper)
-          // A sleeve dragged past its neighbours: paper, not cardboard. One
-          // flick, one sound — held down, the same sample thirty times a second
-          // is a smear rather than a riffle.
+          // One flick, one sound: held down, the same sample thirty times a
+          // second is a smear rather than a riffle.
           if (!e.repeat) playOneShot('rustle', 0.3, { rate: 1.2 + Math.random() * 0.25 })
         }
       } else if (e.code === 'KeyG') {
         e.preventDefault()
-        // Unpack the box you are looking at onto the shelves, or — with the
-        // marker in hand — wipe the board you are looking at. Deliberately not
-        // E in either case: both throw away a lot of work at once, and neither
-        // must be what happens when you meant to pick one book up, or draw.
+        // Unpack a box onto the shelves, or wipe a board. Not E in either case:
+        // both discard a lot of work, and neither must happen when you meant
+        // to pick one book up, or to draw.
         const { held, focusedBox, heldMarker, boardTarget, notify } = useAppStore.getState()
         if (heldMarker !== null) {
           if (boardTarget) useLibraryStore.getState().wipeBoard(boardTarget)
@@ -806,9 +764,8 @@ export function Player() {
       )
     }
 
-    // The wheel is what a hand does to a box of books or a crate of records, so
-    // it browses whichever you are looking at and does nothing at all anywhere
-    // else. The box wins for the same reason it does on the keys.
+    // The wheel browses whichever of the two you are looking at, and does
+    // nothing anywhere else. The box wins, as it does on the keys.
     const onWheel = (e: WheelEvent) => {
       const { mode, focusedBox, focusedCrate, browseBox, browseCrate } = useAppStore.getState()
       if (mode !== 'walk' || e.deltaY === 0) return
@@ -830,9 +787,8 @@ export function Player() {
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 2) rightDown.current = false
     }
-    // Losing the window with the button down would otherwise leave it stuck —
-    // and coming *back* is the other moment a screen-scale delta arrives, so
-    // both edges re-settle.
+    // Losing the window with the button down would leave it stuck, and coming
+    // back is the other moment a screen-scale delta arrives.
     const onBlur = () => {
       rightDown.current = false
       settle()
@@ -880,9 +836,8 @@ export function Player() {
   }, [mode])
 
   /**
-   * Take the pointer back when the catalogue closes. It is opened with `E` and
-   * closed with `Esc`, so nothing else would reclaim the lock. `Esc` counts as
-   * user activation, which is what makes this allowed.
+   * Take the pointer back when the catalogue closes; nothing else would reclaim
+   * the lock. `Esc` counts as user activation, which is what makes it allowed.
    */
   const searching = useAppStore((s) => s.searching)
   const wasSearching = useRef(false)
@@ -890,18 +845,17 @@ export function Player() {
     const closed = wasSearching.current && !searching
     wasSearching.current = searching
     if (!closed || mode !== 'walk' || !roomHasKeyboard()) return
-    // Wrapped because a refused lock is a rejected promise on modern Chrome and
-    // a bare `void` on older typings — and headless, where it is refused every
-    // time, an unhandled rejection is a console error the smoke tests fail on.
+    // A refused lock is a rejected promise on modern Chrome and a bare `void`
+    // on older typings; headless it is always refused, and an unhandled
+    // rejection is a console error the smoke tests fail on.
     if (!document.pointerLockElement) {
       void Promise.resolve(gl.domElement.requestPointerLock()).catch(() => {})
     }
   }, [searching, mode, gl])
 
   /**
-   * And when a book closes or you step back from the cabinet: both leave on
-   * `Esc` too, so the same reasoning holds — without this the walk resumes
-   * with a dead mouse and the lock hint up.
+   * The same for a book closing or stepping back from the cabinet, which also
+   * leave on `Esc`. Without it the walk resumes with a dead mouse.
    */
   const cameFrom = useRef(mode)
   useEffect(() => {
@@ -941,18 +895,14 @@ export function Player() {
     if (mode !== 'walk') return
     const delta = Math.min(rawDelta, 1 / 20)
 
-    // A panel opening while a key is *held* would otherwise leave you walking
-    // through it: the key handler stops taking new presses, but the one already
-    // in the set is what the movement below reads.
+    // A panel opening while a key is held would leave you walking through it:
+    // the handler stops taking presses, but the set still has the old one.
     if (!roomHasKeyboard()) keys.current.clear()
 
-    // Zoom, and — the same line does both — taking the field of view back from
-    // the reader, which narrows it to dock on a page. Eased towards whatever the
-    // zoom asks for, so closing a book opens the view rather than cutting to it.
-    //
-    // Read from the keys directly rather than from the movement code below,
-    // because zoom is not movement: it works sitting down, and sitting down
-    // returns before any of that runs.
+    // Zoom, and the same line takes the field of view back from the reader,
+    // eased so closing a book opens the view rather than cutting to it. Read
+    // from the keys directly because zoom works sitting down, and sitting down
+    // returns before the movement code runs.
     const zoomHeld = rightDown.current || [...keys.current].some((code) => ZOOM_KEYS.has(code))
     const wantZoom = zoomHeld ? 1 : 0
     player.zoom += Math.sign(wantZoom - player.zoom) * Math.min(
@@ -985,9 +935,8 @@ export function Player() {
       velocity.current.x = 0
       velocity.current.z = 0
       player.speed = 0
-      // Just forward of the chair's centre, so the backrest is behind you
-      // rather than through you. Eased, not assigned: E from a step away used
-      // to hard-cut the camera to the chair.
+      // Just forward of the chair's centre, so the backrest is behind you.
+      // Eased, or E from a step away hard-cuts the camera to the seat.
       const forwardX = Math.sin(seat.rotationY)
       const forwardZ = Math.cos(seat.rotationY)
       const settle = approach(8, delta)
@@ -995,9 +944,8 @@ export function Player() {
       const restZ = seat.z + forwardZ * 0.06
       player.x += (restX - player.x) * settle
       player.z += (restZ - player.z) * settle
-      // An exponential ease approaches forever and arrives never, which for
-      // somebody sitting perfectly still is a position that keeps creeping by a
-      // millimetre a second. Close enough is sat down.
+      // An exponential ease arrives never, which for somebody sitting still is
+      // a position creeping by a millimetre a second. Close enough is sat down.
       if (Math.hypot(restX - player.x, restZ - player.z) < 0.002) {
         player.x = restX
         player.z = restZ
@@ -1056,17 +1004,15 @@ export function Player() {
     const ease = approach(magnitude > 0 ? ACCELERATION : BRAKING, delta)
     velocity.current.x += (wantX - velocity.current.x) * ease
     velocity.current.z += (wantZ - velocity.current.z) * ease
-    // Below a crawl there is nothing left to ease towards, and a velocity that
-    // decays forever is a player who never quite stops — which shows up as the
+    // A velocity that decays forever never quite stops, which shows up as the
     // crosshair drifting off a spine you had lined up.
     if (magnitude === 0 && Math.hypot(velocity.current.x, velocity.current.z) < 0.02) {
       velocity.current.x = 0
       velocity.current.z = 0
     }
 
-    // A live reload can pull the floor out from under you — a room deleted, a
-    // loft moved — and a teleport does not say which storey it meant. Either
-    // way, re-ground rather than leave someone standing in mid-air.
+    // A live reload can pull the floor out from under you, and a teleport does
+    // not say which storey it meant. Re-ground rather than stand in mid-air.
     if (world && floorAt(world, player.x, player.z, player.floor) === null) {
       player.floor = groundAt(world, player.x, player.z, player.floor)
     }
@@ -1094,25 +1040,20 @@ export function Player() {
     player.floor += (next.floor - player.floor) * approach(14, delta)
     if (Math.abs(next.floor - player.floor) < 0.005) player.floor = next.floor
 
-    // Eased rather than assigned so standing up from a chair rises instead of
-    // snapping; crouch and floor changes carry their own easing already, so
-    // this settles to the exact height within a few frames.
+    // Eased so standing up from a chair rises instead of snapping; it settles
+    // to the exact height within a few frames.
     const wantEye = player.floor + EYE_HEIGHT + (KNEEL_HEIGHT - EYE_HEIGHT) * player.crouch
     player.eye += (wantEye - player.eye) * approach(10, delta)
     if (Math.abs(wantEye - player.eye) < 0.002) player.eye = wantEye
 
     player.speed = Math.hypot(velocity.current.x, velocity.current.z)
 
-    // Head bob, advanced by *distance walked* rather than by time, so it never
-    // runs on while you stand still. Two components: vertical at twice the
-    // stride (one dip per foot), sideways at the stride (a sway onto each leg).
+    // Advanced by distance walked rather than time, so it never runs on while
+    // you stand still: a dip per foot, and a sway onto each leg.
     bob.current += delta * player.speed * 7.5
-    // A footfall every stride's worth of ground covered, *not* every wrap of
-    // the bob: the bob's rate is tuned for how walking looks, and at 7.5 it
-    // put a step every 42 cm, which reads as a typewriter — especially at a
-    // run. A stride lengthens when you run, the way a real one does. Surface
-    // by where you stand: the room's own floor finish, or terrain's word for
-    // the ground outside.
+    // Keyed to ground covered, not to the bob: the bob's rate is tuned for how
+    // walking looks, and stepping on its wrap reads as a typewriter. A stride
+    // lengthens at a run, the way a real one does.
     const stride = kneeling ? WALK_STRIDE * 0.6 : running ? RUN_STRIDE : WALK_STRIDE
     if (player.speed > 0.2) {
       sinceStep.current += player.speed * delta
@@ -1153,9 +1094,8 @@ export function Player() {
     const rise = Math.sin(bob.current * 2) * 0.018 * weight
     const sway = Math.sin(bob.current) * 0.012 * weight
 
-    // Standing still, a barely-there breath — two millimetres at a slow swell.
-    // A camera frozen to the pixel is what reads as a paused simulation, and
-    // this is gone the moment you move.
+    // Two millimetres of swell while standing still: a camera frozen to the
+    // pixel reads as a paused simulation. Gone the moment you move.
     breath.current += delta
     const still = 1 - Math.min(1, player.speed / 0.1)
     const breathe = Math.sin(breath.current * 0.9) * 0.002 * still

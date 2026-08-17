@@ -2,16 +2,13 @@ import * as THREE from 'three'
 import type { PageSource } from './source'
 
 /**
- * Rasterised pages held as textures, so a spread that has already been through
- * the worker appears in the *same frame* it is asked for.
+ * Rasterised pages held as textures, so a spread already through the worker
+ * appears in the same frame it is asked for. Nothing rasterises at commit time:
+ * the destination renders while the leaf swings and the commit reads `peek`, so
+ * the swap is atomic or it does not happen yet.
  *
- * Nothing rasterises on demand at commit time. The destination spread is
- * rendered while the leaf is still swinging and the commit reads `peek`, so the
- * swap is atomic or it does not happen yet.
- *
- * Textures are big — a spread at reading DPI is ~13 MB each before mipmaps — so
- * the cache is deliberately tiny: the spread in hand plus one either side, which
- * is exactly what makes a turn in either direction instant.
+ * A spread at reading DPI is ~13 MB, so the cache is tiny: the spread in hand
+ * plus one either side, which is what makes a turn either way instant.
  */
 
 const CAPACITY = 8
@@ -66,9 +63,8 @@ export function makePageTextures(
     const job = (async () => {
       const canvas = await source.render(page, targetPx, maxTexture)
       inflight.delete(page)
-      // Past the last page the source answers null; cache that too, so the
-      // final spread commits instead of waiting forever on a page that is not
-      // coming.
+      // Past the last page the source answers null; cached too, so the final
+      // spread commits instead of waiting on a page that is not coming.
       if (disposed) return null
 
       let texture: THREE.Texture | null = null

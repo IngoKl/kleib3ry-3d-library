@@ -8,14 +8,11 @@ import { useAmbienceStore } from '../state/ambience'
 import { useWorldStore } from '../state/world'
 
 /**
- * Fake bloom over every lit fitting.
- *
  * A real bloom is a render pass over the whole frame; a bulb needs only a soft
- * additive quad turned to face you. One instanced mesh carries a halo per
- * lamp, per fire and per fairy-light bulb, each easing on and off at the same
- * rate the filament in `Lamp` warms, and swelling a little after dark — glare
- * is a night-time fact. Deliberately kept in Low Performance Mode: one draw
- * call, and it is most of what makes a lit lamp read as lit.
+ * additive quad turned to face you. One instanced mesh carries a halo per lamp,
+ * fire and fairy-light bulb, swelling after dark because glare is a night-time
+ * fact. Kept in Low Performance Mode: one draw call, and most of what makes a
+ * lit lamp read as lit.
  */
 
 type Glow = {
@@ -76,9 +73,8 @@ export function LampGlow() {
         })
       }
     }
-    // A small halo on every fairy-light bulb, on the same catenary the string
-    // draws — recomputed here rather than shared, so the glow needs nothing of
-    // the mesh; drifting apart would take the two formulas disagreeing.
+    // On the same catenary the string draws, recomputed rather than shared so
+    // the glow needs nothing of the mesh.
     for (const piece of world.furniture) {
       if (piece.kind !== 'fairylights') continue
       const sag = piece.size?.[1] ?? 0.18

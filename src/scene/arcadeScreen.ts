@@ -2,13 +2,10 @@ import * as THREE from 'three'
 import { SCREEN_HEIGHT, SCREEN_WIDTH, type Chip8 } from '../arcade/chip8'
 
 /**
- * The cabinet's tube: a canvas exactly one texel per CHIP-8 pixel.
- *
- * 64×32 RGBA is an eight-kilobyte upload, which is why this is the one dynamic
- * texture in the app that can afford to repaint every frame — the whiteboard's
- * revision-checking exists because its canvas is two thousand pixels across,
- * and this one is not. `NearestFilter` because the pixels *are* the picture:
- * bilinear filtering would smear a 1977 display into fog.
+ * A canvas exactly one texel per CHIP-8 pixel. 64×32 RGBA is an eight-kilobyte
+ * upload, which is why this is the one dynamic texture that can repaint every
+ * frame. `NearestFilter` because the pixels are the picture: bilinear filtering
+ * would smear a 1977 display into fog.
  */
 
 /** Phosphor green on a dark tube, the palette every one-bit display claims. */

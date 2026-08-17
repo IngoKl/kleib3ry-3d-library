@@ -4,11 +4,9 @@ import { boxesIn } from './boxes'
 import type { DerivedWorld } from './derive'
 
 /**
- * Where books go when the room or the index changes underneath them.
- *
- * Two rules: a book the app was never told where to put goes in a box, and the
- * app never moves a book that was placed by hand. Displacement is always
- * visible — into the moving boxes — never silent.
+ * Where books go when the room or the index changes underneath them. Two rules:
+ * a book nobody placed goes in a box, and a book placed by hand is never moved.
+ * Displacement is always visible, into the boxes, never silent.
  *
  *   - shelf still there, book still fits    -> stays where it was
  *   - shelf gone, renamed, or lost that row -> displaced, to a box
@@ -24,9 +22,8 @@ export type BookLayout = {
   /** Furniture id of a box -> the books in it, bottom of the pile first. */
   boxes?: Record<string, string[]>
   /**
-   * Books put down in the room rather than shelved or boxed. Only the ids
-   * matter here: a loose book counts as placed, so a rescan must not sweep it
-   * into a box. Where it lies is the layout's business.
+   * Books put down in the room. Only the ids matter here — a loose book counts
+   * as placed, so a rescan must not sweep it into a box.
    */
   loose?: Record<string, unknown>
 }
@@ -45,10 +42,7 @@ export type Reconciliation = {
   firstRun: boolean
 }
 
-/**
- * Spread books across the boxes, keeping them level. Not round robin: an
- * already-fuller box takes fewer, so emptying one leaves the rest even.
- */
+/** Spread books level across the boxes: a fuller box takes fewer, not round robin. */
 function distribute(
   boxes: Record<string, string[]>,
   boxIds: readonly string[],
@@ -65,12 +59,9 @@ function distribute(
 }
 
 /**
- * The folder a book file lives in, for packing a scan one folder per box.
- *
- * The top-level folder under `books/` when there is one, since that is the
- * level people sort at; subfolders group with their parent. With no `books/`
- * segment, the file's own directory is used. Root-level files return '' and
- * pack together.
+ * The folder a book packs by. The top level under `books/` when there is one,
+ * since that is where people sort, with subfolders grouped under their parent;
+ * otherwise the file's own directory. Root-level files return '' and pack together.
  */
 export function bookFolder(path: string): string {
   const parts = path.replaceAll('\\', '/').split('/')
@@ -82,9 +73,8 @@ export function bookFolder(path: string): string {
 }
 
 /**
- * Like `distribute`, but whole folders at a time, so unpacking a box is
- * unpacking a subject. Biggest folder first into the emptiest box. With more
- * folders than boxes, folders share; a folder is never split.
+ * Like `distribute` but whole folders at a time, so unpacking a box is unpacking
+ * a subject. Biggest folder first into the emptiest box; a folder is never split.
  */
 function distributeByFolder(
   boxes: Record<string, string[]>,
@@ -112,13 +102,9 @@ function distributeByFolder(
 }
 
 /**
- * Reconcile a saved layout against the world and the index as they are now.
- *
- * `books` is what the index currently holds; a book whose file was deleted is
- * gone rather than displaced, since nothing about the room moved it.
- *
- * `folderOf` turns "One Box per Folder" on, boxing new arrivals a folder at a
- * time. It shapes arrivals only — books displaced from shelves still level out.
+ * Reconcile a saved layout against the world and index as they are now. A book
+ * whose file was deleted is gone rather than displaced. `folderOf` turns "One
+ * Box per Folder" on, which shapes arrivals only — displaced books still level out.
  */
 export function reconcile(
   world: DerivedWorld,

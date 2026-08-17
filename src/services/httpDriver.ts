@@ -14,21 +14,14 @@ import type {
 } from './types'
 
 /**
- * The third driver: the same library, over HTTP, from a container.
+ * The same library over HTTP, from a container. Every method is one request
+ * against `server/src/main.rs`, in the same order, and nothing above
+ * `src/services/` changed to gain it.
  *
- * This is the driver the interface was shaped for. Every method below is one
- * request against `server/src/main.rs`, in the same order, and nothing above
- * `src/services/` had to change to gain it — which is the whole return on the
- * rule that nothing above this layer imports `@tauri-apps/*`.
- *
- * Two places where it genuinely differs from the desktop, rather than merely
- * being a different transport:
- *
- *   - `canPickFolder` is false. The library folder is whatever was mounted into
- *     the container, and a picker would mean letting the browser walk the
- *     server's disk. The HUD disables the button rather than failing the call.
- *   - Scan progress is polled instead of pushed. There are no Tauri events here,
- *     and a websocket for one number would be a second protocol to keep working.
+ * Two real differences from the desktop: `canPickFolder` is false, because the
+ * folder is whatever was mounted and a picker would walk the server's disk; and
+ * scan progress is polled, because a websocket for one number would be a second
+ * protocol to keep working.
  */
 
 /** Same-origin, because the server serves the front end it talks to. */
@@ -57,11 +50,9 @@ async function optional<T>(path: string): Promise<T | null> {
 }
 
 async function send(path: string, method: string, body: BodyInit, type: string): Promise<void> {
-  // Saves are flushed from `pagehide`, and a plain fetch is aborted at unload —
-  // the shelving made in the debounce window before closing the tab silently
-  // vanished. `keepalive` lets the PUT outlive the page, but is refused outright
-  // for bodies over 64 KB, so a huge layout falls back to a plain (best-effort)
-  // fetch rather than failing every save.
+  // A plain fetch is aborted at unload, losing whatever the debounce still
+  // held. `keepalive` outlives the page but is refused over 64 KB, so a large
+  // layout falls back to a best-effort fetch rather than failing every save.
   const keepalive = typeof body === 'string' && body.length < 60_000
   const response = await fetch(`${API}${path}`, {
     method,
@@ -78,21 +69,15 @@ async function send(path: string, method: string, body: BodyInit, type: string):
 let progressCallback: ((progress: ScanProgress) => void) | null = null
 let poller: ReturnType<typeof setInterval> | undefined
 /**
- * Whether the scan being polled for has actually been seen running.
- *
  * The poller starts before the POST that begins the scan, so the first tick can
- * land while the server is still between accepting the request and marking
- * itself busy. Without this, that tick reads the default progress — not running
- * — and the poller switches itself off for the rest of the scan.
+ * land while the server is still between accepting and marking itself busy.
+ * Without this, that tick reads "not running" and the poller switches off.
  */
 let seenRunning = false
 
 /**
- * Poll for the duration of a scan and then stop.
- *
  * Started by `scan` rather than by `onScanProgress`, so an idle library makes no
- * requests at all — the subscription is a place to put the callback, not a
- * reason to talk to the server.
+ * requests: the subscription is a place to put the callback, not a reason to poll.
  */
 function watchProgress() {
   clearInterval(poller)
@@ -183,9 +168,8 @@ export const httpDriver: LibraryService = {
   },
 
   async fetchPaper(id) {
-    // Plain text in, a book out. The failure that matters is the one with a
-    // message in it — a bad id, or an id arXiv has nothing under — so the
-    // body is read and thrown rather than the status code.
+    // The failure that matters carries a message — a bad id, or one arXiv has
+    // nothing under — so the body is thrown rather than the status code.
     const response = await fetch(`${API}/paper`, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -275,17 +259,13 @@ export const httpDriver: LibraryService = {
   },
 
   /**
-   * An absolute server-side path becomes a URL under `/media/`.
+   * An absolute server-side path becomes a URL under `/media/`. The index hands
+   * out the same absolute paths the desktop gives Tauri's asset protocol, so
+   * they pass through rather than gaining a second naming scheme; the server
+   * checks each against `is_allowed` before opening anything.
    *
-   * The index hands out absolute paths — the same ones the desktop app hands to
-   * Tauri's asset protocol — so the driver passes them through rather than
-   * inventing a second naming scheme the two halves could disagree about. The
-   * server checks every one of them against the three folders it is willing to
-   * read before it opens anything; see `is_allowed` there.
-   *
-   * Encoded per segment so that a space, an umlaut — or a `#` or `?`, which
-   * `encodeURI` leaves bare and the browser then reads as fragment or query —
-   * survives, and split back apart by the server's own decoder.
+   * Encoded per segment, or a `#` or `?` in a filename — which `encodeURI`
+   * leaves bare — reads as a fragment or a query.
    */
   assetUrl(path) {
     return `/media/${path

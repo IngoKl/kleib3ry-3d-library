@@ -13,14 +13,9 @@ import {
 } from '../src/arcade/chip8'
 
 /**
- * The CHIP-8 interpreter, opcode by opcode, and then the bundled Pong run on
- * it for real. The interpreter is what the arcade cabinet trusts; the Pong
- * bytes are hand-assembled by `scripts/lib/make-chip8.mjs`, so the committed
- * copy in the demo library is the one artefact that proves the assembler, the
- * ROM and the CPU agree with each other.
- *
- * These run in the browser project because the source is TypeScript modules
- * Playwright transpiles; none of them need a page.
+ * The interpreter opcode by opcode, then the bundled Pong run on it for real —
+ * which is what proves the assembler, the ROM and the CPU agree with each other.
+ * In the browser project for transpilation; none of them need a page.
  */
 
 /** A machine loaded with the given opcode words, deterministic randomness. */

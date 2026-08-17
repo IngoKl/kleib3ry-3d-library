@@ -8,23 +8,15 @@ import { useAppStore } from '../state/store'
 import { useSettings } from '../state/settings'
 
 /**
- * Your own body, seen from inside it. A setting, since it makes some people
- * queasy. Four decisions keep it out of trouble:
+ * Your own body, seen from inside it — a setting, since it makes some people
+ * queasy. Four decisions keep it out of trouble: it stops below the collar,
+ * because a head modelled round the camera is a face seen from inside; it hangs
+ * off eye height, so crouching and stairs move it for free; it stands a hand's
+ * width behind the eyes, or the torso front clips the near plane; and the legs
+ * swing off distance travelled rather than a clock, so they never skate.
  *
- *   - **it stops below the collar** — the camera is inside the head, and a head
- *     modelled round it is a face seen from the inside;
- *   - **it hangs off eye height, from the torso down**, so crouching, sitting
- *     and climbing stairs move it for free;
- *   - **it stands a hand's width behind the eyes**, where a chest actually is.
- *     Centred on the camera, the torso front sits 10 cm from the near plane: it
- *     clips, and on a software rasteriser fills half the screen with fragments
- *     nobody sees;
- *   - **the legs swing off distance travelled**, not a clock, so they stop when
- *     you do and never skate.
- *
- * Not raycast by anything — `Interaction` asks specific groups, and a body you
- * could point at would be a body you could take a book out of. Four merged
- * geometries rather than fourteen meshes, like every assembly in `scene/`.
+ * Nothing raycasts it: a body you could point at is one you could take a book
+ * out of. Four merged geometries rather than fourteen meshes.
  */
 
 const CLOTH = '#4a4f57'
@@ -49,22 +41,14 @@ export function Body() {
   const right = useRef<THREE.Group>(null)
   const phase = useRef(0)
   /**
-   * Which way the shoulders are pointing, which is *not* which way you are
-   * looking.
-   *
-   * Pinned to the camera, the torso snapped round with every glance — you look
-   * left at a shelf and your own chest whips past the bottom of the screen. A
-   * real body turns its head first and its shoulders after, and only when the
-   * head has gone far enough or the feet have started moving. Both of those are
-   * cheap to say, and together they are most of what makes a body read as worn
-   * rather than carried.
+   * Not which way you are looking: pinned to the camera, the torso whips past
+   * the bottom of the screen at every glance. A real body turns its head first
+   * and its shoulders only once the head has gone far enough or the feet have
+   * started, which is most of what makes a body read as worn rather than carried.
    */
   const shoulders = useRef(0)
 
-  /**
-   * Torso, arms and hands as three geometries, and one leg as a fourth — the
-   * two legs share it, because a leg is a leg and the mirror is a scale.
-   */
+  /** Three geometries plus one leg, which both legs share: the mirror is a scale. */
   const parts = useMemo(() => {
     const cloth = [
       // Chest, stopping at the collarbone.
@@ -86,12 +70,10 @@ export function Body() {
       block(0.085, 0.11, 0.07, 0.23, -0.7, 0.18),
     ]
     /**
-     * A leg, hung from a hip at the group's origin so a swing is a rotation.
-     *
-     * The lengths add up rather than being chosen: the hip sits 0.52 below the
-     * shoulder and a standing shoulder is `EYE_HEIGHT - SHOULDER` = 1.40 above
-     * the floor, so thigh, shin and sole have exactly 0.88 between them. Eight
-     * centimetres out here is a foot through the floorboards.
+     * Hung from a hip at the group's origin, so a swing is a rotation. The
+     * lengths add up rather than being chosen — thigh, shin and sole have
+     * exactly 0.88 between them, and eight centimetres out is a foot through
+     * the floorboards.
      */
     const leg = [
       block(0.15, 0.44, 0.16, 0, -0.22, 0),
@@ -120,9 +102,8 @@ export function Body() {
     if (!node) return
     const delta = Math.min(rawDelta, 1 / 20)
 
-    // The shoulders follow the head, late. Walking drags them round quickly —
-    // you go where you are pointed — and standing still lets the neck take up to
-    // NECK radians of it before they move at all.
+    // Late. Walking drags them round quickly, since you go where you are
+    // pointed; standing still lets the neck take up to NECK radians first.
     const lead = shortestTurn(player.yaw - shoulders.current)
     const walking = Math.min(1, player.speed / 0.6)
     const slack = Math.max(0, Math.abs(lead) - NECK * (1 - walking))
@@ -131,8 +112,7 @@ export function Body() {
     }
 
     // Behind the eyes, not around them: stepping back along the way you are
-    // *looking* is what puts a chest under a face, even while the shoulders are
-    // still catching up with it.
+    // looking is what puts a chest under a face while the shoulders catch up.
     node.position.set(
       player.x + Math.sin(player.yaw) * BEHIND,
       player.eye - SHOULDER,
@@ -140,19 +120,16 @@ export function Body() {
     )
     node.rotation.y = shoulders.current
 
-    // Crouching brings your eyes down 0.7 m and your shoulders with them; what
-    // it must *not* do is leave your feet a foot underground, so the legs are
-    // scaled by however much of a standing height is left. Sitting is the
-    // exception — there the legs genuinely fold, and scaling as well would put a
-    // half-size torso in your lap.
+    // Crouching brings the shoulders down and must not leave the feet
+    // underground, so the legs scale by what is left of a standing height.
+    // Sitting is exempt: the legs genuinely fold there.
     const standing = EYE_HEIGHT - SHOULDER
     const height = Math.max(0.35, player.eye - SHOULDER - player.floor)
     node.scale.setScalar(seated ? 1 : Math.min(1, height / standing))
 
     // Distance, not time: a leg that swings while you stand at a shelf is the
-    // single most obviously wrong thing a body can do. Sideways counts too — a
-    // strafe along a bookcase is still walking — because `player.speed` is how
-    // fast you actually moved rather than how far forward.
+    // most obviously wrong thing a body can do. Sideways counts, because
+    // `player.speed` is how fast you moved rather than how far forward.
     phase.current += player.speed * delta * 4.6
     const swing = Math.sin(phase.current) * STRIDE * Math.min(1, player.speed / 1.6)
     // Sitting folds them forward instead, which is enough at the angle you see

@@ -5,12 +5,9 @@ import { PAGE_ASPECT, layOutEpub, renderEpubPage, type EpubLayout } from './epub
 import { openDocument, renderPage } from './pdf'
 
 /**
- * What the reader reads: "a thing with pages you can rasterise", rather than
- * pdf.js's own shape.
- *
- * Two implementations — pdf.js for a PDF, the type setter in `epubPages.ts` for
- * an EPUB. Nothing above this knows which it has, which is why the drag, the
- * turn, the bookmarks, `J`, `N` and `P` are identical for both.
+ * What the reader reads: "a thing with pages you can rasterise" rather than
+ * pdf.js's own shape. Two implementations, and nothing above this knows which it
+ * has — which is why the drag, the turn, the bookmarks and `P` are identical.
  */
 export type PageSource = {
   pages: number
@@ -37,9 +34,8 @@ async function pdfSource(id: string): Promise<PageSource> {
     aspect: view.width / view.height,
     render: (page, targetHeightPx, maxTextureSize) =>
       renderPage(doc, page, targetHeightPx, maxTextureSize),
-    // The reader's cleanup and a cancelled open can both reach here, and the
-    // document is reference counted — `release` is idempotent, and lets go of
-    // this hold rather than of whatever is open under that id now.
+    // The reader's cleanup and a cancelled open both reach here. `release` is
+    // idempotent and drops this hold, not whatever is open under that id now.
     close: () => held.release(),
   }
 }
@@ -52,9 +48,8 @@ async function epubSource(id: string): Promise<PageSource> {
   return {
     pages: layout.pages.length,
     aspect: PAGE_ASPECT,
-    // Synchronous work behind a promise, deliberately: setting a page of type is
-    // a millisecond, and matching pdf.js's signature is what keeps the cache
-    // above this from having two paths through it.
+    // Synchronous work behind a promise: setting a page is a millisecond, and
+    // matching pdf.js's signature keeps the cache above from forking.
     render: async (page, targetHeightPx, maxTextureSize) =>
       renderEpubPage(layout, page, targetHeightPx, maxTextureSize),
     // Nothing is held open — the archive was read once and the layout is plain
@@ -64,11 +59,9 @@ async function epubSource(id: string): Promise<PageSource> {
 }
 
 /**
- * Open a book for reading.
- *
- * Dispatches on the *index's* format rather than sniffing the bytes, because the
- * index is what put the book on the shelf and a book that is shelved as one
- * thing and opens as another is a worse surprise than a failure.
+ * Dispatches on the index's format rather than sniffing bytes: the index is what
+ * shelved the book, and one that opens as something else is a worse surprise
+ * than a failure.
  */
 export async function openSource(book: IndexedBook): Promise<PageSource> {
   if (book.format === 'epub') {
@@ -86,15 +79,12 @@ export async function openSource(book: IndexedBook): Promise<PageSource> {
 }
 
 /**
- * One page of one book, rasterised on its own.
+ * One page rasterised on its own, for the two places that want one outside the
+ * reader: a book lying open on a table, and a page pinned to a wall. Going
+ * through the source keeps both format-blind.
  *
- * For the two places that want a page *outside* the reader: a book left lying
- * open on a table, and a page torn out and pinned to a wall. Going through the
- * source keeps both format-blind, like everything else above this file.
- *
- * The source is shared while renders overlap and dropped the moment the last
- * one finishes: an open spread asks for two pages at once, and for an EPUB the
- * pagination — not the drawing — is the expensive half.
+ * The source is shared while renders overlap and dropped when the last finishes:
+ * a spread asks for two pages, and for an EPUB pagination is the expensive half.
  */
 const shared = new Map<string, { source: Promise<PageSource>; refs: number }>()
 

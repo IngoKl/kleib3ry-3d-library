@@ -7,14 +7,9 @@ import { useWorldStore } from '../state/world'
 import { rowKey } from '../scene/shelving'
 
 /**
- * The catalogue terminal, in the office.
- *
- * It says where a thing is — which case, which room, which box, which table —
- * and deliberately does not take you there.
- *
- * A DOM overlay rather than type drawn on the tube: a canvas texture on a 40 cm
- * screen across a desk is not readable. The screen in the room lights while it
- * is open.
+ * The catalogue terminal: it says where a thing is, and deliberately does not
+ * take you there. A DOM overlay rather than type on the tube, because a canvas
+ * texture across a desk is not readable.
  */
 
 type Hit = {
@@ -26,19 +21,13 @@ type Hit = {
 }
 
 /**
- * How many of each kind a search may show. Per kind rather than one pool: books
- * are scanned first and there are a thousand of them, so a shared limit buried
- * every record and tape.
- *
- * Records get a book's worth: an album is one file per side or per track, so
- * three hits was often less than one record.
+ * Per kind rather than one pool: books are scanned first and there are a
+ * thousand of them, so a shared limit buries every record and tape. Records get
+ * a book's worth, because an album is one file per track.
  */
 const LIMITS = { book: 9, record: 9, tape: 3, picture: 2 } as const
 
-/**
- * Case-insensitive and blind to accents: NFKD splits an accented letter into a
- * letter and a combining mark, and dropping the marks makes "Melies" find it.
- */
+/** Blind to accents: NFKD splits off the combining marks, so "Melies" finds it. */
 const fold = (text: string) =>
   [...text.toLowerCase().normalize('NFKD')]
     .filter((ch) => {
@@ -47,10 +36,7 @@ const fold = (text: string) =>
     })
     .join('')
 
-/**
- * Every term has to appear somewhere in the record, in any order. Not fuzzy: an
- * index that guesses cannot be trusted to say a book is *not* there.
- */
+/** Not fuzzy: an index that guesses cannot be trusted to say a book is not there. */
 function matches(haystack: string, terms: string[]): boolean {
   return terms.every((term) => haystack.includes(term))
 }
@@ -82,10 +68,7 @@ export function SearchField() {
     input.current?.focus()
   }, [searching])
 
-  /**
-   * Where every shelved book is, as one pass over the layout rather than a
-   * lookup per hit.
-   */
+  /** One pass over the layout rather than a lookup per hit. */
   const placeOf = useMemo(() => {
     const at = new Map<string, string>()
     // Only while the panel is open: this is subscribed to the whole layout, so
@@ -133,12 +116,8 @@ export function SearchField() {
   }
 
   /**
-   * Where a record actually is: put down, or in the crate the deal put it in.
-   *
-   * The crate comes from the deal rather than from `filedRecords`, which only
-   * knows the handful you have filed by hand — naming the first crate in the
-   * document for everything else was a confident guess, and wrong as soon as a
-   * library had two crates or more records than one holds.
+   * Where a record is: put down, or in the crate the deal put it in. From the
+   * deal rather than `filedRecords`, which only knows what you filed by hand.
    */
   const recordPlace = (trackId: string): string => {
     const at = looseRecords[trackId]

@@ -25,23 +25,18 @@ import type { DerivedFurniture } from '../world/derive'
 /**
  * The records: filed in the crates, or lying wherever you left one.
  *
- * Records are *dealt* rather than arranged. Every crate takes a slice of the
- * music folder in its own order, so adding a file to `music/` puts it on the
- * shelf and nothing has to be written down for a few hundred sleeves to have
- * somewhere to be. What is written down is only what you have had an opinion
- * about: a record carried to another crate stays in that crate, and a record set
- * down on a table stays on the table. Both live in `books.json` beside the book
- * layout — see `state/library.ts` — and both are one entry rather than an
- * ordering, because unlike a shelf a crate has no order worth keeping.
+ * Records are dealt rather than arranged. Every crate takes a slice of `music/`
+ * in folder order, so nothing has to be written down for a few hundred sleeves
+ * to have somewhere to be; only what you have had an opinion about is stored,
+ * as one entry rather than an ordering, because a crate has no order worth
+ * keeping.
  *
- * A crate is dealt *more records than it can stand up*, exactly as a moving box
- * holds more books than it can pile on top: the deal gives every record a crate,
- * and the crate stands up one crateful of them at a time. Riffling (`,` and `.`)
- * moves which crateful that is and draws one sleeve out face-on, which is the
- * only way seventy sleeves four millimetres apart are something you can read.
+ * A crate is dealt more records than it can stand up, as a box holds more books
+ * than it can pile: it stands up one crateful at a time, and riffling moves
+ * which crateful that is and draws one sleeve out face-on — the only way
+ * seventy sleeves four millimetres apart are readable.
  *
- * One instanced mesh for the lot, filed and loose together, printed from a
- * sleeve atlas the same way the books are printed from the spine atlas.
+ * One instanced mesh for the lot, printed from a sleeve atlas.
  */
 
 const SLEEVE = SLEEVE_SIZE
@@ -51,11 +46,7 @@ const GAP = 0.0035
 const LEAN_AXIS = new THREE.Vector3(1, 0, 0)
 const WHITE = new THREE.Color('#ffffff')
 
-/**
- * A crate has a centre divider, so records file into two bays either side of
- * it rather than through it — which also stops a full crate reading as one
- * solid slab.
- */
+/** A centre divider, so records file into two bays and a full crate is not one slab. */
 const BAY_X = 0.215
 
 /** How far in front of the crate the sleeve you have riffled to stands. */
@@ -103,9 +94,8 @@ export function Records() {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const world = useWorldStore((s) => s.world)
   const tracks = useMediaStore((s) => s.tracks)
-  // Subscribed rather than peeked: the record on the deck and the one in your
-  // hand are out of their crate, and their instances have to follow suit the
-  // moment either changes — not the next time the crosshair happens to move.
+  // Subscribed rather than peeked: a record on the deck or in your hand is out
+  // of its crate, and the instances must follow the moment either changes.
   const playing = useMediaStore((s) => s.playing)
   const heldRecord = useAppStore((s) => s.heldRecord)
   const crateOffsets = useAppStore((s) => s.crateOffsets)
@@ -114,18 +104,12 @@ export function Records() {
   const looseRecords = useLibraryStore((s) => s.looseRecords)
 
   /**
-   * Deal the collection into whatever crates the room has, in document order,
-   * and put the ones you have moved where you put them.
+   * Deal the collection into the room's crates in document order, honouring
+   * hand filings first — without that ordering, a record filed into a full
+   * crate is pushed straight back out and putting one away looks like it failed.
    *
-   * A record you filed by hand claims its crate first; the rest fill whatever is
-   * left, in folder order. That ordering matters: without it, a record filed into
-   * a full crate would be pushed straight back out by the deal, and putting one
-   * away would look like it had not gone in.
-   *
-   * Every record ends up in a crate, however many there are of them — a crate
-   * takes a *share* of the collection rather than only what it can show, so
-   * nothing is left with nowhere to be. Which of a crate's records are standing
-   * in it is decided below, and does not change the deal.
+   * Every record gets a crate however many there are: a crate takes a share of
+   * the collection rather than only what it can show.
    */
   const deal = useMemo(() => {
     const crates: Crateful[] = []
@@ -177,10 +161,9 @@ export function Records() {
       // Records lean back against the divider, filling each bay front to back.
       const usable = crate.depth - 0.09
       const perBay = Math.max(1, Math.floor(usable / (THICKNESS + GAP)))
-      // What is left over, split across the crates not yet dealt to — but never
-      // less than a crateful, so a collection that fits fills the first crate
-      // before it touches the next. A crate asked for by hand keeps every record
-      // asked of it: filing one away must not be undone by a capacity.
+      // Never less than a crateful, so a collection that fits fills the first
+      // crate before touching the next. A crate asked for by hand keeps
+      // everything asked of it: a capacity must not undo a filing.
       const share = Math.max(perBay * 2, Math.ceil(pool.length / (pieces.length - n)))
       const mine = wanted(crate.id)
       const records = [...mine, ...pool.splice(0, Math.max(0, share - mine.length))]
@@ -192,14 +175,10 @@ export function Records() {
   }, [world, tracks, filedRecords, looseRecords])
 
   /**
-   * Stand a crateful up in each crate, and draw one sleeve out of it.
-   *
-   * The crateful on show is the *block* the riffle is in rather than a window
-   * that slides a sleeve at a time: within a block nothing changes hands, so a
-   * flick costs a matrix per sleeve and not a single redrawn atlas cell.
-   *
-   * Keyed on the offsets rather than folded into the deal above, so riffling
-   * never re-deals the collection.
+   * Stand a crateful up in each crate and draw one sleeve out. The crateful on
+   * show is the block the riffle is in rather than a sliding window, so a flick
+   * costs a matrix per sleeve and no redrawn atlas cell. Keyed on the offsets,
+   * so riffling never re-deals the collection.
    */
   const packed = useMemo(() => {
     const out: Filed[] = [...deal.loose]
@@ -321,38 +300,31 @@ export function Records() {
       item.z + (item.outZ - item.z) * drawn,
     )
     quaternion.setFromAxisAngle(up, item.rotationY)
-    // A filed record stands and leans back; one set down lies on its face, which
-    // is the same sleeve tipped a quarter turn onto its back. Drawn out, it tips
-    // further back still, which is what turns its face towards your eyes.
+    // Filed, it stands and leans back; set down, it is the same sleeve tipped a
+    // quarter turn; drawn out, it tips further, turning its face to your eyes.
     const lean = item.flat ? -Math.PI / 2 : item.lean + (DRAW_LEAN - item.lean) * drawn
     quaternion.multiply(leanTurn.setFromAxisAngle(LEAN_AXIS, lean))
     scale.set(SLEEVE, SLEEVE, THICKNESS)
     matrix.compose(position, quaternion, away ? hidden : scale)
     mesh.setMatrixAt(i, matrix)
 
-    // A printed cell already carries the artwork, so a printed instance stays
-    // white and lets it through untinted; one with no cell wears plain card in
-    // its own colour, which is a record rather than the blank cell's blank. The
-    // focused sleeve, and the one drawn out, brighten a little — which reads as
-    // the hand either is about to be in.
+    // A printed cell carries the artwork, so its instance stays white and lets
+    // it through untinted; one with no cell wears plain card. The focused
+    // sleeve and the drawn one brighten, which reads as a hand about to be there.
     const printed = (slotOf.current[i] ?? -1) >= 0
     colour.copy(printed ? WHITE : item.card).multiplyScalar(1 + Math.max(amount, drawn) * 0.22)
     mesh.setColorAt(i, colour)
   }
 
   /**
-   * Hand out atlas cells to the sleeves whose faces can actually be read.
-   *
-   * The grid holds 143 and a pair of crates stands up 144, so the cells are
-   * spent where they show: one lying face up on a table, the one drawn out of a
-   * crate, then front to back through each bay — a sleeve four millimetres from
-   * its neighbour shows an edge and nothing else. Cells are kept by record, so a
-   * flick that only moves a sleeve redraws nothing and uploads nothing.
+   * Atlas cells go to the sleeves whose faces can be read: one lying face up,
+   * the one drawn out, then front to back through each bay — a sleeve four
+   * millimetres from its neighbour shows an edge and nothing else. Cells are
+   * kept by record, so a flick that only moves a sleeve uploads nothing.
    */
   useLayoutEffect(() => {
-    // Update the attribute in place when the capacity allows: a replaced
-    // attribute's GPU buffer is only freed on geometry dispose, so swapping in
-    // a fresh one per world edit accumulated orphaned buffers.
+    // In place where the capacity allows: a replaced attribute's GPU buffer is
+    // freed only on geometry dispose, so a fresh one per edit orphans buffers.
     let rects = geometry.getAttribute('aUvRect') as THREE.InstancedBufferAttribute | undefined
     if (!rects || rects.count !== capacity) {
       rects = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4)
@@ -413,10 +385,9 @@ export function Records() {
     const mesh = meshRef.current
     if (!mesh) return
     const previous = owners.current
-    // Reset only when an instance actually changes hands: a sleeve mid-draw
-    // would otherwise leave its value on an index that now belongs to a
-    // different record — but riffling re-packs the crate on every flick, and
-    // resetting there would snap the sleeve coming out back into the crate.
+    // Only when an instance changes hands: a sleeve mid-draw would leave its
+    // value on an index now belonging to another record — yet riffling re-packs
+    // every flick, and resetting there snaps the drawn sleeve back in.
     const kept =
       lift.current.length === capacity &&
       previous !== null &&

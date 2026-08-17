@@ -4,12 +4,9 @@ pub mod pdf;
 
 use std::path::Path;
 
-/// What the probes currently know how to extract.
-///
-/// A scan skips any file whose size and mtime are unchanged, so an improvement
-/// to a probe would otherwise never reach a book already in the index — no
-/// amount of rescanning helps, because nothing about the file changed. Bumping
-/// this re-probes every row written by an older build, once.
+/// What the probes currently know how to extract. A scan skips unchanged files,
+/// so bumping this is the only way an improved probe reaches a book already
+/// indexed; it re-probes every older row once.
 ///
 /// 1: EPUB page counts are measured from the documents inside the archive.
 pub const PROBE_VERSION: i64 = 1;
@@ -22,9 +19,8 @@ pub struct CoverImage {
     pub ext: &'static str,
 }
 
-/// Everything a format probe managed to learn. Every field is optional: a probe
-/// that fails partially still contributes what it found, and the indexer fills
-/// the gaps from the filename.
+/// Everything a format probe managed to learn. All optional: a partial failure
+/// still contributes, and the indexer fills the gaps from the filename.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Probed {
     pub title: Option<String>,
@@ -48,9 +44,8 @@ pub fn extension_for(mime_or_href: &str) -> &'static str {
     }
 }
 
-/// Last-resort title: the file name, tidied up. Real libraries are full of
-/// `the_hobbit_(1937)_retail.epub`, and that reads better as "The Hobbit 1937
-/// Retail" than as the raw stem.
+/// Last-resort title: the file name, tidied up — `the_hobbit_(1937)_retail.epub`
+/// reads better as "The Hobbit 1937 Retail" than as the raw stem.
 pub fn title_from_filename(path: &Path) -> String {
     let stem = path
         .file_stem()
@@ -70,8 +65,7 @@ pub fn title_from_filename(path: &Path) -> String {
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
-                // Leave words that already carry capitals alone, so "PDF" and
-                // "McCarthy" survive.
+                // Words already carrying capitals survive: "PDF", "McCarthy".
                 Some(first) if word.chars().any(char::is_uppercase) => {
                     first.to_string() + chars.as_str()
                 }
@@ -103,13 +97,8 @@ const PRODUCTION_SUFFIXES: [&str; 9] = [
     ".indd", ".qxd", ".qxp", ".doc", ".docx", ".pdf", ".tex", ".fm", ".pages",
 ];
 
-/**
-Whether an embedded title is worth preferring over the filename.
-
-Real libraries are full of PDFs whose `/Title` is `310904_1_De_Print.indd` or
-`Microsoft Word - final_v3.doc` — the export artefact, not the book. When the
-metadata looks like that, the filename is almost always better.
-*/
+/// Whether an embedded title beats the filename. Real libraries are full of PDFs
+/// whose `/Title` is `310904_1_De_Print.indd` — the export artefact, not the book.
 pub fn plausible_title(value: &str) -> Option<String> {
     let text = meaningful(value)?;
     let lower = text.to_lowercase();

@@ -1,14 +1,9 @@
 //! Fetching a paper off arXiv and putting it in the library.
 //!
-//! The only place in the project that reaches the internet, and it is here
-//! rather than in the front end for two reasons: arxiv.org refuses
-//! cross-origin requests, so a browser `fetch` fails in both shipped modes;
-//! and the result is a file in the library folder, which nothing above
-//! `src/services/` may write.
-//!
-//! What arrives is an ordinary book — a PDF in `books/arxiv/`, indexed like any
-//! other. There is no arXiv-shaped row anywhere, so deleting this module
-//! migrates nothing.
+//! The only place that reaches the internet, and here rather than in the front
+//! end because arxiv.org refuses cross-origin requests and the result is a file
+//! in the library folder. What arrives is an ordinary book in `books/arxiv/` —
+//! there is no arXiv-shaped row anywhere, so deleting this migrates nothing.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -26,11 +21,8 @@ const MAX_PDF_BYTES: u64 = 96 * 1024 * 1024;
 
 const TIMEOUT: Duration = Duration::from_secs(45);
 
-/// Where papers land inside a library folder.
-///
-/// Under `books/` when there is one, because a paper is a book and the scanner
-/// only looks in there; in a folder of their own, because a library you have
-/// arranged should be able to tell what it did not choose.
+/// Where papers land: under `books/` so the scanner finds them, in a folder of
+/// their own so an arranged library can tell what it did not choose.
 pub const PAPERS_DIR: &str = "arxiv";
 
 /// What arXiv says about a paper, which is more than its PDF does.
@@ -40,12 +32,9 @@ pub struct Metadata {
     pub authors: Vec<String>,
 }
 
-/// Turn whatever somebody typed into an arXiv id.
-///
-/// Written to accept what people actually have in their hand: the bare id, the
-/// `arXiv:` prefix a citation carries, or the URL of either the abstract page
-/// or the PDF, version suffix and all. Anything else is refused *here*, with
-/// the text they typed, rather than being turned into a 404 from arXiv.
+/// Turn whatever somebody typed into an arXiv id: a bare id, an `arXiv:` prefix,
+/// or the URL of the abstract or the PDF. Anything else is refused here, with
+/// the text they typed, rather than as a 404 from arXiv.
 pub fn parse_id(input: &str) -> Option<String> {
     let mut text = input.trim();
     if text.is_empty() {
@@ -116,12 +105,9 @@ fn get_text(url: &str) -> Result<String> {
     response.body_mut().read_to_string().map_err(network)
 }
 
-/// Title and authors out of the Atom feed the arXiv API answers with.
-///
-/// By hand with `quick-xml`, which is already here for the EPUB probe: the feed
-/// has one entry and two fields worth reading, and a typed deserialiser for it
-/// would be more code than this and one more thing to keep in step with a
-/// schema nobody here controls.
+/// Title and authors out of the arXiv Atom feed, by hand with `quick-xml` —
+/// already here for the EPUB probe, and two fields do not earn a deserialiser
+/// tied to a schema nobody here controls.
 fn parse_atom(atom: &str) -> Metadata {
     use quick_xml::events::Event;
 
@@ -181,8 +167,8 @@ fn file_name(id: &str, title: Option<&str>) -> String {
     };
     let stem = safe(&id.replace('/', "-"));
     match title {
-        // Title first: it is what a spine has room for, and the id is what
-        // makes two papers with the same title different files.
+        // Title first — it is what a spine has room for; the id keeps two
+        // papers of the same name distinct.
         Some(title) if !title.is_empty() => {
             let title = tidy(&safe(title));
             let title: String = title.chars().take(110).collect();
@@ -192,11 +178,8 @@ fn file_name(id: &str, title: Option<&str>) -> String {
     }
 }
 
-/// Download the paper, put it in the library folder, and index it.
-///
-/// Returns the book exactly as a scan would have found it, so the front end has
-/// nothing to special-case: it is a row in the index like any other, and the
-/// only thing that knows it came from arXiv is the folder it is in.
+/// Download the paper, put it in the library folder, and index it. Returns the
+/// book exactly as a scan would have, so the front end special-cases nothing.
 pub fn fetch(root: &Path, index_path: &Path, covers_dir: &Path, input: &str) -> Result<Book> {
     let id = parse_id(input).ok_or_else(|| Error::BadPaperId(input.trim().to_string()))?;
 
@@ -209,8 +192,7 @@ pub fn fetch(root: &Path, index_path: &Path, covers_dir: &Path, input: &str) -> 
     std::fs::write(&path, &bytes)?;
 
     let mut book = index::index_one(&path, Format::Pdf, covers_dir)?;
-    // What arXiv says beats what the PDF says. A paper's own metadata is
-    // whatever LaTeX left in it, which is routinely the name of a source file.
+    // arXiv beats the PDF, whose metadata is whatever LaTeX left in it.
     if let Some(title) = facts.title {
         book.title = title;
     }
@@ -218,9 +200,8 @@ pub fn fetch(root: &Path, index_path: &Path, covers_dir: &Path, input: &str) -> 
         book.author = Some(join_authors(&facts.authors));
     }
 
-    // Straight into the index, rather than leaving it for the next scan: the
-    // courier is already walking, and a book he puts down has to be a book the
-    // library knows about by the time he gets there.
+    // Indexed now rather than at the next scan: the courier is already walking,
+    // and the book has to exist by the time it is put down.
     let mut catalog = Catalog::load(index_path)?;
     let rel = relative_path(root, &path);
     catalog.upsert(&book, &rel, index::modified_millis(&std::fs::metadata(&path)?));
@@ -265,9 +246,8 @@ fn download(id: &str) -> Result<Vec<u8>> {
         .read_to_vec()
         .map_err(network)?;
 
-    // arXiv answers a withdrawn or not-yet-processed paper with an HTML page
-    // and a 200. Writing that into the library as a `.pdf` would put an
-    // unreadable book on your shelf, which is worse than saying no.
+    // arXiv answers a withdrawn paper with an HTML page and a 200; saving that
+    // as a `.pdf` would put an unreadable book on the shelf.
     if !bytes.starts_with(b"%PDF") {
         return Err(Error::UnknownPaper(id.to_string()));
     }
@@ -331,9 +311,8 @@ mod tests {
         assert_eq!(file_name("2401.12345", None), "2401.12345.pdf");
     }
 
-    /// The real thing, end to end. Ignored by default: the rest of this suite
-    /// runs offline and must keep doing so — run it with
-    /// `cargo test -p kleib3ry_core -- --ignored` when this module changes.
+    /// Ignored so the rest of the suite stays offline. Run this module's changes
+    /// through `cargo test -p kleib3ry_core -- --ignored`.
     #[test]
     #[ignore = "reaches arxiv.org"]
     fn a_real_paper_comes_down_and_is_indexed() {

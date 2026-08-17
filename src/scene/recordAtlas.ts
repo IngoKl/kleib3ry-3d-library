@@ -2,17 +2,13 @@ import * as THREE from 'three'
 import { hashId } from '../data/dimensions'
 
 /**
- * Printed record sleeves, in one texture — the records' answer to the spine
- * atlas. Audio files carry no artwork through the probe (only ID3 text frames
- * are read, to keep the licence surface where it is), so a sleeve is *composed*
- * rather than fetched: a motif and a palette from a hash of the track id, and
- * the album and artist printed on the front. Arbitrary but stable, exactly like
- * a book's cloth colour — the same record always wears the same sleeve.
+ * Printed sleeves in one texture, the records' answer to the spine atlas. The
+ * probe reads no artwork, so a sleeve is composed rather than fetched: a motif
+ * and palette from a hash of the track id, arbitrary but stable, so the same
+ * record always wears the same sleeve.
  *
- * The grid holds 143 sleeves and a room can stand up more than that, so cells go
- * to the faces that can actually be read — see `Records.tsx`. A sleeve with no
- * cell points at the blank one and shows its own card colour through it, the way
- * a book too far away to read goes back to plain cloth.
+ * A room can stand up more sleeves than the grid holds, so cells go to the faces
+ * that can be read; a sleeve without one shows its own card colour instead.
  */
 
 /** Sleeve proportions. A 12" record is square and about 4 mm in its sleeve. */
@@ -24,10 +20,7 @@ const COLUMNS = 12
 const ROWS = 12
 
 export const SLOT_COUNT = COLUMNS * ROWS
-/**
- * Never drawn into: it stays plain white, so an unprinted sleeve pointing at it
- * shows its own instance colour and reads as blank card rather than as nothing.
- */
+/** Plain white, so an unprinted sleeve shows its own colour and reads as blank card. */
 const BLANK_SLOT = 0
 export const FIRST_ASSIGNABLE = 1
 export const ASSIGNABLE_SLOTS = SLOT_COUNT - 1
@@ -63,8 +56,7 @@ export function sleeveArtFor(track: {
 }
 
 /**
- * Where each face of a sleeve reads from, as a fraction of its cell. The front
- * face takes the whole cell; every other face samples a single point inside the
+ * The front face takes the whole cell; every other samples one point inside the
  * painted edge band, so the thin sides read as the sleeve's darker card.
  */
 export const SLEEVE_REGIONS = {
@@ -85,9 +77,8 @@ function inkFor(colour: THREE.Color): string {
 }
 
 /**
- * Paint one sleeve into a square of any size. Shared between the atlas cells
- * and the full-resolution textures for the sleeve in hand and on the deck, so
- * the record you are carrying is recognisably the one you took out.
+ * Shared between the atlas cells and the full-resolution textures for the sleeve
+ * in hand, so the record you carry is recognisably the one you took out.
  */
 export function drawSleeve(
   ctx: CanvasRenderingContext2D,
@@ -282,9 +273,8 @@ export function makeSleeveAtlas(): SleeveAtlas {
 }
 
 /**
- * A unit cube whose front (+Z) face carries the whole atlas cell and whose
- * every other face samples the painted edge band — mirrored album titles on
- * the back of a sleeve would give the trick away.
+ * The front face carries the whole cell, the rest sample the edge band —
+ * mirrored album titles on the back would give the trick away.
  */
 export function makeSleeveGeometry(): THREE.BufferGeometry {
   const geometry = new THREE.BoxGeometry(1, 1, 1)

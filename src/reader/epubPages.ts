@@ -2,24 +2,18 @@ import type { Block, BlockKind, EpubBook } from './epub'
 
 /**
  * Setting an EPUB in type: measure words, break lines, break pages, stop. No
- * hyphenation, justification, floats, or widow control beyond one rule.
+ * hyphenation, justification, floats or widow control beyond one rule.
  *
- * **Pagination happens once, in abstract units, at open time** — not at the
- * texture's pixel size. A page is 620 by 900 *units*, and rendering scales by
- * `height / 900`. Canvas text metrics are linear in font size, so measuring at
- * one size and drawing at another is exact, which buys the property that
- * matters: page 200 is page 200 on any monitor, in any window, next session.
- * Laying out per texture size would make a bookmark mean something different
- * every time.
+ * Pagination happens once, in abstract units, at open time rather than at the
+ * texture's pixel size. Canvas text metrics are linear in font size, so
+ * measuring at one and drawing at another is exact — which buys the property
+ * that matters: page 200 is page 200 on any monitor, so a bookmark keeps meaning
+ * something.
  *
- * That guarantee is per *machine*, not per library folder. Measuring and drawing
- * both go through `fontFor`, so they can never disagree with each other — but
- * they agree about whatever font that machine resolved the stack to, and a
- * machine without Georgia sets the same book slightly differently. Since
- * `annotations.json` records page numbers rather than offsets, a bookmark made
- * on one machine can land a page out on another. Bundling a face as a data URI
- * would close it, at the cost of carrying a font in the bundle; for now it is
- * written down in docs/library-folder.md instead.
+ * That guarantee is per machine, not per library. Measuring and drawing both go
+ * through `fontFor` and cannot disagree, but they agree about whatever font that
+ * machine resolved, so a bookmark can land a page out elsewhere. See
+ * docs/library-folder.md.
  */
 
 /** The page, in units. Roughly a hardback's proportions. */
@@ -78,11 +72,8 @@ export type EpubLayout = {
 }
 
 /**
- * A measuring context.
- *
- * One offscreen canvas for every book ever opened: `measureText` needs a
- * context and nothing else about it matters, so allocating one per layout would
- * be allocating a canvas per book to throw it away.
+ * One offscreen canvas for every book ever opened: `measureText` needs a context
+ * and nothing else about it matters.
  */
 let ruler: CanvasRenderingContext2D | null = null
 function measurer(): CanvasRenderingContext2D {
@@ -114,14 +105,10 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number): strin
 }
 
 /**
- * Break the book into pages.
- *
- * The two rules beyond "fill until full":
- *
- *   - a document in the spine starts a new page, because that is a chapter;
- *   - a heading with fewer than three lines under it goes to the next page,
- *     because a chapter title alone at the foot of a page is the one typographic
- *     failure everybody notices.
+ * Break the book into pages. Two rules beyond "fill until full": a document in
+ * the spine starts a new page, because that is a chapter; and a heading with
+ * fewer than three lines under it moves down, because a chapter title alone at
+ * the foot of a page is the one typographic failure everybody notices.
  */
 export function layOutEpub(book: EpubBook): EpubLayout {
   const ctx = measurer()
@@ -185,11 +172,9 @@ const INK = '#2b2620'
 const FOLIO = '#8b8172'
 
 /**
- * Draw one page.
- *
- * `page` is 1-based, matching the reader's page numbering and therefore `J` and
- * the bookmarks. Out of range returns null, which is exactly what the PDF path
- * does past the last page and is what lets the final spread commit.
+ * `page` is 1-based, matching the reader's numbering and so `J` and the
+ * bookmarks. Out of range returns null, as the PDF path does, which is what
+ * lets the final spread commit.
  */
 export function renderEpubPage(
   layout: EpubLayout,

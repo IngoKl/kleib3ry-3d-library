@@ -6,13 +6,9 @@ import { useAnnotationsStore } from '../state/annotations'
 import type { BoardStroke } from '../services/types'
 
 /**
- * Artwork for the sheets pinned up round the house: a page copied out of a book,
- * or a note somebody typed.
- *
- * Kept out of `Pinned.tsx` because both are caches with a lifetime longer than
- * any component's. A page has to be rasterised through pdf.js, which means
- * opening the book — and a wall of a dozen torn-out pages must not re-open a
- * dozen documents every time the sheet's material happens to re-render.
+ * Artwork for the pinned sheets, kept out of `Pinned.tsx` because both are caches
+ * outliving any component. A page is rasterised by opening its book, and a wall
+ * of a dozen must not re-open a dozen documents on every re-render.
  */
 
 /** Sheets are a shade over life size, like everything else here. */
@@ -21,11 +17,9 @@ export const SHEET = { width: 0.2625, height: 0.371 }
 export const NOTE = 0.116
 
 /**
- * How tall a torn-out page is rasterised.
- *
- * Lower than the reader's, which docks the camera on a spread and is capped by
- * screen pixels. A pinned page is read from across a desk at most, and a wall of
- * them at reader DPI would be a hundred megabytes of texture on a whiteboard.
+ * Lower than the reader's, which docks the camera on a spread: a pinned page is
+ * read from across a desk, and a wall of them at reader DPI is a hundred
+ * megabytes of texture on a whiteboard.
  */
 const PAGE_PX = 900
 
@@ -37,9 +31,8 @@ type PageArt = {
   page: number
   texture: THREE.Texture | null
   /**
-   * The stroke list painted into it, by identity — the store keeps the same
-   * array until the ink changes. Compared rather than counted: a wipe followed
-   * by a redraw is one stroke again, and a different one.
+   * By identity, since the store keeps the same array until the ink changes.
+   * Compared rather than counted: a wipe then a redraw is one stroke again.
    */
   ink: readonly BoardStroke[] | undefined
 }
@@ -59,12 +52,9 @@ export function peekPage(bookId: string, page: number): THREE.Texture | null | u
 }
 
 /**
- * The texture for one page of one book, rasterised once and kept.
- *
- * Kept rather than evicted, unlike the reader's page cache: a pinned page is on
- * a wall because you put it there, and having it fade to blank while you are
- * looking at it to save a few megabytes would be the wrong trade. There is a
- * natural bound on how many you make, because you make each one by hand.
+ * Rasterised once and kept, unlike the reader's page cache: a pinned page is on
+ * a wall because you put it there, and fading to blank to save a few megabytes
+ * is the wrong trade. Bounded naturally, since you make each one by hand.
  */
 export function pageTextureFor(bookId: string, page: number): Promise<THREE.Texture | null> {
   const key = pageKey(bookId, page)
@@ -76,19 +66,15 @@ export function pageTextureFor(bookId: string, page: number): Promise<THREE.Text
   const job = (async (): Promise<PageArt> => {
     const blank = { bookId, page, texture: null, ink: inkOf(bookId, page) }
     try {
-      // Through the source rather than through pdf.js: a page torn out of an
-      // EPUB has to be set in type before it can be drawn, and going straight
-      // to the rasteriser pinned a blank sheet to the wall. `renderOnePage`
-      // also lets the document go the moment the page is out of it — a parsed
-      // PDF pins its whole file in the pdf.js worker, and a wall of pages from
-      // a wall of books would otherwise pin all of them.
+      // Through the source rather than pdf.js: an EPUB page must be set in type
+      // first, and the rasteriser alone pins a blank sheet. `renderOnePage`
+      // also releases the document, or a wall of pages pins a wall of books.
       const book = useLibraryStore.getState().byId.get(bookId)
       if (!book) return blank
       const canvas = await renderOnePage(book, page, PAGE_PX)
       if (!canvas) return blank
-      // The reader's own painter, on the reader's own kind of canvas: a torn-out
-      // page is a copy of the page, marginalia and all, and two stroke renderers
-      // would be two answers to where the ink goes.
+      // The reader's own painter: a torn-out page is a copy, marginalia and
+      // all, and two stroke renderers are two answers to where the ink goes.
       const ink = inkOf(bookId, page)
       paintPageStrokes(canvas, ink ?? [])
       const texture = new THREE.CanvasTexture(canvas)
@@ -119,11 +105,8 @@ export function pageTextureFor(bookId: string, page: number): Promise<THREE.Text
 }
 
 /**
- * How long the ink has to be quiet before a sheet re-rasterises.
- *
- * A page here comes off its document rather than off a cache, so redrawing per
- * stroke would be a document parse per stroke — and the sheet is on a wall
- * behind you while you draw anyway.
+ * A page here comes off its document rather than a cache, so redrawing per
+ * stroke is a parse per stroke — and the sheet is behind you while you draw.
  */
 const INK_SETTLE_MS = 600
 
@@ -139,9 +122,8 @@ function scheduleInkSweep() {
   }, INK_SETTLE_MS)
 }
 
-// The cache outlives every component that reads it, so keeping it honest about
-// the marginalia does too: a page drawn on after its sheet went up would
-// otherwise show the ink it had at the moment you tore it out, forever.
+// The cache outlives every component that reads it, so a page drawn on after
+// its sheet went up would otherwise keep the ink it had when you tore it out.
 useAnnotationsStore.subscribe((state, previous) => {
   if (state.drawings !== previous.drawings) scheduleInkSweep()
 })
@@ -154,12 +136,9 @@ function notifyPageReady(bookId: string, page: number) {
 }
 
 /**
- * A note, drawn as handwriting on a square of coloured paper.
- *
- * Wrapped by hand rather than with any text-layout machinery, because the only
- * thing that has to work is "a few words on a small square", and the failure
- * mode of getting it wrong is a word running off the edge — which the clip
- * catches. Cheap, and it means a note is a canvas rather than a font asset.
+ * Handwriting on a square of coloured paper, wrapped by hand: the only thing
+ * that has to work is a few words on a small square, and the failure mode is a
+ * word running off the edge, which the clip catches.
  */
 export function noteTexture(text: string, colour: number): THREE.CanvasTexture {
   const size = 384

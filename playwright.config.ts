@@ -3,18 +3,10 @@ import { defineConfig, devices } from '@playwright/test'
 const PORT = 5190
 
 /**
- * The smoke harness runs against the production bundle in headless Chromium.
- * WebGL needs a real GPU path, so ANGLE/SwiftShader is forced on rather than
- * left to the headless default, which silently drops the context.
- *
- * Which is also why the per-test allowance is minutes rather than seconds.
- * SwiftShader rasterises the whole cabin on the CPU, so a test that takes a
- * handful of seconds on a GPU takes the better part of a minute here — and on a
- * machine that is also compiling something, several times that. None of these
- * tests measure speed; every one of them waits for a *condition*. The timeout is
- * there to catch a stopped render loop, and a generous one still catches that
- * while a tight one turns "the host was busy" into a failing suite nobody can
- * act on.
+ * ANGLE/SwiftShader is forced on because the headless default silently drops the
+ * WebGL context. Timeouts are in minutes for the same reason: SwiftShader
+ * rasterises the cabin on the CPU. No test here measures speed — each waits on a
+ * condition, so the timeout only has to catch a stopped render loop.
  */
 export default defineConfig({
   testDir: './tests',

@@ -9,15 +9,13 @@ export type ReaderStatus = {
   /** True once a page has actually been rasterised onto the mesh. */
   rendered: boolean
   /**
-   * The page numbers whose textures are on the static sheets. It must always
-   * agree with `spread`: a turn that commits before its destination has
-   * rasterised is exactly the flash where the old spread reappears mid-turn.
+   * The pages whose textures are on the static sheets. It must agree with
+   * `spread`, or a turn commits early and the old spread flashes back.
    */
   showing: [number, number] | null
   /**
-   * Whether the turning leaf is on screen. It is what hides the swap, so it may
-   * only come down once `showing` has already moved to the destination spread —
-   * dropping it first is what exposed the old spread mid-turn.
+   * Whether the turning leaf is on screen. It hides the swap, so it may only
+   * come down once `showing` has moved to the destination spread.
    */
   turning: boolean
   /** How far through the turn the leaf is, 0 to 1. Drives the drag tests. */
@@ -26,8 +24,7 @@ export type ReaderStatus = {
   pen: boolean
   /**
    * True from a jump being asked for until the sheets show its target. Owned
-   * here rather than inferred by the HUD, because the two values it would
-   * infer from are written on different schedules and disagree mid-turn.
+   * here, because the values the HUD would infer it from disagree mid-turn.
    */
   seeking: boolean
   failure: string | null
@@ -46,10 +43,7 @@ export const readerStatus: ReaderStatus = {
   failure: null,
 }
 
-/**
- * Test access to the open book's rasterised page canvases; the Reader installs
- * it while a book is open. Outside React for the same reason the status is.
- */
+/** Test access to the open book's page canvases, installed by the Reader. */
 export const readerHandles: {
   pageCanvas: ((page: number) => HTMLCanvasElement | null) | null
 } = { pageCanvas: null }

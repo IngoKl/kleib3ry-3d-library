@@ -84,19 +84,16 @@ export default function App() {
   const loadVideo = useVideoStore((s) => s.load)
   const loadArcade = useArcadeStore((s) => s.load)
 
-  // The world has to be up before the library, or there are no shelves to
-  // reconcile against and every book would look like it had nowhere to go.
-  // The records, the pictures and the light switches all hang off the library
-  // folder too, so they come along behind it.
+  // The world before the library, or there are no shelves to reconcile against
+  // and every book looks like it has nowhere to go.
   useEffect(() => {
     void (async () => {
       await loadWorld()
       await loadRoot()
       await loadLibrary()
       await Promise.all([loadAnnotations(), loadAmbience(), loadMedia(), loadVideo(), loadArcade()])
-      // Start the cover sweep only once everything else is up: it is a long,
-      // low-priority walk through the whole catalogue, and it must never be
-      // what the first frame is waiting on.
+      // Last: a long, low-priority walk through the whole catalogue, which must
+      // never be what the first frame waits on.
       warmCovers(useLibraryStore.getState().books)
     })().catch((e) => {
       // One rejection must not silently strand the app half-loaded with the
@@ -111,9 +108,9 @@ export default function App() {
   useEffect(() => watchWorld(), [watchWorld])
 
   /**
-   * `F2` toggles the settings panel; `Esc` closes it. Here rather than in the
+   * `F2` toggles the settings panel, `Esc` closes it. Here rather than in the
    * walk controller, which ignores every key while the panel is open — so the
-   * key that opened it would otherwise be the one key that could not close it.
+   * key that opened it would be the one key that could not close it.
    */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -123,11 +120,9 @@ export default function App() {
         const app = useAppStore.getState()
         app.setSettingsOpen(!app.settingsOpen)
       } else if (e.code === 'Escape' && !typing) {
-        // Panels that take the keyboard close themselves from their own field;
-        // this is the way out when focus has wandered off it, one stray click
-        // away. A consumed Esc stops here — the reader and the arcade register
-        // after this handler, and would otherwise also close the book or step
-        // you off the machine.
+        // The way out when focus has wandered off a panel's own field. A
+        // consumed Esc stops here, or the reader and the arcade — which
+        // register later — would also close the book and leave the machine.
         const app = useAppStore.getState()
         if (app.settingsOpen) app.setSettingsOpen(false)
         else if (app.searching) app.setSearching(false)
@@ -180,11 +175,9 @@ export default function App() {
         }
       },
       /**
-       * The scene's point lights: how many exist, and how many are carrying
-       * anything. The *count* is the number that matters — it is what every lit
-       * material is compiled against, so a count that moves as you walk means
-       * the pool has started recompiling shaders mid-stride. See
-       * [scene/lightPool.ts](./scene/lightPool.ts).
+       * How many point lights exist, and how many carry anything. The count is
+       * what every lit material is compiled against, so one that moves as you
+       * walk means the pool is recompiling shaders mid-stride.
        */
       pointLights: () => {
         let mounted = 0
@@ -237,10 +230,7 @@ export default function App() {
         const world = useWorldStore.getState().world
         return world ? boxesIn(world).map((box) => box.id) : []
       },
-      /**
-       * Where the furniture actually is, so a test can stand in front of
-       * something rather than at a coordinate that was true of one map.
-       */
+      /** So a test stands in front of something, not at a coordinate true of one map. */
       places: () => {
         const world = useWorldStore.getState().world
         return {
@@ -266,27 +256,17 @@ export default function App() {
       savedBoxContents: (boxId: string) => [
         ...(useLibraryStore.getState().savedBoxes[boxId] ?? []),
       ],
-      /**
-       * Unpack a box onto the shelves, as pressing G while looking at it does.
-       * Aiming at one from a headless driver is a pose hunt; what the tests are
-       * about is where the books end up.
-       */
+      /** As `G` on a box does. Aiming headlessly is a pose hunt; the point is where books land. */
       emptyBoxForTest: (boxId: string) =>
         useLibraryStore.getState().emptyBoxOntoShelves(boxId),
       /** Books lying about the room, and where each one came to rest. */
       looseBooks: () => ({ ...useLibraryStore.getState().loose }),
-      /**
-       * Put a book down in the room, as Q and O do. Aiming those keys needs a
-       * pointer lock a headless driver has not got; what the tests are about
-       * is what happens to a book once it is lying there.
-       */
+      /** As `Q` and `O` do. Aiming them needs a pointer lock a headless driver has not got. */
       putDownForTest: (id: string, placement: LoosePlacement) =>
         useLibraryStore.getState().putDown(id, placement),
       /**
-       * Put a book on a particular shelf, as aiming and pressing `E` does. A
-       * test cannot assume which rows are stocked — unpacking fills empty rows
-       * nearest the box and stops when the boxes run out — so a test about
-       * books on a bookcase needs a way to put some there.
+       * As aiming and pressing `E` does. A test cannot assume which rows are
+       * stocked, so one about books on a bookcase needs a way to put some there.
        */
       shelveForTest: (id: string, shelfId: string, row: number, index = 0) =>
         useLibraryStore.getState().shelve(id, shelfId, row, index),
@@ -324,25 +304,14 @@ export default function App() {
       /** Whether it is raining, and the switch the K key presses. */
       raining: () => useAmbienceStore.getState().rain,
       toggleRainForTest: () => useAmbienceStore.getState().toggleRain(),
-      /**
-       * The cat: where it is and what it is up to.
-       *
-       * It moves every frame and lives outside React for that reason, so this
-       * is a snapshot rather than a handle.
-       */
+      /** A snapshot, not a handle: the cat moves every frame and lives outside React. */
       cat: () => ({ ...cat }),
       /**
-       * Call it, fuss it, ask it for a book — as `V`, `E` and `F` do.
-       *
-       * Aiming at a *moving animal* from a headless driver is a pose hunt with a
-       * moving target, and what these tests are about is what the cat then does.
-       * The same argument `emptyBoxForTest` makes about a box.
+       * As `V`, `E` and `F` do. Aiming at a moving animal headlessly is a pose
+       * hunt with a moving target; the point is what the cat then does.
        */
       callCatForTest: () => callCat(),
-      /**
-       * Put the cat somewhere. The steering is deliberately unplanned, so a
-       * journey across the building is a test of pathfinding it does not have.
-       */
+      /** The steering is unplanned, so a journey across the building tests pathfinding it lacks. */
       placeCatForTest: (x: number, z: number, floor = 0) => {
         cat.x = x
         cat.z = z
@@ -365,11 +334,9 @@ export default function App() {
       focusedTape: () => useAppStore.getState().focusedTape,
       heldTape: () => useAppStore.getState().heldTape,
       /**
-       * The arcade: the ROM listing, the machine's state, and the cartridge in
-       * hand. `insertRomForTest` is the same call `E` on the machine makes after
-       * carrying a cartridge over — aiming at a slot from a headless driver is
-       * a pose hunt, and what these tests are about is whether the machine then
-       * boots and draws.
+       * The ROM listing, the machine's state, and the cartridge in hand.
+       * `insertRomForTest` is the call `E` on the machine makes; the point is
+       * whether the machine then boots and draws.
        */
       roms: () => useArcadeStore.getState().roms.map((rom) => rom.id),
       arcade: () => {
@@ -385,12 +352,8 @@ export default function App() {
       insertRomForTest: (id: string) => useArcadeStore.getState().insert(id),
       ejectRomForTest: () => useArcadeStore.getState().eject(),
       /**
-       * The whiteboard marker, and what has been drawn with it.
-       *
-       * `takeMarkerForTest` is the same one line `E` on the marker runs. Aiming
-       * at a 14 cm pen on a desk from a headless driver is a pose hunt, and what
-       * these tests are about is what the marker then does — the same argument
-       * `emptyBoxForTest` makes about a box.
+       * The marker and what has been drawn with it. `takeMarkerForTest` is the
+       * one line `E` runs; aiming at a 14 cm pen headlessly is a pose hunt.
        */
       heldMarker: () => useAppStore.getState().heldMarker,
       boardTarget: () => useAppStore.getState().boardTarget,
@@ -415,10 +378,8 @@ export default function App() {
         ),
 
       /**
-       * The small props — the cup, the cans, the takeaway boxes — where each
-       * stands, and the one in your hand. The `ForTest` gestures exist for the
-       * usual reason: aiming at a 6 cm can on a counter from a headless driver
-       * is a pose hunt, and what the tests are about is what the can then does.
+       * Where each prop stands, and the one in your hand. The `ForTest`
+       * gestures exist because aiming at a 6 cm can headlessly is a pose hunt.
        */
       props: () => ({ ...useLibraryStore.getState().props }),
       heldProp: () => useAppStore.getState().heldProp,
@@ -451,9 +412,8 @@ export default function App() {
       focusedPin: () => useAppStore.getState().focusedPin,
       artwork: () => useMediaStore.getState().artwork.map((picture) => picture.id),
       /**
-       * How high off the floor each whiteboard actually is, measured off the
-       * meshes rather than the document — a renderer that mounts a board at the
-       * wrong height is invisible to anything above the scene graph.
+       * Measured off the meshes rather than the document: a board mounted at
+       * the wrong height is invisible to anything above the scene graph.
        */
       boards: () =>
         (sceneRefs.boards?.children ?? []).map((piece) => {
@@ -465,10 +425,7 @@ export default function App() {
         slots: ASSIGNABLE_SLOTS,
         reprinted: sceneRefs.spinesReprinted,
       }),
-      /**
-       * The mounted scene graph itself, for probes that need to ask what is
-       * actually being drawn. Not serialisable — call it from page-side code.
-       */
+      /** What is actually being drawn. Not serialisable — call it from page-side code. */
       sceneForTest: () => sceneRefs.scene,
       teleport,
       look: (yaw: number, pitch = 0) => {
@@ -479,10 +436,7 @@ export default function App() {
       reloadLibrary: () => useLibraryStore.getState().load(),
       /** The live world document, as text. */
       worldText: () => useWorldStore.getState().text,
-      /**
-       * Stand in for editing `library.json` and saving it. Browser driver only —
-       * on the desktop the file itself is the interface.
-       */
+      /** Stands in for editing `library.json`. Browser driver only: elsewhere the file is the interface. */
       editWorld: async (text: string) => {
         if (library.kind !== 'browser') throw new Error('editWorld is browser-only')
         setWorldText(text)
@@ -502,9 +456,8 @@ export default function App() {
       wipePageForTest: (id: string, page: number) =>
         useAnnotationsStore.getState().wipePage(id, page),
       /**
-       * How many pixels of pen ink the rasterised page actually shows. A saved
-       * stroke whose paint missed the canvas — the EPUB scale() regression —
-       * is invisible ink, and only counting pixels can tell the difference.
+       * How much pen ink the rasterised page actually shows. A stroke whose
+       * paint missed the canvas is invisible ink, and only pixels catch it.
        */
       inkPixelsOnPage: (page: number) => {
         const canvas = readerHandles.pageCanvas?.(page)
@@ -529,9 +482,8 @@ export default function App() {
       setModeForTest: (mode: string) => useAppStore.getState().setMode(mode as 'walk' | 'read'),
       /** Open a book and wait until a page has actually rasterised. */
       readForTest: async (id: string) => {
-        // Clear the previous book's numbers, but only when it *is* a different
-        // book: re-opening the one already loaded re-runs nothing in the reader,
-        // so a reset there would blank a status nothing is going to refill.
+        // Only for a different book: re-opening the loaded one re-runs nothing
+        // in the reader, so a reset would blank a status nothing refills.
         if (readerStatus.bookId !== id) resetReaderStatus(id)
         useAppStore.getState().setReading(id)
         useAppStore.getState().setMode('read')
@@ -546,13 +498,10 @@ export default function App() {
   }, [rootLoaded, libraryLoaded, annotationsLoaded, worldLoaded])
 
   /**
-   * Display settings that cannot be applied per frame. Antialiasing and the
-   * shadow map are fixed when the WebGL context is created, so changing them
-   * means a new canvas — hence the `key`, built from exactly those flags.
-   *
-   * Resolution scale is deliberately not among them: R3F re-applies `dpr` on
-   * the live context, so the dial most worth dragging costs nothing to drag.
-   * Remounting is safe because the room's state lives in the stores.
+   * Antialiasing and the shadow map are fixed when the WebGL context is created,
+   * so changing them means a new canvas — hence the `key`. Resolution scale is
+   * deliberately not among them: R3F re-applies `dpr` on the live context, so
+   * the dial most worth dragging costs nothing to drag.
    */
   const settings = useSettings()
   const quality = effectiveQuality(settings)
@@ -572,9 +521,8 @@ export default function App() {
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
         }}
-        // Far enough to see the far shore now that there is one. The fog does
-        // the actual work of hiding the edge of the world; this only has to
-        // reach past the sky dome.
+        // Far enough to see the far shore. The fog hides the edge of the world;
+        // this only has to reach past the sky dome.
         camera={{ fov: 72, near: 0.05, far: 400, position: [player.x, EYE_HEIGHT, player.z] }}
       >
         <Probe />

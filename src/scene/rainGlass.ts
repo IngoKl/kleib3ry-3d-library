@@ -1,17 +1,12 @@
 import * as THREE from 'three'
 
 /**
- * Rain on a window, as one animated canvas.
+ * Rain on a window: one animated canvas for every pane in the building. Nobody
+ * notices that two windows are wet in the same pattern, but everybody notices
+ * the frame rate halving because eleven canvases are being redrawn.
  *
- * One canvas for every pane in the building, deliberately. A window's worth of
- * water is a few dozen beads and a couple of runs, and nobody standing in a room
- * can tell that the kitchen window and the bedroom window are wet in the same
- * pattern — but they can tell, immediately, when the frame rate halves because
- * eleven canvases are being redrawn.
- *
- * It is redrawn on a timer rather than per frame, at about fifteen a second.
- * Water on glass moves slowly; anything faster is spent on a difference nobody
- * sees, and the upload is the cost, not the drawing.
+ * On a timer rather than per frame, at about fifteen a second: water on glass
+ * moves slowly, and the upload is the cost rather than the drawing.
  */
 
 const SIZE = 256
@@ -29,10 +24,7 @@ let runs: Run[] = []
 let holders = 0
 let timer: ReturnType<typeof setInterval> | undefined
 
-/**
- * Seeded rather than random, so two launches of the same library look the same
- * — the same reason the forest is grown from a fixed seed.
- */
+/** Seeded, so two launches of the same library look the same, as with the forest. */
 let seed = 0x9e37
 const random = () => {
   seed = (seed * 1664525 + 1013904223) >>> 0
@@ -62,9 +54,8 @@ function paint() {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, SIZE, SIZE)
 
-  // The beads. Two arcs each: a bright edge where the light bends round the
-  // drop and a dark core, which is the whole of why a droplet reads as a lens
-  // rather than as a dot.
+  // Two arcs each — a bright edge where the light bends and a dark core — which
+  // is the whole of why a droplet reads as a lens rather than a dot.
   for (const bead of beads) {
     bead.y += bead.speed
     if (bead.y > SIZE + 4) {
@@ -110,11 +101,8 @@ function paint() {
 }
 
 /**
- * Take a hold on the rain texture, starting it if nobody had one.
- *
- * Reference counted rather than created and destroyed with the component,
- * because every pane in the building mounts one of these at once and the timer
- * has to be started once and stopped once.
+ * Reference counted rather than tied to a component, because every pane mounts
+ * one at once and the timer has to be started once and stopped once.
  */
 export function holdRainGlass(): THREE.CanvasTexture {
   if (!canvas) {

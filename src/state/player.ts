@@ -11,39 +11,25 @@ export const player = {
   speed: 0,
   /** Current eye height, in world metres. Includes whichever floor you are on. */
   eye: 1.68,
-  /**
-   * Height of the floor under your feet. Zero everywhere until a library has a
-   * loft; the walk controller will not let it change by more than a step
-   * without a staircase to do it on.
-   */
+  /** The walk controller will not change it by more than a step without a staircase. */
   floor: 0,
   /** 0 standing, 1 fully down. Kept here so the HUD can read it. */
   crouch: 0,
   /**
-   * How far the view is zoomed in, 0 to 1, and the field of view that produces.
-   *
-   * Here rather than in the store for the usual reason: it changes every frame
-   * while you are squinting at a spine across the room, and a React render per
-   * frame is exactly what `state/player.ts` exists to avoid. The HUD reads it to
-   * say so, and the smoke tests read it to prove it moved.
+   * How far the view is zoomed, and the field of view that produces. Here rather
+   * than in the store because it changes every frame while you squint at a spine.
    */
   zoom: 0,
   fov: 72,
   /**
-   * `performance.now()` before which the coffee is still working: the walk
-   * controller reads it every frame and steps a quarter quicker until it
-   * passes. Here rather than in the store because nothing should re-render
-   * when a stimulant wears off.
+   * Until when the coffee is still working. Here rather than in the store,
+   * because nothing should re-render when a stimulant wears off.
    */
   boostUntil: 0,
 }
 
 export const EYE_HEIGHT = 1.68
-/**
- * Kneeling. Low enough to read the bottom shelf comfortably — the lowest
- * compartment starts at about 0.1 m, and a spine there is unreadable from a
- * standing eye line no matter how close you get.
- */
+/** Low enough for the bottom shelf, which is unreadable from a standing eye line. */
 export const KNEEL_HEIGHT = 0.92
 /** Seat height plus a seated torso, for an armchair. */
 export const SEATED_EYE = 1.14

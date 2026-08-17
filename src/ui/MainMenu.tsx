@@ -16,13 +16,10 @@ import { forgetLibrary, recentLibraries, rememberLibrary } from '../state/settin
 const LEAVE_MS = 340
 
 /**
- * The main menu: which library, and then in.
- *
- * The room loads *behind* this, so going in is instant. The cost is a rule
- * enforced in `roomHasKeyboard`: while the menu is up, nothing reaches the room.
- *
- * The recent list is per-machine, in `localStorage` — a list of other libraries
- * must not travel inside one of them.
+ * Which library, and then in. The room loads behind this so going in is instant,
+ * at the cost of one rule in `roomHasKeyboard`: while the menu is up nothing
+ * reaches the room. The recent list is per-machine, because a list of other
+ * libraries must not travel inside one of them.
  */
 export function MainMenu() {
   const started = useAppStore((s) => s.started)
@@ -43,26 +40,23 @@ export function MainMenu() {
   const [opening, setOpening] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
 
-  // A folder that opened is a folder worth offering next time — but only where
-  // the driver can open one: remembering the container's mounted path would
-  // fill the list with entries no driver can act on.
+  // Only where the driver can open one: remembering the container's mounted
+  // path fills the list with entries no driver can act on.
   useEffect(() => {
     if (!started || !libraryRoot || !library.canPickFolder) return
     rememberLibrary(libraryRoot)
   }, [started, libraryRoot])
 
-  // Going in fades the menu out rather than cutting it. A timeout does the
-  // unmounting, not `transitionend`: the tests wait for the menu to be *gone*,
-  // and a transition event never fires where nothing paints.
+  // A timeout unmounts, not `transitionend`: the tests wait for the menu to be
+  // gone, and a transition event never fires where nothing paints.
   const [gone, setGone] = useState(false)
   useEffect(() => {
     if (!started) {
       setGone(false)
       return
     }
-    // The button keeps DOM focus through the fade, and pointer-events: none
-    // does nothing for the keyboard — a tapped Space would fire it again while
-    // the room is already listening. Focus goes with the click.
+    // The button keeps DOM focus through the fade and `pointer-events: none`
+    // does nothing for the keyboard, so Space would fire it again.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
     const timer = window.setTimeout(() => setGone(true), LEAVE_MS)
     return () => window.clearTimeout(timer)
@@ -72,30 +66,23 @@ export function MainMenu() {
 
   const ready = rootLoaded && worldLoaded && libraryLoaded
 
-  /**
-   * Open a different folder and rebuild everything that hangs off it. The world
-   * goes first, or there are no shelves to reconcile against. Same order as `App`.
-   */
+  /** The world goes first, or there are no shelves to reconcile against. */
   const openFolder = async (path: string | null) => {
     const chosen = path ?? (await library.pickRoot().catch(() => null))
     if (!chosen) return
     setOpening(chosen)
     setOpenError(null)
-    // The cover caches are keyed by content hash, so the last library's artwork
-    // would not be *wrong* — it would just be megabytes about books that are no
-    // longer on any shelf, held for the rest of the session.
+    // Keyed by content hash, so the last library's artwork would not be wrong —
+    // only megabytes about books no longer on any shelf.
     if (chosen !== libraryRoot) forgetCovers()
     try {
       await library.setRoot(chosen)
       useAppStore.setState({ libraryRoot: chosen })
       await useWorldStore.getState().load()
       await useLibraryStore.getState().load()
-      // Everything else that hangs off the folder. The lamps, the records, the
-      // pictures and the tapes are all *that library's*, so opening a second one
-      // without these leaves you standing in the new rooms with the old library's
-      // music on the shelf — and the annotations are that library's too, or the
-      // first bookmark you toggle writes the old library's marginalia over the
-      // new one's file.
+      // Everything else that hangs off the folder, all of it that library's:
+      // without this you stand in the new rooms with the old library's music on
+      // the shelf, and the first bookmark writes its marginalia over the file.
       await Promise.all([
         useAnnotationsStore.getState().load(),
         useAmbienceStore.getState().load(),

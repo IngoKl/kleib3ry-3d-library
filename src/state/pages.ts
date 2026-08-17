@@ -3,25 +3,17 @@ import { renderOnePage } from '../reader/source'
 import { useLibraryStore } from './library'
 
 /**
- * Page images for books that are open in the *room* rather than in the reader.
- *
- * A book you put down open shows the page you were on, which means rasterising
- * an arbitrary page rather than page one — so this is a second, much smaller
- * cache than the reader's. Deliberately low resolution: nobody reads a book
- * lying on a table across the room, they recognise it, and a spread at 380 px
- * costs a fraction of what the reader's 250-DPI pages do.
- *
- * The reader's page cache is not reused because its lifetime is different:
- * that one is pinned to the spread you are looking at and thrown away when you
- * close the book, and this one has to survive for as long as the book is lying
- * there.
+ * Page images for books open in the room rather than in the reader. Deliberately
+ * low resolution: nobody reads a book lying on a table across the room, they
+ * recognise it. Its own cache because the lifetimes differ — the reader's is
+ * pinned to a spread and dropped on close, this one lasts as long as the book
+ * is lying there.
  */
 
 const PAGE_PX = 380
 /**
- * How many spreads to keep. Every open book on the floor holds two pages, so
- * this is a couple of dozen books' worth — far more than anyone leaves open,
- * and bounded so that a room used for years does not accumulate textures.
+ * A couple of dozen open books' worth — more than anyone leaves out, and bounded
+ * so a room used for years does not accumulate textures.
  */
 const CAPACITY = 48
 
@@ -45,10 +37,7 @@ function trim() {
   }
 }
 
-/**
- * Rasterise one page, once. Failures resolve to null rather than throwing: a
- * book that will not render is a book lying face down, not an error dialog.
- */
+/** Failures resolve to null: a book that will not render lies face down, not in a dialog. */
 export function pageTexture(bookId: string, page: number): Promise<THREE.Texture | null> {
   const id = key(bookId, page)
   const ready = cache.get(id)
@@ -58,14 +47,12 @@ export function pageTexture(bookId: string, page: number): Promise<THREE.Texture
 
   const job = (async (): Promise<THREE.Texture | null> => {
     try {
-      // The book as the index has it, because the format is what decides
-      // whether this is a rasterised page or one that has to be set in type
-      // first. A book the index has never heard of has no pages to draw.
+      // The format decides whether this is a rasterised page or one to be set
+      // in type first, and an unknown book has no pages to draw.
       const book = useLibraryStore.getState().byId.get(bookId)
       if (!book) return null
-      // The texture outlives the document on purpose: it is the document that
-      // costs the memory, and `renderOnePage` lets go of it as soon as the
-      // page is out.
+      // The texture outlives the document deliberately: the document is what
+      // costs memory, and `renderOnePage` drops it once the page is out.
       const canvas = await renderOnePage(book, page, PAGE_PX)
       if (!canvas) return null
       const texture = new THREE.CanvasTexture(canvas)

@@ -17,9 +17,8 @@ type Result<T> = std::result::Result<T, Error>;
 /// books of the same length, cheap enough to run over thousands of files.
 const ID_SAMPLE_BYTES: usize = 64 * 1024;
 
-/// Skip directories that are never a user's library but are often enormous.
-/// `.library` is ours — the room document and the book layout live there, and a
-/// scan must never look inside its own save folder.
+/// Never a user's library, and often enormous. `.library` is ours: a scan must
+/// not look inside its own save folder.
 const SKIP_DIRS: [&str; 7] = [
     ".library",
     "node_modules",
@@ -55,9 +54,8 @@ pub struct ScanSummary {
     pub failed: u32,
 }
 
-/// Stable identity for a file: its length plus its opening bytes. Not the path,
-/// so renaming or moving a book keeps its shelf position and reading progress.
-/// Two byte-identical files collapse into one entry.
+/// Stable identity: length plus opening bytes, not the path, so moving a book
+/// keeps its shelf position and progress. Identical files collapse into one.
 pub fn book_id(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path)?;
     let len = file.metadata()?.len();
@@ -97,10 +95,9 @@ pub(crate) fn modified_millis(meta: &fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-/// The folder a scan of `root` will read, or `None` when that is the library
-/// folder itself. Indexing is confined to `books/` as soon as it exists, so the
-/// media folders are never mistaken for books; a folder without one is read
-/// whole, minus the reserved names.
+/// The folder a scan will read, or `None` for the library folder itself.
+/// Confined to `books/` once it exists, so media folders are never mistaken for
+/// books; without one, the whole folder minus the reserved names.
 pub fn books_root(root: &Path) -> Option<PathBuf> {
     let books = root.join(BOOKS_DIR);
     books.is_dir().then_some(books)
@@ -180,13 +177,9 @@ pub fn index_one(path: &Path, format: Format, covers_dir: &Path) -> Result<Book>
     })
 }
 
-/// Walk the library folder's `books/` — or the whole folder, if it has none —
-/// and bring the index in line with it. `on_progress` fires per file, since a
-/// large collection can take minutes.
-///
-/// Concurrent scans are refused a level up, in each shell. Across processes the
-/// loser's work is overwritten, which costs only a rescan: the index is derived
-/// and the write is atomic.
+/// Walk the library folder and bring the index in line with it. `on_progress`
+/// fires per file, since a large collection takes minutes. Concurrent scans are
+/// refused a level up; across processes the loser's work is simply overwritten.
 pub fn scan(
     root: &Path,
     index_path: &Path,
@@ -198,13 +191,11 @@ pub fn scan(
 
     let mut summary = ScanSummary { found: files.len() as u32, ..Default::default() };
     let mut seen = Vec::with_capacity(files.len());
-    // Found but unopenable — a sync client's lock, not a deletion. Remembered
-    // so the prune leaves their entries, and the shelf positions keyed by them.
+    // Found but unopenable — a lock, not a deletion. The prune spares these.
     let mut unreadable = Vec::new();
 
-    // Saving rewrites the whole file, so flushing per book is quadratic on a
-    // first scan. A count and an interval together bound that while keeping a
-    // crash to seconds of lost probing rather than the whole walk.
+    // Saving rewrites the whole file, so a flush per book is quadratic. A count
+    // and an interval bound that while keeping a crash to seconds of lost work.
     const FLUSH_EVERY: u32 = 64;
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     let mut since_flush = 0u32;
@@ -346,8 +337,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// A `music` folder nested *inside* `books/` is books about music, and the
-    /// name is only reserved at the top of a library folder.
+    /// A `music` folder inside `books/` is books about music.
     #[test]
     fn the_reserved_names_only_apply_at_the_top_level() {
         let dir = temp_dir("reserved-nested");
@@ -437,8 +427,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// Indexing only ever writes where the caller points it. The companion test
-    /// below covers the case where that is inside the library folder.
+    /// Indexing only ever writes where the caller points it.
     #[test]
     fn scanning_never_modifies_the_library_folder() {
         let library = temp_dir("readonly-library");
@@ -469,8 +458,7 @@ mod tests {
 
         let before = snapshot(&library);
         scan(&library, &appdata.join("index.json"), &appdata.join("covers"), |_| {}).unwrap();
-        // A second pass also exercises the prune path, which is the only place
-        // the indexer deletes anything at all.
+        // A second pass exercises the prune, the only path that deletes.
         scan(&library, &appdata.join("index.json"), &appdata.join("covers"), |_| {}).unwrap();
         let after = snapshot(&library);
 

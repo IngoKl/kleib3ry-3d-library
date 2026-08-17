@@ -11,9 +11,8 @@ const SLEEVE = 0.315
 const THICKNESS = 0.004
 
 /**
- * The record currently in hand, carried flat against the chest the way a
- * sleeve is actually carried. Rides the camera each frame like `HeldBook`; the
- * artwork is the same composed sleeve the atlas prints, at full resolution.
+ * Carried flat against the chest, the way a sleeve actually is. Rides the camera
+ * like `HeldBook`, wearing the atlas's own sleeve at full resolution.
  */
 export function HeldRecord() {
   const group = useRef<THREE.Group>(null)

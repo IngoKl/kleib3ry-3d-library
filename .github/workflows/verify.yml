@@ -1,10 +1,5 @@
-# The same gate `npm run verify` runs locally, split in two.
-#
-# The fast half — lint, typecheck, build, clippy, cargo test — is a couple of
-# minutes and gates every push. The Playwright half is half an hour, because the
-# smoke tests rasterise the whole cabin on SwiftShader, so it runs beside the
-# fast one rather than behind it: a typo in a shader should not be thirty
-# minutes from being reported.
+# The same gate as `npm run verify`, split so the half-hour Playwright job runs
+# beside the two-minute checks rather than behind them.
 name: verify
 
 on:
@@ -29,8 +24,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # pdf.js fonts and cmaps, the sample book and the demo ROM. Deliberately
-      # not committed, so nothing below works without this.
+      # pdf.js fonts and cmaps, the sample book, the demo ROM — none committed.
       - run: npm run assets
       - run: npm run lint
       - run: npm run typecheck
@@ -41,9 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Only core and server: src-tauri needs GTK and WebKit, which is the whole
-      # reason core was carved out of it. The desktop shell is checked on the
-      # Windows job below, where it is actually built.
+      # Only core and server; src-tauri needs GTK and WebKit, so it runs on the
+      # Windows job below.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core -> target
@@ -92,6 +85,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Not pushed anywhere — this only has to prove the three-stage build still
-      # assembles, which is the thing that breaks when a script or a copy moves.
+      # Not pushed anywhere; this only proves the three-stage build still assembles.
       - run: docker build -t kleib3ry .

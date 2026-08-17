@@ -1,13 +1,11 @@
 /**
- * End-to-end check of the built desktop app.
+ * End-to-end check of the built desktop app. The browser smoke tests only
+ * exercise the `browser` driver, so they never touch IPC, the CSP, WebView2 or
+ * the real indexer. This launches the executable with remote debugging open,
+ * attaches over CDP, and drives a full scan → shelve → read cycle.
  *
- * The browser smoke tests can only exercise the `browser` driver, so they never
- * touch IPC, the CSP, WebView2, or the real indexer. This launches the actual
- * executable with WebView2's remote debugging port open, attaches over CDP, and
- * drives a full scan → shelve → read cycle against a library folder.
- *
- * It restores whatever library folder was configured before it ran, and it
- * never writes to the library folder itself.
+ * It restores the library folder that was configured before it ran, and never
+ * writes to the library folder itself.
  *
  *   node scripts/probe-desktop.mjs [libraryFolder] [pathToExe]
  */
@@ -98,9 +96,8 @@ class Cdp {
   }
 
   /**
-   * Evaluate and bring the value back as JSON. Wrapped in `Promise.resolve` so
-   * this works for both sync expressions and invokes — stringifying a pending
-   * promise directly yields `{}`, which looks like a successful empty result.
+   * Wrapped in `Promise.resolve` so it serves both sync expressions and
+   * invokes: stringifying a pending promise yields `{}`, which reads as success.
    */
   json(expression) {
     return this.evaluate(
@@ -130,9 +127,8 @@ try {
   const target = await findPageTarget()
   cdp = await Cdp.connect(target.webSocketDebuggerUrl)
 
-  // Poll in short bursts rather than one long-lived evaluate: the WebView
-  // navigates to the app shortly after the target appears, and any evaluate
-  // spanning that navigation dies with "execution context was destroyed".
+  // Short bursts rather than one long evaluate: the WebView navigates shortly
+  // after the target appears, and an evaluate spanning that navigation dies.
   let booted = false
   for (let attempt = 0; attempt < 120 && !booted; attempt++) {
     booted = await cdp.evaluate('Boolean(window.__app && window.__app.ready())').catch(() => false)

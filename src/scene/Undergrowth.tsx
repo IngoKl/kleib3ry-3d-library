@@ -10,14 +10,9 @@ import { useWorldStore } from '../state/world'
 import { place, type Placed } from './Outside'
 
 /**
- * The forest floor: grass tufts across the meadow, ferns in the shade of the
- * conifers, mushrooms at the feet of the trees, and a couple of fallen logs.
- *
- * Grown with the erratics' rejection test, so nothing stands on the shore
- * path, the trail, the view corridor or in a doorway — and, like the erratics,
- * none of it is collidable: it is ankle-height scenery you step over, and the
- * trunks stay the things you walk into. Four instanced meshes, four draw
- * calls, and nothing here ever moves.
+ * The forest floor: tufts, ferns, mushrooms and a couple of fallen logs. Grown
+ * with the erratics' rejection test, and like them not collidable — this is
+ * ankle-height scenery you step over, and the trunks are what you walk into.
  */
 
 const TUFT_GREENS = ['#4a5c34', '#55683b', '#41522d', '#5e6f3f']
@@ -70,10 +65,7 @@ function fernGeometry(): THREE.BufferGeometry | null {
   return merged
 }
 
-/**
- * Stem and cap in one piece. The cap is stretched tall here because the
- * instance's y-scale — the stem height, centimetres — squashes it to a dome.
- */
+/** Stem and cap in one piece; the cap is stretched, since the y-scale squashes it. */
 function mushroomGeometry(): THREE.BufferGeometry | null {
   const stem = new THREE.CylinderGeometry(0.012, 0.016, 1, 6)
   stem.translate(0, 0.5, 0)

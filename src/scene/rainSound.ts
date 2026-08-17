@@ -1,9 +1,7 @@
 /**
  * Rain, synthesised rather than sampled: looping filtered noise through a
- * low-pass whose cutoff tracks how much sky you can hear.
- *
- * Every failure — no AudioContext, a context that will not start — falls back
- * to silence rather than throwing.
+ * low-pass whose cutoff tracks how much sky you can hear. Every failure falls
+ * back to silence rather than throwing.
  */
 
 type Rig = {
@@ -25,10 +23,7 @@ const LOOP_SECONDS = 4
 const OPEN_HZ = 9000
 const SHELTERED_HZ = 620
 
-/**
- * White noise with a one-pole low-pass mixed back in, which gives the rumble
- * under the hiss. Generated once, when the rain comes on.
- */
+/** White noise with a one-pole low-pass mixed back in, for the rumble under the hiss. */
 function makeNoise(context: AudioContext): AudioBuffer {
   const length = Math.floor(context.sampleRate * LOOP_SECONDS)
   const buffer = context.createBuffer(2, length, context.sampleRate)
@@ -90,10 +85,7 @@ function start(): Rig | null {
   }
 }
 
-/**
- * Set the rain's level and brightness. `openness` is 0 under a roof and 1 in
- * the open. Both are ramped: a step on an audio parameter clicks.
- */
+/** `openness` is 0 under a roof and 1 outside. Both ramped: a step clicks. */
 export function placeRain(volume: number, openness: number) {
   const fresh = !rig
   const live = start()
@@ -120,10 +112,9 @@ const TAIL_SECONDS = 0.8
 let closing = 0
 
 /**
- * Stop the rain: ramp the gain out, then stop the source and close the context
- * once the tail has run — stopping in the same tick is exactly the click the
- * ramps exist to avoid. `rig` is cleared first, so a second stop is a no-op
- * and rain restarted during the tail opens a fresh rig of its own.
+ * Ramp the gain out, then stop the source once the tail has run: stopping in the
+ * same tick is the click the ramps avoid. `rig` is cleared first, so a second
+ * stop is a no-op and rain restarted during the tail opens a fresh one.
  */
 export function stopRain() {
   if (!rig) return

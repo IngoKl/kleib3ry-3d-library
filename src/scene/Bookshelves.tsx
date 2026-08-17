@@ -8,11 +8,8 @@ import type { DerivedShelf } from '../world/derive'
 import { useWorldStore } from '../state/world'
 
 /**
- * Bookcases, one draw call per distinct shelf count.
- *
- * A case with four compartments is a different carcass from one with six, so
- * they cannot share an InstancedMesh — but a library realistically uses one or
- * two row counts, so this is still one or two draw calls for the lot.
+ * One draw call per distinct shelf count: a four-compartment carcass is a
+ * different mesh from a six, but a library uses one or two row counts.
  */
 function buildCarcass(rows: number): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
@@ -56,11 +53,9 @@ function buildCarcass(rows: number): THREE.BufferGeometry {
 }
 
 /**
- * Cached at module scope rather than in a memo with a disposing effect. Under
- * Fast Refresh the effect cleanup runs while the memo survives, which disposes
- * the live geometry and silently empties every shelf until a hard reload. A
- * cache that is never disposed cannot get into that state, and there are only
- * ever a handful of distinct row counts.
+ * Module scope rather than a memo with a disposing effect: under Fast Refresh
+ * the cleanup runs while the memo survives, which disposes the live geometry and
+ * empties every shelf until a hard reload.
  */
 const carcasses = new Map<number, THREE.BufferGeometry>()
 const carcassFor = (rows: number) => {
@@ -87,18 +82,16 @@ function Group({ group }: { group: Bucket }) {
 
     group.shelves.forEach((shelf, i) => {
       quaternion.setFromAxisAngle(axis, shelf.rotationY)
-      // `shelf.y` is the floor the case stands on. Hardcoding 0 here once sank
-      // every loft bookcase into the room below it, leaving its label and its
-      // books floating upstairs over nothing.
+      // `shelf.y` is the floor the case stands on: hardcoding 0 sinks every
+      // loft bookcase into the room below, leaving its books over nothing.
       matrix.compose(new THREE.Vector3(shelf.x, shelf.y, shelf.z), quaternion, one)
       mesh.setMatrixAt(i, matrix)
     })
     mesh.instanceMatrix.needsUpdate = true
     mesh.computeBoundingSphere()
 
-    // Written into the object the parent published, not into a fresh one: the
-    // parent's effect runs *after* this, so registering through a callback
-    // would be overwritten the moment the group list was republished.
+    // Into the object the parent published, not a fresh one: the parent's
+    // effect runs after this, so a callback would be overwritten at once.
     group.mesh = mesh
     return () => {
       group.mesh = null
@@ -130,11 +123,7 @@ type Bucket = ShelfGroup & { shelves: DerivedShelf[] }
 export function Bookshelves() {
   const world = useWorldStore((s) => s.world)
 
-  /**
-   * Grouped by row count, each group remembering which entry of `world.shelves`
-   * every instance is, so a raycast hit can be turned back into the shelf it
-   * struck.
-   */
+  /** Grouped by row count, each remembering its entries in `world.shelves`. */
   const groups = useMemo(() => {
     const byRows = new Map<number, Bucket>()
     world?.shelves.forEach((shelf, index) => {

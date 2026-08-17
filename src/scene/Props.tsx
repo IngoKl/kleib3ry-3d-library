@@ -5,13 +5,9 @@ import { useLibraryStore } from '../state/library'
 import type { PropKind } from '../services/types'
 
 /**
- * The small things standing about the room: the coffee cup, the cans, the
- * takeaway boxes. Real meshes rather than instances — there are a dozen of
- * them at most, and each is three or four boxes and cylinders.
- *
- * The models are shared with `HeldProp`, so the can in your hand is the can
- * you set down. Every model's origin is its base, which is what lets a prop
- * stand on whatever surface its stored `y` names.
+ * The cup, the cans, the takeaway boxes. Real meshes rather than instances,
+ * since there are a dozen at most. The models are shared with `HeldProp`, so the
+ * can in your hand is the can you set down, and every origin is its base.
  */
 
 const PORCELAIN = '#e6e4dd'

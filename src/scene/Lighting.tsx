@@ -11,23 +11,16 @@ import { effectiveQuality, SHADOW_MAP_SIZE, useSettings } from '../state/setting
 import { useWorldStore } from '../state/world'
 
 /**
- * Daylight through the windows plus warm interior fill — or moonlight, because
- * night is a switch now and a library is somewhere you want to be after dark.
+ * Daylight through the windows plus warm interior fill, or moonlight after dark.
  *
- * Only one directional light casts shadows, for the whole world: a shadow map
- * per room would eat the frame budget the books need, and a single sun angled
- * across the library reads as one building rather than several. At night the
- * same light is the moon, low and cold, so the shadow path never changes shape.
+ * One directional light casts shadows for the whole world: a shadow map per room
+ * would eat the budget the books need, and one sun reads as one building. At
+ * night it becomes the moon, so the shadow path never changes shape.
  *
- * Everything with a *position* — the lamps in the furniture, the wash coming
- * back off a window reveal, the fallback fixture a room with no lamp of its own
- * gets — is a candidate for the light pool rather than a mounted light. See
- * [lightPool.ts](./lightPool.ts) for why the count is fixed and the bindings
- * move. What is left mounted here is the light with no position at all: the
- * sun, the sky, and the ambient floor.
- *
- * Intensities are kept low: hot pools under the pendants and sun stripes you can
- * read by are a stage set rather than an afternoon.
+ * Everything with a position is a light-pool candidate rather than a mounted
+ * light — see `lightPool.ts`. What stays mounted here has no position at all:
+ * the sun, the sky and the ambient floor. Intensities are kept low, because hot
+ * pools and readable sun stripes are a stage set rather than an afternoon.
  */
 
 const REVEAL_COLOUR = colorCorners({
@@ -77,18 +70,17 @@ const GOLDEN_SKY = new THREE.Color('#d9a06a')
 const LIGHTNING_COLD = new THREE.Color('#dfe6ff')
 
 /**
- * How much ground the shadow map covers, in metres either side of you. A small
- * box following the camera, rather than one covering the whole document: at
- * this size 512 gives the quality a document-wide box needed 2048 for.
+ * How much ground the shadow map covers, following the camera rather than
+ * spanning the document: at this size 512 does what a document-wide box needed
+ * 2048 for.
  */
 const SHADOW_RADIUS = 18
 /** How far back up the sun's own direction the light sits. Covers the box above. */
 const SHADOW_THROW = 42
 
 /**
- * The pool itself: a fixed count of point lights, re-pointed at whatever is
- * nearest. Fixed, because the count is what every lit material is compiled
- * against — see [lightPool.ts](./lightPool.ts).
+ * A fixed count of point lights, re-pointed at whatever is nearest. Fixed
+ * because the count is what every lit material is compiled against.
  */
 function LightPool({ candidates, slots }: { candidates: PoolLight[]; slots: number }) {
   const lights = useRef<(THREE.PointLight | null)[]>([])
@@ -133,10 +125,8 @@ function LightPool({ candidates, slots }: { candidates: PoolLight[]; slots: numb
       const candidate = slot.currentId ? byId.get(slot.currentId) : undefined
       poolBindings[i] = candidate ? slot.currentId : null
       if (!candidate) {
-        // Its lamp was switched off, so it stopped being a candidate mid-fade.
-        // Free the slot outright rather than crossfading away from something
-        // already dark, or the lamp that replaces it waits for a fade nobody
-        // can see.
+        // Its lamp went out mid-fade. Free the slot outright rather than
+        // crossfade from something already dark, or its replacement waits.
         light.intensity = 0
         slot.level = 0
         continue
@@ -169,11 +159,7 @@ export function Lighting() {
   const settings = useSettings()
   const quality = effectiveQuality(settings)
 
-  /**
-   * The bounding box of every room in the document. Only the sun's *direction*
-   * is derived from it — the shadow camera itself is `SHADOW_RADIUS` and
-   * follows the player.
-   */
+  /** Only the sun's direction comes from this; the shadow camera follows the player. */
   const extent = useMemo(() => {
     if (!world || world.rooms.length === 0) {
       return { minX: -5, maxX: 5, minZ: -5, maxZ: 5, height: 3.2 }
@@ -195,10 +181,9 @@ export function Lighting() {
   }, [world])
 
   /**
-   * Every positioned light in the building, as pool candidates: the lamps that
-   * are alight, the wash off each glazed reveal, and a fallback fixture for a
-   * room that declares no lamp at all — so a map somebody is halfway through
-   * writing is not pitch dark while they write it.
+   * Every positioned light, as pool candidates: lit lamps, the wash off each
+   * glazed reveal, and a fallback fixture for a room that declares none — so a
+   * half-written map is not pitch dark while somebody writes it.
    */
   const candidates = useMemo(() => {
     if (!world) return []
@@ -223,9 +208,8 @@ export function Lighting() {
         })
       }
 
-      // Soft bounce off the reveal of each window, back into the room. An
-      // unglazed opening — a balustrade, a porch railing — is not a window and
-      // does not light anything. At night the same wash goes cold and faint.
+      // Soft bounce off each window reveal, back into the room. An unglazed
+      // opening is not a window and lights nothing; at night the wash goes cold.
       for (const [i, opening] of room.openings.entries()) {
         if (opening.kind !== 'window' || !opening.glazed) continue
         const y = room.elevation + opening.sill + opening.height / 2
@@ -241,9 +225,8 @@ export function Lighting() {
         out.push({
           id: `win-${room.id}-${i}`,
           position,
-          // Ranked a little shorter than it reaches, so a wall of windows does
-          // not crowd the room's own lamps out of the pool. A reveal is a wash;
-          // a lamp is the light the room is actually for.
+          // Ranked shorter than it reaches, so a wall of windows cannot crowd
+          // the room's own lamps out of the pool.
           reach: REVEAL_DISTANCE.day - REVEAL_BIAS,
           apply: (light) => {
             mixColor(light.color, REVEAL_COLOUR)
@@ -257,9 +240,8 @@ export function Lighting() {
   }, [world, on])
 
   /**
-   * Never more slots than the building could ever fill, so a one-room map does
-   * not carry eight lights it has no use for. Stable for a given document:
-   * switching a lamp off changes which candidates exist, never how many slots.
+   * Never more slots than the building could fill, so a one-room map carries no
+   * spares. Stable per document: switching a lamp changes candidates, not slots.
    */
   const ceiling = useMemo(() => {
     if (!world) return 0
@@ -277,16 +259,13 @@ export function Lighting() {
   const midZ = (extent.minZ + extent.maxZ) / 2
   const radius = Math.hypot(spanX, spanZ) / 2 + 5
 
-  // The target has to be *in the scene* for its world matrix to update —
-  // `target-position` on a detached default target leaves the sun aimed at the
-  // world origin no matter where the building is.
+  // The target must be in the scene for its world matrix to update, or the sun
+  // stays aimed at the world origin wherever the building is.
   const sunTarget = useMemo(() => new THREE.Object3D(), [])
 
   /**
-   * Which way the light comes from: low and to the north-west, over the lake.
-   * Derived from the document once and then held — the sun travels with the
-   * player so the shadow map stays overhead, so only its direction is a fact
-   * about the building.
+   * Low and to the north-west, over the lake. Derived once and held: the sun
+   * travels with the player, so only its direction is a fact about the building.
    */
   const sunDirection = useMemo(() => {
     const from = new THREE.Vector3(
@@ -303,9 +282,8 @@ export function Lighting() {
 
   const shadowSize = quality.shadowQuality === 'off' ? 0 : SHADOW_MAP_SIZE[quality.shadowQuality]
 
-  // The sky-wide lights, faded along the ambience blend rather than switched:
-  // dusk is the sun cooling into the moon while the ambient floor warms — and
-  // passing, mid-fade, through the golden hour.
+  // Faded along the ambience blend rather than switched: dusk is the sun
+  // cooling into the moon, passing through the golden hour on the way.
   useFrame((three) => {
     const warmth = goldenWarmth()
     const low = settings.lowPerformance
@@ -330,9 +308,8 @@ export function Lighting() {
       // and less of the push.
       sun.current.intensity = mixNumber(SUN_INTENSITY) * (1 - 0.3 * warmth)
 
-      // Walk the shadow box along with the camera, snapped to whole texels.
-      // Without the snap the map slides under the geometry by fractions of a
-      // texel and every shadow edge crawls as you move.
+      // Snapped to whole texels, or the map slides under the geometry by
+      // fractions of one and every shadow edge crawls as you move.
       if (shadowSize > 0) {
         const step = (SHADOW_RADIUS * 2) / shadowSize
         const eye = three.camera.position
@@ -370,16 +347,14 @@ export function Lighting() {
         ref={sun}
         position={[midX - spanX * 0.5, extent.height + radius * 0.55, extent.minZ - radius * 0.7]}
         target={sunTarget}
-        // Under cloud the sun is not dimmer so much as *diffuse*: most of the
-        // day arrives through the hemisphere above rather than as a beam, which
-        // is why the direct light drops much further than the room does.
+        // Under cloud the sun is diffuse rather than dim — most of the day
+        // arrives through the hemisphere — so direct light drops furthest.
         intensity={1.9}
         color="#ffe6c2"
         castShadow={shadowSize > 0}
         shadow-mapSize={[shadowSize || 1, shadowSize || 1]}
-        // Square, and now sized to where you are standing rather than to the
-        // document — see SHADOW_RADIUS. The frustum is in the *light's* view
-        // space, so it stays square as the sun goes off-axis.
+        // Sized to where you stand rather than to the document. The frustum is
+        // in the light's view space, so it stays square as the sun goes off-axis.
         shadow-camera-left={-SHADOW_RADIUS}
         shadow-camera-right={SHADOW_RADIUS}
         shadow-camera-top={SHADOW_RADIUS}

@@ -7,9 +7,8 @@ import { useAppStore } from '../state/store'
 import { coverFor, coverImageFor, onCoverReady, peekCoverImage } from '../state/covers'
 
 /**
- * The book currently in hand, floating just below the line of sight. It rides
- * the camera each frame rather than being parented to it, so the idle drift can
- * be independent of head bob.
+ * The book in hand. It rides the camera each frame rather than being parented to
+ * it, so the idle drift is independent of head bob.
  */
 export function HeldBook() {
   const group = useRef<THREE.Group>(null)
@@ -23,12 +22,9 @@ export function HeldBook() {
   const [cover, setCover] = useState<THREE.Texture | null>(null)
 
   /**
-   * Fetch (or render) the cover for whatever is in hand.
-   *
-   * Two paths into the same result: take whatever the shared cache already has
-   * *synchronously*, ask for it urgently if it has not, and listen for it
-   * landing. Rasterising a PDF cover takes a second or two, which is longer than
-   * a book is often held.
+   * Two paths into the same result: take what the cache has synchronously, ask
+   * urgently if it has none, and listen for it landing. Rasterising a PDF cover
+   * takes a second or two, which is longer than a book is often held.
    */
   useEffect(() => {
     let cancelled = false
@@ -36,9 +32,8 @@ export function HeldBook() {
     const show = (source: HTMLImageElement | string) => {
       if (cancelled) return
       if (typeof source === 'string') {
-        // Only once it has loaded: a texture handed to a material before its
-        // image arrives renders black, which for a freshly rasterised PDF
-        // cover was every first pickup.
+        // A texture handed to a material before its image arrives renders
+        // black, which for a freshly rasterised cover is every first pickup.
         new THREE.TextureLoader().load(source, (texture) => {
           if (cancelled) {
             texture.dispose()

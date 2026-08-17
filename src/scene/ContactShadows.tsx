@@ -5,14 +5,10 @@ import { useWorldStore } from '../state/world'
 import type { DerivedFurniture } from '../world/derive'
 
 /**
- * A soft dark ellipse under everything that stands on a floor.
- *
- * The shadow map grounds furniture only while shadows are on; without one, a
- * sofa floats a millimetre over the boards however exactly it is placed. One
- * instanced disc under every floor-standing piece fixes that for a single
- * draw call, and it is deliberately KEPT in Low Performance Mode — there it
- * is the only grounding the room gets. Static: matrices are rebuilt when the
- * world is, never per frame.
+ * A soft dark ellipse under everything standing on a floor. Without one a sofa
+ * floats over the boards however exactly it is placed, and one instanced disc
+ * fixes that for a single draw call — deliberately kept in Low Performance
+ * Mode, where it is the only grounding the room gets.
  */
 
 /** Half-axes of the blob, per kind. Null is a kind that casts none. */
@@ -60,10 +56,7 @@ function radiiOf(item: DerivedFurniture): [number, number] | null {
 
 type Blob = { x: number; y: number; z: number; rx: number; rz: number; yaw: number }
 
-/**
- * Never disposed, the carcass-cache argument: under Fast Refresh a disposing
- * effect can outlive the memo that rebuilt the geometry.
- */
+/** Never disposed: under Fast Refresh a cleanup can outlive the memo that rebuilt it. */
 let disc: THREE.BufferGeometry | null = null
 function discGeometry(): THREE.BufferGeometry {
   if (!disc) {

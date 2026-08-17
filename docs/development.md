@@ -79,7 +79,7 @@ And the container:
 
 ```bash
 npm run docker:build
-docker run --rm -p 8080:8080 -v /path/to/library:/library kleib3ry
+docker run --rm -p 127.0.0.1:8080:8080 -v /path/to/library:/library kleib3ry
 ```
 
 See [docker.md](docker.md).

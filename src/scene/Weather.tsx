@@ -11,22 +11,17 @@ import { roomBounds, windowPanes, type Panel } from '../world/derive'
 import { GROUND_Y } from '../world/terrain'
 
 /**
- * Weather.
+ * Weather — the cheapest thing that turns the outside from a picture with two
+ * settings into a place, and the room you are in into somewhere you are glad to
+ * be inside of.
  *
- * The lake and the forest already changed between day and night and nothing
- * else did, which made the outside a picture with two settings. Rain is the
- * cheapest thing that makes it a place: it falls, it beads on the glass you are
- * looking through, and it turns the room you are in into somewhere you are glad
- * to be inside of.
+ * Two halves, separate on purpose. What falls is instanced and follows you,
+ * because rain a hundred metres away is fog's problem; what runs down the
+ * windows is a texture on the panes the document already derives, so a window
+ * somebody adds to their own map is wet without anything being said.
  *
- * Two halves, and they are separate on purpose. What falls is instanced and
- * follows you, because rain a hundred metres away is fog's problem. What runs
- * down the windows is a texture on the panes the document already derives, so a
- * window somebody adds to their own map is wet without anybody having said so.
- *
- * It is a switch rather than a simulation — `K`, or the settings panel — and it
- * is saved beside the lamps, because "is it raining" is a fact about the room
- * right now in exactly the way "is it night" is.
+ * A switch rather than a simulation, saved beside the lamps: "is it raining" is
+ * a fact about the room in exactly the way "is it night" is.
  */
 
 /** How many drops are in the air. The second number is low performance mode. */
@@ -43,13 +38,9 @@ const EAVES = 0.7
 type Drop = { x: number; y: number; z: number; speed: number; sway: number }
 
 /**
- * The falling rain.
- *
- * Recycled rather than respawned: a drop that reaches the ground is moved back
- * to the top of the column with a fresh position, so the count is fixed and
- * nothing is allocated in the frame loop. The column travels with you, which is
- * what makes seven hundred drops look like weather instead of like a shower
- * cubicle — you never reach its edge.
+ * Recycled rather than respawned: a drop reaching the ground goes back to the
+ * top of the column, so the count is fixed and the frame loop allocates nothing.
+ * The column travels with you, so you never reach its edge.
  */
 function Falling({ keepOut }: { keepOut: readonly { minX: number; maxX: number; minZ: number; maxZ: number }[] }) {
   const low = useSettings((s) => s.lowPerformance)
@@ -108,9 +99,8 @@ function Falling({ keepOut }: { keepOut: readonly { minX: number; maxX: number; 
       const z = player.z + drop.z
       const y = GROUND_Y + drop.y
 
-      // Nothing falls through a roof. Cheaper than a raycast and exactly as
-      // convincing: what you would notice is rain indoors, not the absence of
-      // rain in the two metres of eaves outside the window.
+      // Cheaper than a raycast and as convincing: you notice rain indoors, not
+      // its absence in the two metres of eaves outside the window.
       at.set(x, y, z)
       matrix.compose(at, spin, under(x, z) ? hidden : size)
       node.setMatrixAt(i, matrix)
@@ -163,18 +153,16 @@ function WetPane({
 
   const own = useMemo(() => {
     const clone = texture.clone()
-    // Shares the canvas — three keys its uploads by source — so this costs a
-    // descriptor rather than another texture. What it buys is beads the same
-    // size on a 4.6 m window and on a 1.2 m one.
+    // Shares the canvas — three keys uploads by source — so this costs a
+    // descriptor, and buys beads the same size on a 4.6 m window and a 1.2 m one.
     clone.needsUpdate = true
     clone.repeat.set(Math.max(1, width / 0.9), Math.max(1, h / 0.9))
     return clone
   }, [texture, width, h])
   useEffect(() => () => own.dispose(), [own])
 
-  // A hair off the glass's own plane. Both are transparent and neither writes
-  // depth, so sharing a plane is a coin toss per pixel — which reads as the
-  // water flickering on and off as you move your head.
+  // A hair off the glass's plane: both are transparent and neither writes
+  // depth, so sharing one is a coin toss per pixel as you move your head.
   const [px, py, pz] = pane.position
   const nudge = 0.008
 
@@ -201,10 +189,9 @@ export function Weather() {
   const raining = useAmbienceStore((s) => s.rain)
   const world = useWorldStore((s) => s.world)
 
-  // `settling` is simply "there is still rain in the air": the eased blend is
-  // above zero. Stay mounted until it lands, so the shower dries out instead
-  // of cutting; one state write per change, and the panes' shared opacity is
-  // written here — one loop rather than one subscription per window.
+  // "There is still rain in the air": the eased blend is above zero. Stays
+  // mounted until it lands, so the shower dries out rather than cutting, and
+  // the panes' shared opacity is written here rather than per window.
   const [settling, setSettling] = useState(false)
   const paneMats = useRef(new Set<THREE.MeshBasicMaterial>())
   useFrame(() => {

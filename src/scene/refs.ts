@@ -1,12 +1,9 @@
 import type * as THREE from 'three'
 
 /**
- * Handles to the instanced meshes the interaction raycaster needs. They live in
- * different components, and threading refs through the tree for one consumer is
- * more ceremony than it is worth.
- *
- * Bookcases come in groups because a four-shelf carcass is a different mesh
- * from a six-shelf one, so a raycast hit gives an instance id that only means
+ * Handles to the instanced meshes the interaction raycaster needs, which live in
+ * different components. Bookcases come in groups because a four-shelf carcass is
+ * a different mesh from a six-shelf one, so a hit's instance id only means
  * something alongside the group's `indices` back into `world.shelves`.
  */
 export type ShelfGroup = {
@@ -42,16 +39,11 @@ export const sceneRefs: {
   tapeIds: string[]
   /** `tapeCrates[instanceId]` — which crate that tape is filed in. */
   tapeCrates: string[]
-  /**
-   * Whiteboards: furniture the crosshair treats as somewhere to pin a page.
-   * Its own group because the question asked of one is not the question asked of
-   * a table or a lamp.
-   */
+  /** Its own group: the question asked of a board is not the one asked of a table. */
   boards: THREE.Object3D | null
   /**
-   * The room shells, so a page can be pinned to a plain wall as well as to a
-   * board. Published by `Rooms`, which is the only thing that knows where the
-   * walls ended up once their openings were cut out of them.
+   * So a page can be pinned to a plain wall. Published by `Rooms`, the only
+   * thing that knows where the walls ended up once their openings were cut.
    */
   walls: THREE.Object3D | null
   /** Pages and notes already pinned up, for taking one down again. */
@@ -65,27 +57,17 @@ export const sceneRefs: {
   openBooks: THREE.Object3D | null
   /** Everything you can sit on. Each mesh carries its furniture id in userData. */
   seats: THREE.Object3D | null
-  /**
-   * The cat's hitbox — one invisible box round the whole animal, so pointing at
-   * it finds a cat rather than an ear.
-   */
+  /** One invisible box round the whole animal, so pointing finds a cat, not an ear. */
   cat: THREE.Object3D | null
   /** How many shelved books currently hold an atlas cell, i.e. are printed. */
   printedSpines: number
   /** Cells drawn since launch. Rises when you move, flat when you stand still. */
   spinesReprinted: number
-  /**
-   * Books whose printed spine is out of date — a cover arrived and its colour
-   * is now known. Drained by the next printing pass.
-   */
+  /** Books whose printed spine is out of date: a cover arrived. Drained by the next pass. */
   spineDirty: Set<string>
   /** How far the focused book has slid out, 0 to 1, so its cover can follow it. */
   focusPull: number
-  /**
-   * The scene itself, published by `Probe` for `__app.sceneForTest` — so a
-   * test or a probe can ask what is actually mounted, the same argument
-   * `boards()` makes for measuring meshes rather than trusting the document.
-   */
+  /** Published by `Probe`, so a test can ask what is actually mounted. */
   scene: THREE.Scene | null
 } = {
   books: null,

@@ -4,12 +4,9 @@ import { composeAnnotationsMarkdown } from '../src/data/annotationsMarkdown'
 import type { AnnotationsDocument } from '../src/services/types'
 
 /**
- * The annotations file's arithmetic and its prose form.
- *
- * These run in the browser project because the source is TypeScript modules
- * Playwright transpiles; none of them need a page. The conversions matter
- * because they are the file boundary: get one wrong by a page and every
- * bookmark in `annotations.json` drifts a spread on the next launch.
+ * The annotations file's arithmetic and its prose form. The conversions matter
+ * because they are the file boundary: one wrong by a page and every bookmark
+ * drifts a spread on the next launch.
  */
 
 test('a spread externalises as its recto and converts back to itself', () => {

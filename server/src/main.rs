@@ -3,13 +3,10 @@
 //! Every route answers exactly one `LibraryService` method, in the order they
 //! are declared in `src/services/types.ts`, so the two files read side by side.
 //!
-//! Two things the desktop shell does not have to do:
-//!
-//!   - serve the built front end itself, so the container is one process;
-//!   - serve media by *path* under `/media/`, checking every path against the
-//!     library folder first. Tauri's asset scope does this for the desktop app;
-//!     there is none here, so `is_allowed` is the one piece of security in the
-//!     program.
+//! Two things the desktop shell does not do: serve the built front end, so the
+//! container is one process; and serve media by path under `/media/`. Tauri's
+//! asset scope covers the latter on the desktop, so `is_allowed` is the one
+//! piece of security here.
 //!
 //!     kleib3ry-server --root /library --dist /app/dist --port 8080
 
@@ -31,9 +28,8 @@ struct Config {
     dist: PathBuf,
 }
 
-/// What a scan is doing, for the progress poll. Polled rather than pushed:
-/// there is no event channel here, and a websocket for one number would be a
-/// second protocol to keep working. The driver polls only during a scan.
+/// What a scan is doing. Polled rather than pushed: a websocket for one number
+/// would be a second protocol to keep working.
 #[derive(Default, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Progress {
@@ -192,9 +188,8 @@ fn route(request: &Request, state: &State) -> Handler {
 
     match (method, path) {
         // ---- where the library is -------------------------------------------
-        //
-        // The root is the mount, not a choice: a picker would mean letting the
-        // browser walk the server's disk, so `canPickFolder` is false here.
+        // The root is the mount, not a choice: a picker would let the browser
+        // walk the server's disk, so `canPickFolder` is false here.
         ("GET", "/api/root") => Ok(Response::json(&json!({
             "root": state.config.root.to_string_lossy(),
         }))),
@@ -217,9 +212,8 @@ fn route(request: &Request, state: &State) -> Handler {
             Ok(Response::json(&serde_json::to_value(with_covers).map_err(oops)?))
         }
 
-        // A paper off arXiv, downloaded into the mounted folder and indexed.
-        // The one route that reaches outside the container; the same core
-        // function the desktop app calls. See `core/src/paper.rs`.
+        // The one route that reaches outside the container, through the same
+        // core function the desktop app calls. See `core/src/paper.rs`.
         ("POST", "/api/paper") => {
             let id = std::str::from_utf8(&request.body).unwrap_or("").trim().to_string();
             match paper::fetch(&state.config.root, &files.index, &files.covers, &id) {
@@ -419,9 +413,8 @@ fn write_json_file(path: &Path, body: &[u8]) -> std::result::Result<(), String> 
 }
 
 fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handler {
-    // The id becomes a file name in the covers directory and arrives from a
-    // browser. `is_cover_id` is in core because the desktop shell writes covers
-    // through the same guard — see `catalog::is_cover_id`.
+    // The id becomes a file name and arrives from a browser; the guard is in
+    // core because the desktop shell writes covers through it too.
     if !kleib3ry_core::catalog::is_cover_id(id) {
         return Ok(Response::text(400, "not a cover id"));
     }
@@ -478,12 +471,9 @@ fn decode_base64(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The four directories a library folder lets the front end read — the same
-/// four the desktop app grants through Tauri's asset scope.
-///
-/// Nothing else is reachable, and `books/` in particular is not: a book goes
-/// through `/api/book/<id>`, so the only files a browser can name directly are
-/// the ones the index already told it about. `roms/` follows that rule too.
+/// The four directories the front end may read, matching the desktop app's asset
+/// scope. `books/` is deliberately not among them: a book goes through
+/// `/api/book/<id>`, so a browser can only name what the index gave it.
 fn media_roots(root: &Path) -> Vec<PathBuf> {
     let files = save_files(root);
     vec![
@@ -494,11 +484,9 @@ fn media_roots(root: &Path) -> Vec<PathBuf> {
     ]
 }
 
-/// True if `path` really is inside one of the servable directories.
-///
-/// Canonicalised first: `..` in a URL, a symlink planted in `music/` and a
-/// Windows short name all resolve away before the comparison. A path that
-/// cannot be canonicalised does not exist, and is refused.
+/// True if `path` really is inside one of the servable directories. Canonicalised
+/// first, so `..`, a planted symlink and a Windows short name all resolve away;
+/// a path that cannot be canonicalised does not exist, and is refused.
 fn is_allowed(path: &Path, root: &Path) -> bool {
     let Ok(real) = path.canonicalize() else { return false };
     if !real.is_file() {
@@ -535,9 +523,8 @@ fn serve_media(request: &Request, state: &State) -> Handler {
     let length = file.metadata().map_err(oops)?.len();
     let mime = http::mime_of(&wanted);
 
-    // A range, if one was asked for. This is what makes a tape seekable. The
-    // bytes are streamed from the open file rather than buffered: Chromium
-    // opens a video with `Range: bytes=0-`, which is the whole tape.
+    // What makes a tape seekable. Streamed from the open file rather than
+    // buffered: Chromium opens a video with `Range: bytes=0-`.
     if let Some(header) = request.header("range") {
         return match http::parse_range(header, length) {
             Some((start, end)) => Ok(Response::stream(206, mime, file, start, end - start + 1)
@@ -550,12 +537,9 @@ fn serve_media(request: &Request, state: &State) -> Handler {
     Ok(Response::stream(200, mime, file, 0, length).with("Accept-Ranges", "bytes"))
 }
 
-/// The built front end.
-///
-/// A single-page app, so anything that is not a file falls back to `index.html`
-/// — and the path is resolved component by component with `..` refused outright,
-/// rather than canonicalised, because `dist/` may legitimately not exist yet and
-/// a missing directory should read as "no front end" rather than as an error.
+/// The built front end. A single-page app, so a non-file falls back to
+/// `index.html`; the path is resolved component by component with `..` refused
+/// rather than canonicalised, since a missing `dist/` means "no front end".
 fn serve_static(request: &Request, state: &State) -> Handler {
     let relative = request.path.trim_start_matches('/');
     let mut safe = PathBuf::new();
@@ -603,13 +587,9 @@ mod tests {
         dir.canonicalize().unwrap_or(dir)
     }
 
-    /// The routing table, driven directly.
-    ///
-    /// No sockets: `route` is a pure function of a request and a library folder,
-    /// so the interesting half of this program can be tested without binding a
-    /// port or waiting for a thread. What that leaves untested is the parsing in
-    /// `http.rs`, which has its own tests, and the accept loop, which is four
-    /// lines.
+    /// The routing table, driven directly. `route` is a pure function of a
+    /// request and a folder, so no port is bound; that leaves only `http.rs`'s
+    /// parsing, which has its own tests, and the four-line accept loop.
     struct Harness {
         root: PathBuf,
         state: State,
@@ -724,9 +704,8 @@ mod tests {
         let back: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/layout", b"").body).unwrap();
         assert_eq!(back["rows"]["west-0:0"][0], "abc");
 
-        // Parsed before it is written: a half-sent PUT must not leave a layout the
-        // next load refuses, which would look like the library forgetting where
-        // every book was.
+        // Parsed before written: a half-sent PUT must not leave a layout the
+        // next load refuses, which reads as the library forgetting everything.
         assert!(h.try_call("PUT", "/api/layout", br#"{"rows":"#).is_err());
         let still: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/layout", b"").body).unwrap();
         assert_eq!(still["rows"]["west-0:0"][0], "abc");
@@ -981,9 +960,8 @@ mod tests {
         assert!(decode_base64("not base64!").is_none());
     }
 
-    /// The one security property in the program: a browser may read the three
-    /// media folders and nothing else — not the index, not the books, and
-    /// certainly not whatever is above the mount.
+    /// The one security property: a browser may read the media folders and
+    /// nothing else — not the index, not the books, not above the mount.
     #[test]
     fn only_the_media_folders_are_readable() {
         let root = temp_root("scope");
@@ -1015,9 +993,8 @@ mod tests {
 
     #[test]
     fn a_missing_covers_folder_does_not_make_the_others_unreadable() {
-        // `is_allowed` canonicalises each allowed root, and a library with no
-        // artwork folder has one that cannot be canonicalised. That must not
-        // take the rest of the list with it.
+        // A library with no artwork folder has a root that cannot be
+        // canonicalised; that must not take the rest of the list with it.
         let root = temp_root("partial");
         fs::write(root.join("music/track.mp3"), b"notes").unwrap();
         assert!(!root.join("artwork").exists());

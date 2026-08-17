@@ -8,19 +8,13 @@ import { useAmbienceStore } from '../state/ambience'
 import { useWorldStore } from '../state/world'
 
 /**
- * Smoke over a lit fire.
+ * Every fireplace gets a brick stack through the roof and, while lit, a column
+ * of puffs climbing out of it. Seen from the trail, a thread of smoke says
+ * somebody is home — the window glow's job after dark.
  *
- * Every fireplace in the document gets a brick stack rising through the roof
- * above its hearth, and — while the fire is on — a column of puffs climbing
- * out of it and drifting east. Seen from the trail, a thread of smoke is what
- * says somebody is home, which is the same job the window glow does after dark.
- *
- * The puffs are one instanced mesh across every fireplace in the world. A puff
- * fades by *shrinking* at the end of its climb rather than by alpha, because an
- * instanced material has one opacity for everyone; a sphere dwindling into the
- * sky reads as dissolving, which is all that is asked of it. Colour follows the
- * ambience blend so the smoke is pale against a day sky and barely-there
- * against a dark one.
+ * One instanced mesh for every fireplace in the world. A puff fades by shrinking
+ * rather than by alpha, because an instanced material has one opacity for
+ * everyone, and a sphere dwindling into the sky reads as dissolving anyway.
  */
 const PUFFS_PER_FIRE = 9
 /** How far a puff climbs before it is gone, and how far the wind carries it. */
@@ -50,10 +44,7 @@ export function ChimneySmoke() {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshBasicMaterial>(null)
 
-  /**
-   * One stack per fireplace: from its room's ceiling to just above the wall
-   * plate, which is high enough to clear the slope of the roof it comes out of.
-   */
+  /** From the room's ceiling to just above the wall plate, clearing the roof slope. */
   const stacks = useMemo<Stack[]>(() => {
     if (!world) return []
     return world.lights
@@ -133,9 +124,8 @@ export function ChimneySmoke() {
     node.instanceMatrix.needsUpdate = true
   })
 
-  // A hand-set bound over every column of smoke, so the mesh culls like
-  // anything else instead of being drawn while you face a bookcase — the
-  // instances are rewritten around fixed stacks, so the sphere never moves.
+  // A hand-set bound, so the mesh culls like anything else rather than drawing
+  // while you face a bookcase. The stacks are fixed, so the sphere never moves.
   useEffect(() => {
     const node = mesh.current
     if (!node || stacks.length === 0) return
@@ -151,12 +141,9 @@ export function ChimneySmoke() {
   const masonry = useMemo(() => {
     if (stacks.length === 0) return null
     const parts = stacks.flatMap((stack) => {
-      // From the ceiling up, rather than a fixed length down from the top: a
-      // fixed 1.1 m hung a quarter of a metre *below* the ceiling of every room
-      // with a fire in it, which in the cabin is a block of brick in the loft,
-      // through the top of a bookcase. Lifted off the ceiling plane by a
-      // centimetre as well — a box whose bottom face is exactly in that plane
-      // is two surfaces at one height, and they shimmer against each other.
+      // From the ceiling up rather than a fixed length down from the top, or
+      // the stack hangs into the room below as a block of brick. Lifted a
+      // centimetre off the ceiling plane too, since coplanar faces shimmer.
       const bottom = stack.base + 0.01
       const height = Math.max(0.2, stack.top - bottom)
       const shaft = new THREE.BoxGeometry(0.44, height, 0.44)

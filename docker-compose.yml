@@ -2,32 +2,27 @@
 #
 #   LIBRARY=/srv/books docker compose up --build
 #
-# Then open http://localhost:8080 and press "scan" in the panel the first time.
+# Then open http://localhost:8080 and scan once. See docs/docker.md.
 services:
   kleib3ry:
     build: .
     image: kleib3ry
-    # `${LIBRARY:-./library}` so `docker compose up` works in a fresh clone
-    # without editing anything, and points somewhere real when you say so.
+    # Defaulted so a fresh clone runs without editing anything.
     volumes:
       - ${LIBRARY:-./library}:/library
-    # Bound to the host itself, because there is no authentication and no TLS in
-    # front of it — and Docker publishes ports by writing its own firewall rules,
-    # so the host's would not have saved you. Opening it to the house means
-    # dropping the address: '${PORT:-8080}:8080'.
+    # Localhost-only: there is no auth and no TLS, and Docker publishes ports by
+    # writing its own firewall rules. To open it up, drop the address.
     ports:
       - '127.0.0.1:${PORT:-8080}:8080'
     environment:
       # The mount point. The server reads this when no --root is passed.
       KLEIB3RY_LIBRARY: /library
-    # Your own uid, so the index and the cover cache the server writes into
-    # <library>/.library/ belong to you rather than to root. Set it in a .env
-    # file beside this one: UID=1000, GID=1000.
+    # Your own uid, so what the server writes into <library>/.library/ belongs to
+    # you rather than to root. Set UID/GID in a .env file beside this one.
     user: '${UID:-0}:${GID:-0}'
     restart: unless-stopped
-    # There is no health endpoint, and adding one for its own sake would be a
-    # route that exists only to be polled. The front end being served *is* the
-    # health check — if the process is up, it answers.
+    # No health endpoint: a route existing only to be polled earns nothing, and
+    # the front end being served is the same signal.
     healthcheck:
       test: ['CMD-SHELL', 'exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e "GET /api/root HTTP/1.0\\r\\n\\r\\n" >&3 && head -1 <&3 | grep -q 200']
       interval: 30s
