@@ -79,6 +79,16 @@ export const DEFAULT_WORLD_TEXT = `{
         // the loft floor for the same reason the big one's does: the slab hangs
         // from 2.28, and 0.85 + 1.35 stops at 2.2.
         { "wall": "north", "at": 4.2, "width": 1.2, "height": 1.35, "sill": 0.85, "kind": "window" },
+        // The loft's window, in this room's wall because the loft stands inside
+        // this room's volume and builds no north wall of its own. Its sill is
+        // above the loft floor at 2.5, so from down here it is out of sight
+        // behind the boards and from up there it is a window by the sofa.
+        //
+        // It has to *tile* with the two below it rather than overlap them: two
+        // openings that share a stretch of wall cut each other's panels to
+        // ribbons, whatever their heights. The big one ends at x = 2.3 and the
+        // small one starts at 3.6, so this one has the pier between them.
+        { "wall": "north", "at": 2.95, "width": 1.1, "height": 1.25, "sill": 3.05, "kind": "window" },
         { "wall": "south", "at": 0.3, "width": 1.6, "height": 1.4, "sill": 0.95, "kind": "window" },
         // Doors need a matching door in the next room's facing wall. The east
         // door sits towards the south end of its wall because the staircase
@@ -618,7 +628,15 @@ export const DEFAULT_WORLD_TEXT = `{
         // held, so both hands stay free for books, and E on any empty tabletop
         // sets it back down.
         { "id": "porch-side", "kind": "sidetable", "at": [2.75, 1.45], "facing": 0 },
-        { "id": "headlamp", "kind": "headlamp", "at": [2.75, 1.45], "facing": 200, "y": 0.56 }
+        { "id": "headlamp", "kind": "headlamp", "at": [2.75, 1.45], "facing": 200, "y": 0.56 },
+
+        // The folding pair, stood against the east end of the porch where such
+        // things live. X picks one up and carries it; X again stands it wherever
+        // you are — down at the water, over the brook, by the campfire. Where you
+        // left it is remembered in books.json, like a shoved box, so this line
+        // says where it *lives* and never where it has got to.
+        { "id": "folding-chair", "kind": "foldingchair", "at": [3.15, 0.65], "facing": 250 },
+        { "id": "folding-table", "kind": "foldingtable", "at": [3.1, -0.45], "facing": 270 }
       ]
     },
 

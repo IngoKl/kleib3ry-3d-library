@@ -30,6 +30,7 @@ export const tauriDriver: LibraryService = {
   kind: 'tauri',
   canPickFolder: true,
   canIndex: true,
+  canFetchPapers: true,
 
   async getRoot() {
     return invoke<string | null>('get_library_root')
@@ -80,6 +81,10 @@ export const tauriDriver: LibraryService = {
 
   async saveRenderedCover(id, dataUrl) {
     return invoke<string>('save_rendered_cover', { id, dataUrl })
+  },
+
+  async fetchPaper(id) {
+    return invoke<IndexedBook>('fetch_paper', { id })
   },
 
   async loadWorld() {

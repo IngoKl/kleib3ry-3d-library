@@ -191,7 +191,7 @@ type LibraryState = {
 }
 
 /**
- * What `carriedBox` holds while you are carrying a box that does not exist yet
+ * What `carried` holds while you are carrying a box that does not exist yet
  * — one fresh off the stack in the kitchen. It becomes real furniture, with a
  * real id, the moment it is set down. Starts with `#` so it can never collide
  * with a document id.
@@ -224,6 +224,13 @@ function currentWorld(): DerivedWorld | null {
   return useWorldStore.getState().world
 }
 
+/**
+ * Whether a part-empty row leans. A setting rather than a fact about the
+ * library, so it is read at the moment of packing rather than stored with it —
+ * the same books, the same rows, drawn plumb or settled.
+ */
+const leaning = () => useSettings.getState().booksLean
+
 function project(
   world: DerivedWorld | null,
   result: Reconciliation,
@@ -232,7 +239,7 @@ function project(
   const lookup = (id: string) => dims.get(id)
   return {
     rows: result.rows,
-    packed: world ? packLayout(world, result.rows, lookup) : [],
+    packed: world ? packLayout(world, result.rows, lookup, leaning()) : [],
     boxes: result.boxes,
     boxed: result.boxed,
     reconciliation: describeReconciliation(result),
@@ -708,7 +715,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({
         ...remember(id, null),
         rows: next,
-        packed: world ? packLayout(world, next, (x) => dims.get(x)) : [],
+        packed: world ? packLayout(world, next, (x) => dims.get(x), leaning()) : [],
         boxes: nextBoxes,
         boxed: flatten(world, nextBoxes),
       })
@@ -734,7 +741,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({
         ...remember(id, { key, index: at }),
         rows: next,
-        packed: world ? packLayout(world, next, (x) => dims.get(x)) : [],
+        packed: world ? packLayout(world, next, (x) => dims.get(x), leaning()) : [],
         boxes: nextBoxes,
         boxed: flatten(world, nextBoxes),
       })
@@ -755,7 +762,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({
         ...remember(id, { boxId }),
         rows: next,
-        packed: world ? packLayout(world, next, (x) => dims.get(x)) : [],
+        packed: world ? packLayout(world, next, (x) => dims.get(x), leaning()) : [],
         boxes: nextBoxes,
         boxed: flatten(world, nextBoxes),
       })
@@ -774,7 +781,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         ...remember(id, null),
         loose: { ...get().loose, [id]: placement },
         rows: next,
-        packed: world ? packLayout(world, next, (x) => dims.get(x)) : [],
+        packed: world ? packLayout(world, next, (x) => dims.get(x), leaning()) : [],
         boxes: nextBoxes,
         boxed: flatten(world, nextBoxes),
       })
@@ -822,7 +829,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         savedRows,
         savedBoxes: without(savedBoxes, moved),
         rows: arranged.rows,
-        packed: packLayout(world, arranged.rows, lookup),
+        packed: packLayout(world, arranged.rows, lookup, leaning()),
         boxes: nextBoxes,
         boxed: flatten(world, nextBoxes),
       })
@@ -927,7 +934,14 @@ export function packedRow(shelfIndex: number, row: number): PackedBook[] {
   const shelf = world?.shelves[shelfIndex]
   if (!world || !shelf) return []
   const { rows, dims } = useLibraryStore.getState()
-  return packRow(shelf, shelfIndex, row, rows[rowKey(shelf.id, row)] ?? [], (id) => dims.get(id))
+  return packRow(
+    shelf,
+    shelfIndex,
+    row,
+    rows[rowKey(shelf.id, row)] ?? [],
+    (id) => dims.get(id),
+    leaning(),
+  )
 }
 
 // Re-reconcile whenever a new world document is applied. At module scope, so

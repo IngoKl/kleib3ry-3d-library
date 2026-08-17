@@ -101,15 +101,16 @@ as an opaque binary: `scripts/make-icon.mjs` writes `assets/icon-source.png` and
 
 ## How the Tests Are Arranged
 
-Three files, three jobs:
+Two jobs, five files:
 
-- **`tests/collision.spec.ts`**, **`tests/world.spec.ts`** and
-  **`tests/chip8.spec.ts`** unit-test pure modules _through the Playwright
-  runner_ — no browser, no page. They are there because Playwright already
-  transpiles the TypeScript, so this costs no second toolchain. They cover
-  collision, shelving, the world document, reconciliation, the roof, the
-  terrain, and the CHIP-8 interpreter — which also runs the bundled Pong ROM
-  for real, so the assembler in `scripts/lib/make-chip8.mjs` and the CPU in
+- **`tests/collision.spec.ts`**, **`tests/world.spec.ts`**,
+  **`tests/chip8.spec.ts`** and **`tests/annotations.spec.ts`** unit-test pure
+  modules _through the Playwright runner_ — no browser, no page. They are there
+  because Playwright already transpiles the TypeScript, so this costs no second
+  toolchain. They cover collision, shelving, the world document, reconciliation,
+  the roof, the terrain, the spread-to-page arithmetic that `annotations.json`
+  is written in, and the CHIP-8 interpreter — which also runs the bundled Pong
+  ROM for real, so the assembler in `scripts/lib/make-chip8.mjs` and the CPU in
   `src/arcade/chip8.ts` are held to agree.
 - **`tests/smoke.spec.ts`** drives the real production bundle in headless
   Chromium.
@@ -119,9 +120,18 @@ Three files, three jobs:
 
 The browser tests reach the app through `window.__app` in
 [../src/App.tsx](../src/App.tsx) — teleport, look, stats, `readForTest`, the
-pins, the tapes, the arcade, the cat. It is a deliberate verification surface and it exists
-because pointer lock is unavailable headlessly. **Extend it when a new behaviour
-needs covering**; do not reach into the stores from a test.
+lamps, the weather, the pins, the records, the tapes, the arcade, the props, the
+courier, the whiteboards, the page ink, and the cat. It is a deliberate
+verification surface and it exists because pointer lock is unavailable
+headlessly. **Extend it when a new behaviour needs covering**; do not reach into
+the stores from a test.
+
+The `…ForTest` methods on it are a category worth understanding rather than a
+smell. Aiming at a 6 cm can on a counter, or a moving cat, from a headless
+driver is a pose hunt with nothing to do with what is being tested, so those
+call exactly the one line the key press calls and let the test assert on what
+happens next. Anything the crosshair itself has to find — a book on a shelf, a
+box, a wall to pin to — is still aimed at for real.
 
 Three things about the smoke tests worth knowing before you debug one:
 
@@ -158,7 +168,11 @@ the player's body a hand's width behind the eyes rather than around them: a
 surface 10 cm from the near plane fills half the screen with fragments nobody
 sees. Assemblies of more than a handful of boxes are merged into one geometry
 per material (the plants, the staircases, the cat, the body) for the same
-reason a draw call is worth counting at all here.
+reason a draw call is worth counting at all here — the helpers for that are in
+[../src/scene/geometry.ts](../src/scene/geometry.ts), and anything scattered
+about the room in numbers is one `InstancedMesh` rather than a mesh apiece. The
+[atmosphere layer](architecture.md#atmosphere) is written to that rule
+throughout, and says which of its pieces Low Performance Mode drops.
 
 To measure any of it: `window.__app.stats()` reports draw calls, triangles and
 frames, and `window.__app.spines()` reports how many atlas cells are printed and
@@ -209,6 +223,10 @@ read where it applies. If it is about the _room_ — the lamps, night, weather �
 goes in `ambience.ts` and is saved into the library folder. Getting that the
 wrong way round means a library folder that carries an assertion about somebody
 else's GPU, or a graphics setting that vanishes when you delete `ambience.json`.
+**Match the Clock** is the case that shows where the line actually is: it
+_causes_ night, which is a room fact, but what it asks is what time it is here,
+which is a machine fact — so the switch is in `settings.ts` and only the night
+it turns on is written to the library.
 
 **A field in the world document.** Parse it in `schema.ts` with a default, so no
 existing document has to mention it, and make the failure message name the path

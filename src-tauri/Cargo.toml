@@ -19,9 +19,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# Indexing, SQLite and the format probes live in their own crate, which knows
-# nothing about a window — see `../core`. That is what lets the server image be
-# a static binary instead of a Linux box carrying a browser engine.
+# Indexing, the JSON index and the format probes live in their own crate, which
+# knows nothing about a window — see `../core`. That is what lets the server
+# image be a static binary instead of a Linux box carrying a browser engine.
 kleib3ry_core = { path = "../core" }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"

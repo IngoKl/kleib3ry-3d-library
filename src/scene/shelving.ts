@@ -59,6 +59,9 @@ export function widthOf(ids: readonly string[], dims: (id: string) => BookDimens
 
 export const ROW_CAPACITY = INTERIOR_WIDTH - 2 * MARGIN
 
+/** The steepest a row ever leans, in radians — about eight degrees. */
+const SETTLE_MAX = 0.145
+
 export function rowFits(
   ids: readonly string[],
   dims: (id: string) => BookDimensions | undefined,
@@ -77,6 +80,8 @@ export function packRow(
   row: number,
   ids: readonly string[],
   dims: (id: string) => BookDimensions | undefined,
+  /** False stands every book plumb: a setting, because it is taste. */
+  settle = true,
 ): PackedBook[] {
   const left = -INTERIOR_WIDTH / 2 + MARGIN
   const limit = INTERIOR_WIDTH / 2 - MARGIN
@@ -97,24 +102,40 @@ export function packRow(
       localX: cursor + size.thickness / 2,
       localY: surface + size.height / 2,
       localZ: SHELF.depth / 2 - 0.02 - size.depth / 2,
-      lean: size.lean,
+      lean: 0,
     })
     cursor += size.thickness
   }
 
-  // A partly filled row ends with its last book tipped into the gap, the way a
-  // real run of books settles when nothing holds it up. The book is also slid
-  // along by the base its tilt swings back, so it rests against its neighbour
-  // instead of through it. Angle keyed to the book's id: stable, and no two
-  // rows lean identically. Visual only — the row's capacity is unchanged.
-  const last = packed[packed.length - 1]
-  const size = last && dims(last.id)
-  if (last && size && packed.length >= 2) {
-    const free = limit - cursor
-    if (free > 0.055) {
-      const tilt = Math.min(0.1 + (hashId(last.id) % 90) / 1000, (free - 0.01) / size.height)
-      last.lean = -tilt
-      last.localX += Math.sin(tilt) * (size.height / 2)
+  // A row with slack in it leans *back* — the whole run tips towards the closed
+  // end until its innermost spine is resting on the side panel, feet sliding
+  // into the gap. Tipping the other way, out into the empty half, is a book
+  // resting on nothing; and tipping one book while its neighbour stands plumb
+  // opens a wedge of air between two spines, which is the artefact this shape
+  // exists to avoid. Sheared as one, every spine stays in face contact with the
+  // next whatever their heights differ by, and there is no wedge anywhere.
+  //
+  // The angle is what the slack allows, up to `SETTLE_MAX`: a nearly full row
+  // barely moves, a full one stands plumb, and a half-empty one leans like a
+  // half-empty shelf. Keyed to the row rather than to a book, so putting one
+  // more book away does not re-pitch the whole shelf.
+  const free = limit - cursor
+  if (settle && packed.length > 0 && free > 0.008) {
+    // The innermost book's top corner is what meets the panel, so its height is
+    // what decides how far the run can slide before it does.
+    const reach = dims(packed[0]!.id)!.height
+    const wanted = SETTLE_MAX * (0.55 + (hashId(rowKey(shelf.id, row)) % 45) / 100)
+    const tilt = Math.min(wanted, Math.asin(Math.min(1, (free - 0.004) / reach)))
+    if (tilt > 0.02) {
+      const slide = Math.sin(tilt) * reach
+      for (const item of packed) {
+        const size = dims(item.id)!
+        item.lean = tilt
+        // The instance turns about the book's *centre*, which swings its foot
+        // the other way; taking that back off leaves every foot where the
+        // packing put it, so the run stays flush along the shelf.
+        item.localX += slide - Math.sin(tilt) * (size.height / 2)
+      }
     }
   }
 
@@ -125,11 +146,12 @@ export function packLayout(
   world: DerivedWorld,
   rows: Record<RowKey, string[]>,
   dims: (id: string) => BookDimensions | undefined,
+  settle = true,
 ): PackedBook[] {
   const packed: PackedBook[] = []
   world.shelves.forEach((shelf, index) => {
     for (let row = 0; row < shelf.rows; row++) {
-      packed.push(...packRow(shelf, index, row, rows[rowKey(shelf.id, row)] ?? [], dims))
+      packed.push(...packRow(shelf, index, row, rows[rowKey(shelf.id, row)] ?? [], dims, settle))
     }
   })
   return packed

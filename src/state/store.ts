@@ -3,6 +3,9 @@ import { library } from '../services'
 import { MARKER_INKS } from '../data/inks'
 import type { DriverKind, PropKind } from '../services/types'
 import { startDelivery } from './courier'
+// The library store, for a book that has just arrived: it does not import this
+// one, so the dependency runs one way and there is no cycle.
+import { useLibraryStore } from './library'
 import { useWorldStore } from './world'
 import { arcadeMachine } from './arcade'
 import { player } from './player'
@@ -63,6 +66,14 @@ type AppState = {
   focusedSeat: string | null
   /** Box under the crosshair while empty-handed — one you could unpack or browse. */
   focusedBox: string | null
+  /**
+   * Folding furniture under the crosshair, which `X` picks up.
+   *
+   * Its own field rather than a reading of `focusedSeat`: a folding chair is a
+   * seat *and* something you carry, and the two verbs are offered at once —
+   * `E` sits down, `X` takes it with you.
+   */
+  focusedPortable: string | null
   /** Box under the crosshair while holding a book — one you could drop it into. */
   boxTarget: string | null
   /**
@@ -148,8 +159,11 @@ type AppState = {
   focusedShelf: string | null
   /** Where a held book would land on a table, in world metres, and on what. */
   surfaceTarget: SurfaceTarget | null
-  /** Moving box being carried about the room, or null. */
-  carriedBox: string | null
+  /**
+   * What is in your arms: a moving box, or a folded chair or table. Both hands,
+   * which is why nothing else is offered while it is up.
+   */
+  carried: string | null
   /** Shelf id whose label you are typing, or null. */
   labelling: string | null
   /**
@@ -212,7 +226,21 @@ type AppState = {
    * point is walking out into the dark with both hands free for books.
    */
   wornLamp: string | null
-  /** True between ordering on the telephone and the food turning up. */
+  /**
+   * What the telephone is asking you, or null when it is on the hook.
+   *
+   * Two steps, because there are two things to order and one of them needs a
+   * number typing: the menu, and then the field the arXiv id goes in.
+   */
+  phoning: 'menu' | 'paper' | null
+  /** True while a paper is being fetched, so the card can say so. */
+  fetching: boolean
+  /**
+   * Why the last order failed, if it did. A bad id and a paper arXiv has never
+   * heard of have different fixes, so the message is kept rather than a flag.
+   */
+  orderError: string | null
+  /** True between ordering on the telephone and the delivery turning up. */
   ordering: boolean
   /** True while the courier is somewhere on the grass. Mounts his meshes. */
   courierAbout: boolean
@@ -261,6 +289,7 @@ type AppState = {
   setShelfTarget: (target: ShelfTarget | null) => void
   setFocusedSeat: (id: string | null) => void
   setFocusedBox: (id: string | null) => void
+  setFocusedPortable: (id: string | null) => void
   setBoxTarget: (id: string | null) => void
   setBoxViews: (views: Record<string, { offset: number; shown: number; total: number }>) => void
   /** Riffle through a box: `+1` deeper into it, `-1` back towards the top. */
@@ -285,7 +314,7 @@ type AppState = {
   toggleHud: () => void
   setControlsOpen: (open: boolean) => void
   setSurfaceTarget: (target: SurfaceTarget | null) => void
-  setCarriedBox: (id: string | null) => void
+  setCarried: (id: string | null) => void
   setLabelling: (shelfId: string | null) => void
   setHeldPin: (sheet: HeldSheet | null) => void
   setPinTarget: (target: PinTarget | null) => void
@@ -314,7 +343,13 @@ type AppState = {
   setFocusedProp: (id: string | null) => void
   setWornLamp: (id: string | null) => void
   /** Ring for a delivery. A courier walks it to the porch steps a while later. */
+  setPhoning: (state: 'menu' | 'paper' | null) => void
   order: () => void
+  /**
+   * Order a paper. Resolves once it has been fetched — or refused — because
+   * the card in front of you is waiting to say which.
+   */
+  orderPaper: (id: string) => Promise<void>
   setCourierAbout: (about: boolean) => void
   /**
    * Drink or eat what is in your hand. The coffee is the one with an effect —
@@ -414,6 +449,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   shelfTarget: null,
   focusedSeat: null,
   focusedBox: null,
+  focusedPortable: null,
   boxTarget: null,
   boxOffsets: {},
   boxTrail: {},
@@ -444,7 +480,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   searching: false,
   focusedCat: false,
   surfaceTarget: null,
-  carriedBox: null,
+  carried: null,
   labelling: null,
   heldPin: null,
   pinTarget: null,
@@ -458,6 +494,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   heldProp: null,
   focusedProp: null,
   wornLamp: null,
+  phoning: null,
+  fetching: false,
+  orderError: null,
   ordering: false,
   courierAbout: false,
   jumpTo: null,
@@ -492,6 +531,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setFocusedBox: (focusedBox) => {
     if (get().focusedBox !== focusedBox) set({ focusedBox })
   },
+  setFocusedPortable: (focusedPortable) => {
+    if (get().focusedPortable !== focusedPortable) set({ focusedPortable })
+  },
   setBoxTarget: (boxTarget) => {
     if (get().boxTarget !== boxTarget) set({ boxTarget })
   },
@@ -524,7 +566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSurfaceTarget: (surfaceTarget) => {
     if (!sameSurface(get().surfaceTarget, surfaceTarget)) set({ surfaceTarget })
   },
-  setCarriedBox: (carriedBox) => set({ carriedBox }),
+  setCarried: (carried) => set({ carried }),
   setLabelling: (labelling) => set({ labelling }),
   setHeldPin: (heldPin) => set({ heldPin }),
   // Written off the per-frame raycast, so it guards against no-op writes for
@@ -577,9 +619,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setWornLamp: (wornLamp) => set({ wornLamp }),
 
+  setPhoning: (phoning) => set({ phoning, orderError: null }),
+
   order: () => {
     if (get().ordering) return
-    set({ ordering: true })
+    set({ ordering: true, phoning: null, orderError: null })
     // The kitchen takes its time; then somebody walks it over. The box lands
     // when the courier reaches the steps — see `Courier.tsx` — not on a timer,
     // so `ordering` stays true until he has actually put it down.
@@ -592,9 +636,34 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ ordering: false })
         return
       }
-      startDelivery(world)
+      startDelivery(world, { kind: 'takeaway' })
       set({ courierAbout: true })
     }, PREP_MS)
+  },
+
+  orderPaper: async (id) => {
+    if (get().ordering || get().fetching) return
+    set({ fetching: true, orderError: null })
+    try {
+      // The download happens now, before the courier sets off, so a paper that
+      // is not there is a message on the telephone rather than a man walking
+      // half a mile to hand you nothing.
+      const book = await library.fetchPaper(id)
+      // Straight into the library the ordinary way: a new book reconciles into
+      // a box, and the courier takes it back out of one when he arrives. No
+      // second path for a book that came in through the door.
+      await useLibraryStore.getState().load()
+      const world = useWorldStore.getState().world
+      if (!world) {
+        set({ fetching: false, phoning: null })
+        return
+      }
+      set({ fetching: false, phoning: null, ordering: true })
+      startDelivery(world, { kind: 'book', id: book.id, title: book.title })
+      set({ courierAbout: true })
+    } catch (e) {
+      set({ fetching: false, orderError: e instanceof Error ? e.message : String(e) })
+    }
   },
 
   setCourierAbout: (courierAbout) => set({ courierAbout }),
@@ -736,6 +805,7 @@ export function roomHasKeyboard(): boolean {
     !state.noting &&
     !state.annotating &&
     !state.jumping &&
-    !state.searching
+    !state.searching &&
+    state.phoning === null
   )
 }

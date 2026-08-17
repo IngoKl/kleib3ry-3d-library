@@ -91,8 +91,9 @@ fn hex16(bytes: &[u8]) -> String {
 }
 
 /// Milliseconds, matching `stamp_of`: whole seconds missed a same-length
-/// rewrite landing within one clock second.
-fn modified_millis(meta: &fs::Metadata) -> i64 {
+/// rewrite landing within one clock second. Shared with `paper`, which writes
+/// an index entry of its own and must date it the same way a scan would.
+pub(crate) fn modified_millis(meta: &fs::Metadata) -> i64 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())

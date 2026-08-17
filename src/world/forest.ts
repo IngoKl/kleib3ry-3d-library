@@ -1,6 +1,15 @@
 import { between, mulberry32 } from '../lib/rng'
 import type { Bounds, Solid } from './derive'
-import { GROUND_Y, LAKE, PATH, TRAIL_WIDTH, lakeRadius, onTrail } from './terrain'
+import {
+  GROUND_Y,
+  LAKE,
+  PATH,
+  TRAIL_WIDTH,
+  WALK_RADIUS,
+  alongStream,
+  lakeRadius,
+  onTrail,
+} from './terrain'
 
 /**
  * The forest, as data.
@@ -32,7 +41,7 @@ export type Tree = {
   species: Species
 }
 
-export const TREE_COUNT = 420
+export const TREE_COUNT = 520
 
 /** Nothing grows this close to the buildings. */
 export const CLEARING = 4.5
@@ -45,9 +54,9 @@ export const PROPORTIONS: Record<Species, { trunk: number; canopyFrom: number; g
 }
 
 /**
- * True where a tree would be standing in the lake, on the shore path, on the
- * trail between the buildings, in the view from the north windows, or in the
- * kitchen.
+ * True where a tree would be standing in the lake or the brook, on the shore
+ * path, on the trail between the buildings, in the view from the north windows,
+ * or in the kitchen.
  *
  * The two paths are the reason this is a function rather than a rectangle test.
  * A walk round the water is only a walk if the trees leave room for it: grown
@@ -61,6 +70,10 @@ export function occupied(x: number, z: number, keepOut: readonly Bounds[]): bool
   const r = lakeRadius(x, z)
   if (r < PATH.to) return true
   if (onTrail(x, z, TRAIL_WIDTH)) return true
+  // The brook, with a verge on each side: a stream you can only see between
+  // trunks is a stream nobody knows is there, and the bank is where you walk
+  // when you follow it down to the water.
+  if (alongStream(x, z, 1.7)) return true
   // The sight-line from the north windows down to the water. It stops at the
   // lake — the water keeps itself clear from there — so the tree line closes
   // behind the far shore and the campfire burns against forest, not a plain.
@@ -76,10 +89,11 @@ export function growForest(keepOut: readonly Bounds[]): Tree[] {
   const trees: Tree[] = []
 
   // Rejection sampling in a ring: uniform in the annulus, thinned near the
-  // clearing so the tree line reads as an edge rather than as a wall.
+  // clearing so the tree line reads as an edge rather than as a wall. Sown to a
+  // little past the walk, so the forest closes over wherever the walk stops.
   for (let i = 0; i < TREE_COUNT * 6 && trees.length < TREE_COUNT; i++) {
     const angle = random() * Math.PI * 2
-    const distance = 8 + Math.sqrt(random()) * 92
+    const distance = 8 + Math.sqrt(random()) * (WALK_RADIUS - 4)
     const x = Math.cos(angle) * distance
     const z = Math.sin(angle) * distance
     if (occupied(x, z, keepOut)) continue

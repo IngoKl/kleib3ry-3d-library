@@ -2,11 +2,11 @@
 //! for the walls, `video/` for the tapes that go in the television, and `roms/`
 //! for the arcade machine.
 //!
-//! Deliberately *not* in SQLite. The book index is there because probing a PDF
-//! is slow enough to be worth caching and a large collection is tens of
-//! thousands of files; a music folder is hundreds and an artwork folder is
-//! dozens, so walking them on demand is simpler than a second cache to keep in
-//! sync — and a record you dropped in five seconds ago is on the shelf.
+//! Deliberately *not* indexed. Books are because probing a PDF is slow enough
+//! to be worth caching and a large collection is tens of thousands of files; a
+//! music folder is hundreds and an artwork folder is dozens, so walking them on
+//! demand is simpler than a second cache to keep in sync — and a record you
+//! dropped in five seconds ago is on the shelf.
 
 use std::fs;
 use std::path::{Path, PathBuf};

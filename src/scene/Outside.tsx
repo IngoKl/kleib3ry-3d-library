@@ -14,18 +14,26 @@ import { between, mulberry32 } from '../lib/rng'
 import { CLEARING, PROPORTIONS, occupied, type Tree } from '../world/forest'
 import { roomBounds, type Bounds } from '../world/derive'
 import {
+  BRIDGES,
+  BRIDGE_DECK,
+  BRIDGE_Y,
+  BROOK_BED_Y,
+  BROOK_WATER_Y,
   GROUND_RADIUS,
   GROUND_Y,
   LAKE,
   PATH,
   SHORE_EDGE,
   SHORE_Y,
+  STREAM,
   TRAILS,
   TRAIL_WIDTH,
+  WALK_RADIUS,
   WATER_Y,
   lakePoint,
   lakeRadius,
   onTrail,
+  streamWidth,
 } from '../world/terrain'
 import { groundMottleTexture } from './materials'
 import { MOON_DIRECTION, radialGlowTexture } from './sky'
@@ -249,12 +257,16 @@ function Forest({ trees }: { trees: Tree[] }) {
  * circle. Collision is untouched: the swell starts where you cannot go.
  */
 function groundGeometry(segments = 48): THREE.BufferGeometry {
-  const rings = [96, 104, 113, 123, 136, 150]
+  // Flat out to the walk, and for a few metres past it where the last trees
+  // stand; the swell is entirely beyond both, so growing the valley is a matter
+  // of the two radii and nothing here has to be re-tuned by hand.
+  const flat = WALK_RADIUS + 10
+  const rings = [WALK_RADIUS, ...[0, 1, 2, 3, 4].map((i) => flat + ((GROUND_RADIUS - flat) * i) / 4)]
   const smooth = (t: number) => t * t * (3 - 2 * t)
   // The three sines sum to at most 1.95; scaled so the rim reaches ±2.2 m.
   const amplitude = 2.2 / 1.95
   const swell = (r: number, a: number) =>
-    smooth(Math.max(0, (r - 104) / (150 - 104))) *
+    smooth(Math.max(0, (r - flat) / (GROUND_RADIUS - flat))) *
     amplitude *
     (Math.sin(3 * a + 1.2) + 0.6 * Math.sin(5 * a + 4.0) + 0.35 * Math.sin(8 * a + 2.4))
 
@@ -725,13 +737,172 @@ function Trail() {
   )
 }
 
+/**
+ * One sheet of the brook: the ribbon its centre line sweeps out, widened by
+ * `extra` — 0 for the water, a little more for the gravel under it.
+ *
+ * A quad per leg and a disc at each bend, exactly like the trail, because a
+ * corner made of two quads alone has a notch bitten out of the inside of the
+ * turn. The width comes from `streamWidth`, so what is drawn is the same brook
+ * the walk controller refuses to step into.
+ */
+function streamSheet(extra: number): THREE.BufferGeometry {
+  const lengths = [0]
+  for (let i = 1; i < STREAM.length; i++) {
+    lengths.push(
+      lengths[i - 1]! + Math.hypot(STREAM[i]![0] - STREAM[i - 1]![0], STREAM[i]![1] - STREAM[i - 1]![1]),
+    )
+  }
+  const total = lengths[lengths.length - 1]!
+  const halfAt = (i: number) => streamWidth(lengths[i]! / total) / 2 + extra
+
+  const parts: THREE.BufferGeometry[] = []
+  for (let i = 1; i < STREAM.length; i++) {
+    const [ax, az] = STREAM[i - 1]!
+    const [bx, bz] = STREAM[i]!
+    const dx = bx - ax
+    const dz = bz - az
+    const length = Math.hypot(dx, dz)
+    if (length < 1e-6) continue
+    const nx = -dz / length
+    const nz = dx / length
+    const ha = halfAt(i - 1)
+    const hb = halfAt(i)
+
+    const strip = new THREE.BufferGeometry()
+    strip.setAttribute(
+      'position',
+      new THREE.BufferAttribute(
+        new Float32Array([
+          ax + nx * ha, 0, az + nz * ha,
+          ax - nx * ha, 0, az - nz * ha,
+          bx + nx * hb, 0, bz + nz * hb,
+          bx - nx * hb, 0, bz - nz * hb,
+        ]),
+        3,
+      ),
+    )
+    strip.setAttribute(
+      'normal',
+      new THREE.BufferAttribute(new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]), 3),
+    )
+    strip.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(8), 2))
+    strip.setIndex([0, 2, 1, 1, 2, 3])
+    parts.push(strip)
+  }
+
+  for (let i = 0; i < STREAM.length; i++) {
+    const bend = new THREE.CircleGeometry(halfAt(i), 10)
+    bend.rotateX(-Math.PI / 2)
+    bend.translate(STREAM[i]![0], 0, STREAM[i]![1])
+    parts.push(bend)
+  }
+
+  const merged = mergeGeometries(parts, false)!
+  parts.forEach((part) => part.dispose())
+  // Planar UVs in world metres, at the lake's own scale — so the ripple runs
+  // straight out of the brook and into the water it joins.
+  const position = merged.getAttribute('position')
+  const uv = merged.getAttribute('uv')
+  for (let i = 0; i < position.count; i++) uv.setXY(i, position.getX(i) / 8, position.getZ(i) / 8)
+  return merged
+}
+
+/**
+ * The plank over the brook: a deck with a rail either side, one merged
+ * geometry for however many crossings the valley has.
+ *
+ * Built from the same `BRIDGES` the walk controller stands you on, turned to
+ * the flow rather than to a compass point, because a bridge that is not square
+ * to the water is a bridge with a corner in it.
+ */
+function bridgeGeometry(): THREE.BufferGeometry | null {
+  const parts: THREE.BufferGeometry[] = []
+  for (const bridge of BRIDGES) {
+    const turn = new THREE.Matrix4().compose(
+      new THREE.Vector3(bridge.x, 0, bridge.z),
+      new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        Math.atan2(bridge.dx, bridge.dz),
+      ),
+      new THREE.Vector3(1, 1, 1),
+    )
+    const add = (
+      size: [number, number, number],
+      at: [number, number, number],
+    ) => {
+      const box = new THREE.BoxGeometry(...size)
+      box.translate(...at)
+      box.applyMatrix4(turn)
+      parts.push(box)
+    }
+
+    const span = bridge.reach * 2
+    // The deck's top face is the floor `terrainAt` hands back, so the box hangs
+    // below that number rather than being centred on it.
+    add([span, 0.09, BRIDGE_DECK * 2], [0, BRIDGE_Y - 0.045, 0])
+    for (const side of [-1, 1]) {
+      add([span, 0.07, 0.07], [0, BRIDGE_Y + 0.52, side * (BRIDGE_DECK - 0.06)])
+      for (const end of [-1, 1]) {
+        add(
+          [0.09, 0.56, 0.09],
+          [end * (bridge.reach - 0.22), BRIDGE_Y + 0.28, side * (BRIDGE_DECK - 0.06)],
+        )
+      }
+    }
+  }
+  if (parts.length === 0) return null
+  const merged = mergeGeometries(parts, false)
+  parts.forEach((part) => part.dispose())
+  return merged
+}
+
+/**
+ * The brook, and the plank over it.
+ *
+ * The same three-sheet trick the beach uses — gravel over the grass, water over
+ * the gravel — rather than a channel cut into a disc you have to be able to walk
+ * on. It shares the lake's material, so the water running in is the water it
+ * runs into: one scrolling ripple, and it goes grey in the rain with everything
+ * else without a second thing to remember.
+ */
+function Stream({ water }: { water: THREE.Material }) {
+  const bed = useMemo(() => streamSheet(0.5), [])
+  const surface = useMemo(() => streamSheet(0), [])
+  const planks = useMemo(() => bridgeGeometry(), [])
+  useEffect(
+    () => () => {
+      bed.dispose()
+      surface.dispose()
+      planks?.dispose()
+    },
+    [bed, surface, planks],
+  )
+
+  return (
+    <group>
+      <mesh geometry={bed} position={[0, BROOK_BED_Y, 0]} receiveShadow>
+        <meshStandardMaterial color="#8a7f66" roughness={1} />
+      </mesh>
+      <mesh geometry={surface} material={water} position={[0, BROOK_WATER_Y, 0]} />
+      {planks && (
+        <mesh geometry={planks} receiveShadow>
+          <meshStandardMaterial color="#6f5636" roughness={0.9} flatShading />
+        </mesh>
+      )}
+    </group>
+  )
+}
+
 /** Low ridges beyond the lake, to stop the horizon being a straight line. */
 function Hills() {
   const hills = useMemo(() => {
     const random = mulberry32(0xb17c)
     return Array.from({ length: 9 }, (_, i) => {
       const angle = Math.PI + ((i + 0.5) / 9 - 0.5) * 2.6
-      const distance = between(random, 105, 135)
+      // Out past the walk, in proportion to the disc, so a bigger valley does
+      // not leave its own horizon standing in the middle of it.
+      const distance = between(random, GROUND_RADIUS * 0.7, GROUND_RADIUS * 0.9)
       return {
         x: Math.cos(angle) * distance,
         z: Math.sin(angle) * distance,
@@ -1170,7 +1341,6 @@ export function Outside() {
   const scene = useThree((s) => s.scene)
   const background = useRef<THREE.Color | null>(null)
   const fog = useRef<THREE.FogExp2 | null>(null)
-  const waterMaterial = useRef<THREE.MeshStandardMaterial>(null)
 
   // Set directly on the scene: as JSX children of this group, `attach` would
   // write `group.fog`/`group.background`, which the renderer never reads.
@@ -1191,6 +1361,23 @@ export function Outside() {
 
   const ripples = useMemo(() => makeWaterNormals(), [])
   useEffect(() => () => ripples.dispose(), [ripples])
+
+  // One material for every body of water in the valley, made here rather than
+  // declared inside the lake's mesh: the brook is the same water, and sharing
+  // it is what keeps the two the same colour, the same weather and the same
+  // ripple without a second thing to advance per frame.
+  const waterMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#3f6076',
+        roughness: 0.12,
+        metalness: 0.55,
+        normalMap: ripples,
+        normalScale: new THREE.Vector2(0.3, 0.3),
+      }),
+    [ripples],
+  )
+  useEffect(() => () => waterMaterial.dispose(), [waterMaterial])
 
   // ~5 m per tile across the 300 m disc. The texture is a module singleton and
   // only the ground reads it, so setting its repeat here is not a fight.
@@ -1219,17 +1406,14 @@ export function Outside() {
       fog.current.density = mixNumber(FOG_DENSITY)
     }
 
-    const water = waterMaterial.current
-    if (water) {
-      mixColor(water.color, WATER_COLOUR)
-      water.roughness = mixNumber(WATER_ROUGHNESS)
-      water.metalness = mixNumber(WATER_METALNESS)
-      // The ripples drift diagonally, faster and choppier in the rain.
-      const t = clock.elapsedTime
-      ripples.offset.set(t * 0.012, t * 0.0085)
-      const chop = 0.3 + ambienceBlend.rain * 0.9
-      water.normalScale.set(chop, chop)
-    }
+    mixColor(waterMaterial.color, WATER_COLOUR)
+    waterMaterial.roughness = mixNumber(WATER_ROUGHNESS)
+    waterMaterial.metalness = mixNumber(WATER_METALNESS)
+    // The ripples drift diagonally, faster and choppier in the rain.
+    const t = clock.elapsedTime
+    ripples.offset.set(t * 0.012, t * 0.0085)
+    const chop = 0.3 + ambienceBlend.rain * 0.9
+    waterMaterial.normalScale.set(chop, chop)
   })
 
   // The same trunks the walk controller collides with. Grown in `deriveWorld`
@@ -1307,16 +1491,10 @@ export function Outside() {
           rough and grey in the rain, because what a shower does to a lake is
           take the reflection off it. The scrolling normal map is what keeps it
           from being a painted floor: water moves, even from the porch. */}
-      <mesh geometry={water} position={[0, WATER_Y, 0]}>
-        <meshStandardMaterial
-          ref={waterMaterial}
-          color="#3f6076"
-          roughness={0.12}
-          metalness={0.55}
-          normalMap={ripples}
-          normalScale={[0.3, 0.3]}
-        />
-      </mesh>
+      <mesh geometry={water} material={waterMaterial} position={[0, WATER_Y, 0]} />
+
+      {/* The brook coming down the east side of the houses to join it. */}
+      <Stream water={waterMaterial} />
 
       <Shoreline />
       <Erratics keepOut={keepOut} />

@@ -28,6 +28,10 @@ export function Courier() {
 }
 
 function Walker() {
+  // What he is carrying, read once per delivery: `courier.parcel` is set before
+  // he sets off and does not change on the way, so this is mount-time state
+  // rather than something the frame loop has to look at.
+  const book = courier.parcel.kind === 'book'
   const group = useRef<THREE.Group>(null)
   const legL = useRef<THREE.Group>(null)
   const legR = useRef<THREE.Group>(null)
@@ -80,8 +84,17 @@ function Walker() {
       // Face the house while the box goes down.
       courier.yaw = courier.target.yaw + Math.PI
       if (courier.pause <= 0) {
-        // The box lands, and only now: the delivery is him, not a timer.
-        useLibraryStore.getState().placeProp({ kind: 'takeaway', full: true, ...courier.target })
+        // The parcel lands, and only now: the delivery is him, not a timer.
+        const shelf = useLibraryStore.getState()
+        if (courier.parcel.kind === 'book') {
+          // It reconciled into a box when it was indexed, which is where a new
+          // book goes; he takes it back out and stands it on the ground, so
+          // what you find at the steps is the paper itself.
+          shelf.unshelve(courier.parcel.id)
+          shelf.putDown(courier.parcel.id, { ...courier.target, open: false, spread: 0 })
+        } else {
+          shelf.placeProp({ kind: 'takeaway', full: true, ...courier.target })
+        }
         useAppStore.setState({ ordering: false })
         courier.carrying = false
         courier.phase = 'leaving'
@@ -154,9 +167,19 @@ function Walker() {
         <sphereGeometry args={[0.11, 10, 8]} />
         <meshStandardMaterial color="#d8b59a" roughness={0.9} />
       </mesh>
-      {/* The food, in his hands until it is yours. */}
+      {/* What he is bringing, in his hands until it is yours. */}
       <group name="parcel" position={[0, 1.02, 0.33]}>
-        <PropModel kind="takeaway" full />
+        {book ? (
+          // A book rather than a takeaway: hand-sized, and held flat the same
+          // way the box is. Its own slab rather than the real book's mesh —
+          // `Books` draws what is *in* the room, and this is not in it yet.
+          <mesh castShadow>
+            <boxGeometry args={[0.2, 0.05, 0.28]} />
+            <meshStandardMaterial color="#7d3b32" roughness={0.85} />
+          </mesh>
+        ) : (
+          <PropModel kind="takeaway" full />
+        )}
       </group>
     </group>
   )

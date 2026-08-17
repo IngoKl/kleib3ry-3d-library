@@ -57,6 +57,12 @@ export const FURNITURE_SIZE: Record<
   desk: { width: 1.5, depth: 0.72, height: 0.75, solid: true, surface: true },
   // A surface, so a book can be left on the covers — where books end up.
   bed: { width: 1.5, depth: 2.05, height: 0.55, solid: true, surface: true },
+  // The two you can pick up and carry off. Light enough to want to: a slat
+  // chair and a trestle table, both narrower than the porch door they live
+  // beside. They are ordinary furniture in every other respect — you sit on the
+  // one and put a book down on the other — and that is the point of them.
+  foldingchair: { width: 0.46, depth: 0.5, height: 0.88, solid: true, surface: false },
+  foldingtable: { width: 0.86, depth: 0.58, height: 0.7, solid: true, surface: true },
   box: { width: 0.52, depth: 0.4, height: 0.36, solid: true, surface: false },
   // Flattened boxes leaning against a wall, waiting to be made up. E takes one
   // — see `spawnBox` — which is how a room gets more boxes than the document
@@ -144,7 +150,28 @@ export const WALL_MOUNTED = new Set<FurnitureKind>([
 ])
 
 /** Furniture you can sit in. A footstool is for feet. */
-export const SITTABLE = new Set<FurnitureKind>(['armchair', 'sofa', 'diningchair', 'bench', 'bed'])
+export const SITTABLE = new Set<FurnitureKind>([
+  'armchair',
+  'sofa',
+  'diningchair',
+  'bench',
+  'bed',
+  'foldingchair',
+])
+
+/**
+ * Furniture you can pick up and carry off, which is a shorter list than
+ * "furniture light enough to shift": a moving box is not on it, because the box
+ * has its own verbs — filling it, emptying it, breaking it down — and pressing
+ * `X` on one has meant "carry the box" since before there was anything else to
+ * carry. What is on it is the folding pair: a chair to take down to the water
+ * and a table to put the coffee on when you get there.
+ *
+ * A carried piece is stored exactly like a shoved box, as a `FurnitureOverride`
+ * in `books.json`. The document says where it *lives* — on the porch — and the
+ * override says where you left it.
+ */
+export const PORTABLE = new Set<FurnitureKind>(['foldingchair', 'foldingtable'])
 
 /** Furniture that emits light, and can therefore be switched. */
 export const LAMPS = new Set<FurnitureKind>([
@@ -506,6 +533,17 @@ const overlapsInPlan = (a: RoomSpec, b: RoomSpec): boolean => {
 }
 
 /**
+ * How far a suppressed eave stops *short* of the wall it leans on.
+ *
+ * Not flush: flush puts the slab's cut end exactly in the plane of the
+ * neighbour's wall face, and two surfaces in one plane shimmer against each
+ * other as you move — the porch roof's end fighting the great room's south
+ * wall, seen from inside the room. A couple of centimetres buries the cut end
+ * inside the wall slab, which is 12 cm thick, so nothing shows from either side.
+ */
+const JOINT = 0.02
+
+/**
  * How far the eaves stand out on one side — which is the nominal overhang,
  * unless there is a building in the way.
  *
@@ -541,10 +579,10 @@ function overhangOn(
     const alongZ = o.minZ < b.maxZ + ROOM_GAP + EPS && o.maxZ > b.minZ - ROOM_GAP - EPS
     if (!alongX || !alongZ) continue
 
-    if (wall === 'east' && near(o.minX, b.maxX)) return 0
-    if (wall === 'west' && near(o.maxX, b.minX)) return 0
-    if (wall === 'south' && near(o.minZ, b.maxZ)) return 0
-    if (wall === 'north' && near(o.maxZ, b.minZ)) return 0
+    if (wall === 'east' && near(o.minX, b.maxX)) return -JOINT
+    if (wall === 'west' && near(o.maxX, b.minX)) return -JOINT
+    if (wall === 'south' && near(o.minZ, b.maxZ)) return -JOINT
+    if (wall === 'north' && near(o.maxZ, b.minZ)) return -JOINT
   }
   return nominal
 }

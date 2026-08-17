@@ -76,6 +76,9 @@ export type FurnitureKind =
   | 'table'
   | 'desk'
   | 'bed'
+  // things you carry about and set down where you want them
+  | 'foldingchair'
+  | 'foldingtable'
   // storage
   | 'box'
   | 'boxstack'
@@ -361,6 +364,8 @@ export const FURNITURE_KINDS = [
   'table',
   'desk',
   'bed',
+  'foldingchair',
+  'foldingtable',
   'box',
   'boxstack',
   'recordshelf',

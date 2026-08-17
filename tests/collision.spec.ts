@@ -148,39 +148,66 @@ test.describe('shelving', () => {
       expect(item.localZ + size.depth / 2).toBeLessThanOrEqual(SHELF.depth / 2)
     }
 
+    // Where each book actually meets the shelf: a settled book turns about its
+    // own centre, so its foot is back where the packing put it.
+    const foot = (item: (typeof packed)[number]) =>
+      item.localX + Math.sin(item.lean) * (DIMS.get(item.id)!.height / 2)
+
     for (let i = 1; i < packed.length; i++) {
       const previous = packed[i - 1]!
       const current = packed[i]!
       const gap =
-        current.localX -
+        foot(current) -
         DIMS.get(current.id)!.thickness / 2 -
-        (previous.localX + DIMS.get(previous.id)!.thickness / 2)
-      // Flush, except the last book of a part-filled row, which is allowed the
-      // small slide that goes with its lean into the gap.
-      if (i === packed.length - 1) {
-        expect(gap).toBeGreaterThanOrEqual(0)
-        expect(gap).toBeLessThanOrEqual(0.06)
-      } else {
-        expect(gap).toBeCloseTo(0, 6)
-      }
+        (foot(previous) + DIMS.get(previous.id)!.thickness / 2)
+      // Flush all the way along, settled or not — the whole point of settling
+      // the run at one angle is that no wedge of air opens between two spines.
+      expect(gap).toBeCloseTo(0, 6)
     }
   })
 
-  test('the last book of a part-filled row leans into the gap, and stays inside it', () => {
-    // Plenty of free space: the closer leans, and only the closer.
+  test('a part-filled row leans back on the panel, and stays inside the compartment', () => {
     const few = BOOKS.slice(0, 6).map((b) => b.id)
     const packed = packRow(SHELF_0, 0, 0, few, lookup)
-    expect(packed.at(-1)!.lean).toBeLessThan(0)
-    for (const item of packed.slice(0, -1)) {
-      expect(item.lean).toBe(DIMS.get(item.id)!.lean)
-    }
-    // Even leaning, the book stays inside the compartment: the shifted base
-    // plus the tipped top corner both land short of the side panel.
+
+    // Positive is a top tipped back towards the closed end, and the whole run
+    // shares the angle — which is what keeps the spines in face contact.
+    expect(packed[0]!.lean).toBeGreaterThan(0)
+    for (const item of packed) expect(item.lean).toBeCloseTo(packed[0]!.lean, 9)
+
+    // The innermost book's top corner is what rests on the panel: it lands back
+    // where the packing put its foot, and no further.
+    const first = DIMS.get(packed[0]!.id)!
+    const topEdge =
+      packed[0]!.localX -
+      (first.thickness / 2) * Math.cos(packed[0]!.lean) -
+      Math.sin(packed[0]!.lean) * (first.height / 2)
+    expect(topEdge).toBeGreaterThanOrEqual(-INTERIOR_WIDTH / 2)
+
+    // And leaning back, the far corner of the run is its foot, which lands
+    // short of the other panel.
     const last = packed.at(-1)!
     const size = DIMS.get(last.id)!
     expect(
-      last.localX + size.thickness / 2 + Math.sin(-last.lean) * (size.height / 2),
+      last.localX +
+        (size.thickness / 2) * Math.cos(last.lean) +
+        Math.sin(last.lean) * (size.height / 2),
     ).toBeLessThanOrEqual(INTERIOR_WIDTH / 2)
+  })
+
+  test('a row leans no further than the slack in it', () => {
+    // Two books on a metre of shelf lean at the natural angle; a row packed
+    // until nothing more fits has almost nothing to lean into.
+    const loose = packRow(SHELF_0, 0, 0, BOOKS.slice(0, 2).map((b) => b.id), lookup)
+    const ids: string[] = []
+    for (const b of BOOKS) if (rowFits([...ids, b.id], lookup)) ids.push(b.id)
+    const tight = packRow(SHELF_0, 0, 0, ids, lookup)
+
+    // Same row, so the same intended angle — all that differs is how much of
+    // it the space left over will take.
+    expect(loose[0]!.lean).toBeGreaterThan(0.05)
+    expect(tight[0]!.lean).toBeGreaterThan(0)
+    expect(tight[0]!.lean).toBeLessThan(loose[0]!.lean)
   })
 
   test('a row that cannot fit is refused rather than overflowing', () => {

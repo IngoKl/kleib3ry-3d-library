@@ -24,7 +24,7 @@ two shape everything else.
                      │                                     │
             ┌────────┴────────┐                   ┌────────┴────────┐
             │  core/          │                   │  core/          │
-            │  index, db,     │                   │  (same crate)   │
+            │  index, catalog,│                   │  (same crate)   │
             │  probe, media   │                   │                 │
             └────────┬────────┘                   └────────┬────────┘
                      │                                     │
@@ -59,12 +59,13 @@ src/                front end
                     changes
   scene/            R3F scene graph — rooms, roofs, shelves, books, boxes,
                     furniture, tapes, pinned pages, the forest outside, the
-                    spine atlas that prints titles, and the little bit of
-                    gravity that dropped books fall under
+                    spine atlas that prints titles, the atmosphere layer, the
+                    synthesised sound, and the little bit of gravity that
+                    dropped books fall under
   reader/           read mode: page cache, page mesh, the turn
-  state/            zustand stores: world, library, ambience, media, video, and
-                    the session store; plus player, cat and metrics,
-                    deliberately outside React
+  state/            zustand stores: world, library, annotations, ambience,
+                    media, video, arcade and the session store; plus player,
+                    cat, courier and metrics, deliberately outside React
   data/             placeholder catalogue + book proportions
   ui/               DOM overlay: crosshair, focus cards, panels, typed fields
 core/               Rust: indexing, the JSON index, format + tag probes, media folders.
@@ -88,11 +89,11 @@ Every byte the front end reads from a disk goes through the `LibraryService`
 interface in [../src/services/types.ts](../src/services/types.ts). There are
 three implementations:
 
-| driver          | mode                       | filesystem          | picker                        | indexes |
-| --------------- | -------------------------- | ------------------- | ----------------------------- | ------- |
-| `tauriDriver`   | **desktop app**            | Rust core over IPC  | native dialog                 | yes     |
-| `httpDriver`    | **hosted** — the container | Rust core over HTTP | no — the mount is the library | yes     |
-| `browserDriver` | none; a test fixture       | none; localStorage  | no                            | no      |
+| driver          | mode                       | filesystem          | picker                        | indexes | fetches papers |
+| --------------- | -------------------------- | ------------------- | ----------------------------- | ------- | -------------- |
+| `tauriDriver`   | **desktop app**            | Rust core over IPC  | native dialog                 | yes     | yes            |
+| `httpDriver`    | **hosted** — the container | Rust core over HTTP | no — the mount is the library | yes     | yes            |
+| `browserDriver` | none; a test fixture       | none; localStorage  | no                            | no      | no             |
 
 Two of those are shipped modes and the third is a fixture, which is a
 distinction the code cannot make on its own — `DRIVER_LABELS` in
@@ -101,7 +102,8 @@ the names the UI shows, so the menu and the settings card cannot drift apart.
 [modes.md](modes.md) is the two modes written out for someone deciding how to
 run it.
 
-A driver _advertises_ what it can do — `kind`, `canPickFolder`, `canIndex` — and
+A driver _advertises_ what it can do — `kind`, `canPickFolder`, `canIndex`,
+`canFetchPapers` — and
 the UI disables controls accordingly rather than failing at call time. Anything
 genuinely unsupported throws `UnsupportedOperation`. Note that the capability
 and the mode are not the same question: `canPickFolder` is false in both
@@ -131,6 +133,15 @@ core/        indexing, the JSON index, format probes, the media folders.  No GUI
 src-tauri/   the desktop shell: IPC commands, settings, asset scope, picker.
 server/      HTTP: the same core, one route per LibraryService method.
 ```
+
+Four modules: `index` walks the folder and reconciles what it finds, `catalog`
+is the index file itself, `probe` reads PDFs, EPUBs and audio tags, and `media`
+walks the four folders that are not indexed at all. The index is JSON rather
+than a database because **the library folder is the save file**: plain text
+diffs cleanly in version control, reads without the app, and leaves no side
+files for a sync client to copy half of. Paths in it are relative to the library
+root, so copying a folder to another machine — or another operating system —
+strands nothing.
 
 `core/` was carved out of `src-tauri/` when the container arrived, and nothing
 moved _logically_ — those four modules never mentioned Tauri once. What it buys
@@ -187,8 +198,9 @@ stores the document verbatim — the schema belongs entirely to the front end.
 **The exceptions are the things whose whole point is "there".** A book put down
 on a table or dropped on the floor stores an actual position, because "there,
 where I put it" cannot be derived from an ordering. So does a page or a note
-pinned to a wall, and so does a record set down on a table. Three exceptions,
-and the list is worth keeping that short.
+pinned to a wall, a record set down on a table, and each of the small props —
+the cup, a can, a takeaway box, the headlamp. Four exceptions, and the list is
+worth keeping that short.
 
 **Book appearance is a pure function of index data.**
 [src/data/dimensions.ts](../src/data/dimensions.ts) derives thickness from page
@@ -253,12 +265,23 @@ deliberately, which also keeps `wasm-unsafe-eval` out of the desktop CSP.
 
 The ground is walkable. [src/world/terrain.ts](../src/world/terrain.ts) owns the
 site — the ground height, the lake, the beach, the path round the water, the
-trail between the buildings, and the radius at which the world runs out — and
-both the renderer and the walk controller read it. That shared ownership is the
+trail between the buildings, the brook, and the radius at which the world runs
+out — and both the renderer and the walk controller read it. That shared ownership is the
 point: a shoreline you can _see_ in one place and _stand in_ in another is the
 bug the module exists to prevent. `terrainAt` returns `null` in the water and
 past the edge of the world, which is the same answer a stairwell gives and
 refuses a step for the same reason.
+
+The brook is the same argument as a polyline: a stream out of the south-east
+forest, past the office's east window and down into the lake, so there is water
+on both sides of the houses. It is drawn from that line, the forest is kept off
+its banks by it, and the walk controller refuses to step into it — except across
+the beach, where it fans out shallow and is a ford. That exception is load
+bearing: a brook that blocked all the way to the waterline would cut the walk
+round the lake in two, and the crossing would be a bridge standing in a puddle.
+The one plank bridge is `BRIDGES`, snapped to the middle of the water and
+squared up to the flow, and its deck is a height `terrainAt` returns like any
+other floor.
 
 The lake is an ellipse with a wobble on it — `shoreShape` puts a few low
 harmonics on the outline, so it reads as a pond rather than a compass drawing.
@@ -271,6 +294,11 @@ reed clumps, lily pads, and boulders and stumps through the forest — is seeded
 scenery in a handful of instanced draw calls, standing either where the walk
 already refuses to go or clear of the paths via the same `occupied` test the
 trees are grown with. None of it needs a collider.
+[Undergrowth.tsx](../src/scene/Undergrowth.tsx) grows the forest floor by the
+same test — grass across the meadow, ferns in the shade of the conifers,
+mushrooms at the trees' feet, a couple of fallen logs — and is ankle-height
+scenery you walk through, because the trunks stay the things you walk into. See
+[Atmosphere](#atmosphere) for what it shares with the rest of the dressing.
 
 **A library folder can describe more than one building**, and the default one
 does: the cabin, and the lake house on the rise above the south-west shore. That
@@ -316,6 +344,43 @@ every frame of a transition and must not render React — and there is exactly o
 advancer because two would double the speed. Flipping `N` is therefore a dusk,
 not a light switch.
 
+## Atmosphere
+
+A family of small modules exists only to make the room read as a place: contact
+shadows and lamp bloom indoors, dust in the lamplight, fireflies and falling
+leaves outside, undergrowth on the forest floor, and the sky's own dressing.
+They are listed together because they are all built to the same four rules, and
+the rules are the interesting part:
+
+- **One instanced mesh each.** Every one of them is a draw call or three, never
+  a mesh per thing. A few hundred grass tufts, every mote in the building and
+  every halo over every bulb are each one upload.
+- **Seeded, not random.** `lib/rng.ts` is a `mulberry32` per module, so the same
+  lamp gathers the same dust and the same clearing grows the same ferns on every
+  visit. Nothing here allocates or rolls a die in the frame loop.
+- **Faded, not mounted.** A mote under a lamp you switched off is scaled to
+  nothing rather than unmounted, and the night pieces gate themselves off by day
+  by reading [ambienceBlend.ts](../src/scene/ambienceBlend.ts). Flipping a
+  switch or `N` must not rebuild anything.
+- **Low Performance Mode decides what survives, and it is not everything.**
+  The dust, the fireflies and the leaves go entirely; the undergrowth thins and
+  the cloud bank drops from six banks to the same first three. But
+  [ContactShadows.tsx](../src/scene/ContactShadows.tsx) and
+  [LampGlow.tsx](../src/scene/LampGlow.tsx) are deliberately _kept_: with the
+  shadow map off, the blob under a sofa is the only thing keeping it on the
+  floor, and the halo over a bulb is most of what makes a lit lamp read as lit.
+  One draw call each is the right price for that.
+
+Two shared modules hold the seams together.
+[src/scene/sky.ts](../src/scene/sky.ts) owns where the sun and the moon hang and
+the soft radial glow that every one of them is painted with — moon halo, sun
+disc, lamp bloom, firefly, the glint on the lake — so `SkyDressing`, `LampGlow`
+and `Outside` can agree without importing each other in a circle.
+[src/scene/geometry.ts](../src/scene/geometry.ts) is the geometry vocabulary:
+everything assembled out of boxes and merged per material — the cat, the body, a
+shelf carcass, a room shell, a staircase — had grown its own copy of the same
+two helpers, and they live in one place now.
+
 ## Sound
 
 The deck and the television are furniture with positions, and you have a
@@ -332,6 +397,26 @@ _which_ deck a record went on. There is one audio element and one record playing
 so the deck is what tells the scene where in the house the music is coming from —
 and what stops every other deck in the building drawing the same disc on its
 platter.
+
+**The room's own noises are synthesised, like the rain.**
+[src/scene/ambientSound.ts](../src/scene/ambientSound.ts) is shaped noise and
+nothing else: no samples, no files, no dependency. It carries three kinds of
+sound — _loops_ that sit somewhere and are set to a level (a lit fire, the cat's
+purr, the dust on a playing record, the lake at its shore, wind), _one-shots_
+fired by whatever caused them (a footfall on boards or grass or sand or stone, a
+landed book, a turned page, a door, cardboard, thunder), and _choruses_, which
+are birds by day and crickets after dark, re-reading their level at every firing
+so dusk arrives phrase by phrase rather than at the next scheduling. `Sound.tsx`
+decides the levels from where you are standing and what the ambience is doing;
+everything else calls `playOneShot` at the moment of the thing it is about.
+
+Two decisions carry the file. **One `AudioContext` for all of it**, opened when
+the first sound is needed and closed once the loops and the one-shots are both
+done — browsers cap live contexts and the rain already holds one of its own. And
+**every failure falls back to silence** rather than throwing, exactly as the rain
+does: no context, or one that will not start, costs the crackle and not the
+room. Its level is its own slider (**Small Sounds**) for the same reason the
+rain's is: a fire that is right for one person is a distraction for the next.
 
 ---
 
@@ -350,12 +435,18 @@ platter.
 | `state/arcade.ts`      | `roms/`, and the cartridge in the arcade machine                                    | zustand                                   |
 | `state/covers.ts`      | cover images, two queues, one rate limit                                            | plain module                              |
 | `state/pages.ts`       | page images for books left open in the _room_, not in the reader                    | plain module                              |
-| `state/player.ts`      | position, yaw, pitch, crouch, zoom                                                  | **plain mutable object**                  |
+| `state/player.ts`      | position, yaw, pitch, crouch, zoom, the coffee's boost                              | **plain mutable object**                  |
 | `state/cat.ts`         | where the cat is and what it is doing                                               | **plain mutable object**                  |
+| `state/courier.ts`     | where the courier has got to, while a delivery is out                               | **plain mutable object**                  |
 | `state/metrics.ts`     | draw calls, triangles, frames                                                       | **plain mutable object**                  |
 
-The last three are deliberately outside zustand: they change every frame and
-must not trigger a React render.
+The last four are deliberately outside zustand: they change every frame and
+must not trigger a React render. The same rule puts three more mutables outside
+`state/` altogether, next to the code that advances them — `scene/ambienceBlend.ts`
+(how much night, how much rain), `scene/shaderWarm.ts` (how long the headlamp's
+warm-up beam has been up) and the running CHIP-8 beside `state/arcade.ts`. A
+whiteboard's live stroke is a fourth, for the same reason: it gains a point per
+frame, so a render per point would be a render per frame.
 
 **The split between `ambience.ts` and `settings.ts` is the one worth stating.**
 Night, rain and the lamps are facts about the _room_ and live in the library
@@ -430,6 +521,17 @@ cans and takeaway boxes are minted as they arrive and destroyed by the kitchen
 bin, which refuses the crockery. `E` takes and places, `F` drinks or eats —
 drinking the coffee writes `player.boostUntil`, which the walk controller reads
 per frame for a quarter more speed, outside React like everything per-frame.
+A **paper** is a delivery too: `E` at the telephone offers a takeaway or an
+arXiv id, and [core/src/paper.rs](../core/src/paper.rs) downloads the PDF into
+`books/arxiv/`, asks the arXiv API what it is called, and indexes it — so what
+arrives is an ordinary book with no arXiv-shaped row anywhere. The fetch is in
+the core rather than in the page for two reasons: arxiv.org does not invite
+cross-origin requests, so a browser `fetch` fails in both shipped modes, and the
+result is a file in the library folder, which nothing above `src/services/` may
+make. It is the one dependency in the project that reaches the network (`ureq`,
+blocking and rustls-backed, so the container gains no async runtime and no
+system OpenSSL).
+
 The telephone's delivery is walked in by a courier
 ([src/state/courier.ts](../src/state/courier.ts), a per-frame mutable like the
 cat): he comes out of the trees along the clearest straight lane, and the box
@@ -581,13 +683,14 @@ while it plays.
 | what a room looks like      | `src/scene/Rooms.tsx`, `Roofs.tsx`, `materials.ts`                                                       |
 | a new piece of furniture    | `schema.ts` kinds → `derive.ts` sizes → `Furniture.tsx`                                                  |
 | the outdoors                | `src/world/terrain.ts`, `forest.ts`, `src/scene/Outside.tsx`                                             |
+| the dressing and the light  | `src/scene/Undergrowth.tsx`, `SkyDressing.tsx`, `LampGlow.tsx`, `ContactShadows.tsx`, `sky.ts`           |
 | walking, stairs, collision  | `src/scene/walk.ts`, `collision.ts`, `Player.tsx`                                                        |
 | what the crosshair offers   | `src/scene/Interaction.tsx`                                                                              |
 | a new key                   | `Player.tsx` (E), `Handling.tsx` (the rest), `Reader.tsx` (reading), `Drawing.tsx` (a held mouse button) |
 | how a book looks on a shelf | `src/scene/spineAtlas.ts`, `bookMaterial.ts`, `Books.tsx`                                                |
 | reading                     | `src/reader/`                                                                                            |
 | the filesystem              | `src/services/`, then `core/`, `src-tauri/`, `server/`                                                   |
-| sound                       | `src/scene/Sound.tsx`, `audioRig.ts`, `rainSound.ts`                                                     |
+| sound                       | `src/scene/Sound.tsx`, `audioRig.ts`, `rainSound.ts`, `ambientSound.ts`                                  |
 | what a whiteboard holds     | `src/scene/board.ts`, `Drawing.tsx`                                                                      |
 
 ## Conventions

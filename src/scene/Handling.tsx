@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { FURNITURE_SIZE, supportAt } from '../world/derive'
+import { FURNITURE_SIZE, PORTABLE, supportAt } from '../world/derive'
 import { makeHand } from './hand'
 import { launchBody, throwFrom } from './drop'
 import { playOneShot } from './ambientSound'
@@ -21,7 +21,8 @@ import { player } from '../state/player'
  *   O  put it down open at the page you were on
  *   L  write a label on the bookcase you are looking at
  *   T  write a note, to stick on a wall
- *   X  pick a moving box up and carry it, or set it down again
+ *   X  pick a moving box, a folding chair or a folding table up and carry it,
+ *      or set it down again
  *   Backspace  break down the empty box you are looking at
  *
  * `E` is still the walk controller's, because it is the same reach that takes a
@@ -29,12 +30,12 @@ import { player } from '../state/player'
  * is that same reach.
  */
 
-/** How far in front of you a carried box floats, and how far below your eyes. */
+/** How far in front of you what you are carrying floats, and how far below your eyes. */
 const CARRY_AHEAD = 0.72
 const CARRY_DROP = 0.58
 
 export function Handling() {
-  const carried = useAppStore((s) => s.carriedBox)
+  const carried = useAppStore((s) => s.carried)
   const world = useWorldStore((s) => s.world)
   const ghost = useRef<THREE.Group>(null)
   /** The lagged yaw the ghost is drawn at — the set-down commits to the same
@@ -43,10 +44,11 @@ export function Handling() {
 
   // A box off the stack has no furniture entry yet; it previews at the kind's
   // own size, which is the size it will be when it lands.
-  const box =
+  const piece =
     carried === NEW_BOX
-      ? { width: FURNITURE_SIZE.box.width, height: FURNITURE_SIZE.box.height, depth: FURNITURE_SIZE.box.depth }
+      ? { kind: 'box' as const, ...FURNITURE_SIZE.box }
       : world?.furniture.find((item) => item.id === carried)
+  const folded = piece !== undefined && PORTABLE.has(piece.kind)
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -186,15 +188,20 @@ export function Handling() {
 
       if (e.code === 'KeyX') {
         e.preventDefault()
-        if (app.carriedBox) {
-          setDown(app.carriedBox)
+        if (app.carried) {
+          setDown(app.carried)
           return
         }
         // Only with your hands free: a box needs both, and a book in one of
-        // them is exactly the thing you would put down first.
-        if (app.held === null && app.focusedBox) {
-          app.setCarriedBox(app.focusedBox)
-          playOneShot('cardboard', 0.8)
+        // them is exactly the thing you would put down first. The folding chair
+        // and table are picked up by the same key for the same reason — it is
+        // the one verb that means "take this with you".
+        const pickUp = app.focusedPortable ?? app.focusedBox
+        if (app.held === null && pickUp) {
+          app.setCarried(pickUp)
+          playOneShot('cardboard', app.focusedPortable ? 0.5 : 0.8, {
+            rate: app.focusedPortable ? 1.35 : 1,
+          })
         }
         return
       }
@@ -204,7 +211,7 @@ export function Handling() {
         // with "delete" written into it: G on the same box shelves a boxful,
         // and the two must not sit on neighbouring meanings of one key.
         // `deleteBox` refuses a box with books in it.
-        if (app.held === null && app.carriedBox === null && app.focusedBox) {
+        if (app.held === null && app.carried === null && app.focusedBox) {
           e.preventDefault()
           // Only a break-down that happened sounds: `deleteBox` refuses a boxful.
           if (shelf.deleteBox(app.focusedBox)) playOneShot('cardboard', 0.9, { rate: 0.8 })
@@ -213,7 +220,7 @@ export function Handling() {
     }
 
     /**
-     * Put the box down where you are standing.
+     * Put down what you are carrying, where you are standing.
      *
      * Committed once, here, rather than every frame while it is carried:
      * moving furniture re-derives the whole world and re-reconciles the
@@ -223,7 +230,7 @@ export function Handling() {
     const setDown = (id: string) => {
       const app = useAppStore.getState()
       const live = useWorldStore.getState().world
-      app.setCarriedBox(null)
+      app.setCarried(null)
       playOneShot('cardboard', 0.9, { rate: 0.9 })
 
       // The ghost's own yaw, not the player's: what you saw is what lands.
@@ -260,18 +267,18 @@ export function Handling() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // The carried box rides in front of you on the hand's lagged yaw, like
+  // What you are carrying rides in front of you on the hand's lagged yaw, like
   // everything else held. Only a preview: the real one stands where it was
   // until you set this one down — at this same yaw, so the preview is honest.
   const camera = useThree((s) => s.camera)
-  // Remade per carry: the hand only advances while a box is held, so a fresh
+  // Remade per carry: the hand only advances while something is held, so a fresh
   // pickup needs a fresh prime or it swings in from the last carry's facing —
   // the exact artefact `primed` exists to prevent.
   const hand = useRef(makeHand())
   const lastCarry = useRef<string | null>(null)
   useFrame((_, delta) => {
     const node = ghost.current
-    if (!node || !box) return
+    if (!node || !piece) return
     if (carried !== lastCarry.current) {
       lastCarry.current = carried
       hand.current = makeHand()
@@ -287,16 +294,38 @@ export function Handling() {
     node.rotation.y = yaw
   })
 
-  if (!box) return null
+  if (!piece) return null
+
+  // Folded, because that is what you would do before picking it up: the leaf
+  // shut on its frame, carried at a tilt in front of you. Two boxes, like the
+  // moving box's preview — this is a preview and not a second piece of
+  // furniture, and it exists only while it is off the ground.
+  if (folded) {
+    const leaf = piece.height + 0.06
+    return (
+      <group ref={ghost}>
+        <group rotation={[0, 0, 0.2]}>
+          <mesh castShadow>
+            <boxGeometry args={[piece.width, leaf, 0.07]} />
+            <meshStandardMaterial color="#b08e63" roughness={0.75} />
+          </mesh>
+          <mesh position={[0, -0.02, 0.055]}>
+            <boxGeometry args={[piece.width * 0.82, leaf * 0.88, 0.045]} />
+            <meshStandardMaterial color="#7e8177" roughness={0.4} metalness={0.6} />
+          </mesh>
+        </group>
+      </group>
+    )
+  }
 
   return (
     <group ref={ghost}>
       <mesh castShadow>
-        <boxGeometry args={[box.width, box.height, box.depth]} />
+        <boxGeometry args={[piece.width, piece.height, piece.depth]} />
         <meshStandardMaterial color="#b9915f" roughness={1} />
       </mesh>
-      <mesh position={[0, box.height / 2 + 0.002, 0]}>
-        <boxGeometry args={[box.width * 0.96, 0.006, box.depth * 0.96]} />
+      <mesh position={[0, piece.height / 2 + 0.002, 0]}>
+        <boxGeometry args={[piece.width * 0.96, 0.006, piece.depth * 0.96]} />
         <meshStandardMaterial color="#a07a4b" roughness={1} />
       </mesh>
     </group>

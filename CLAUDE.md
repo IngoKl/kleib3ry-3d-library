@@ -117,10 +117,13 @@ neighbours along instead of overlapping. Rust stores this document verbatim
 The exceptions store real positions, because "there, where I put it" cannot be
 derived from an ordering: `loose` (a book on a table or the floor), `pins` (sheets
 on walls), `records.loose` and `props` (the coffee cup — there is exactly one, id
-`cup` — the fridge's cans and the takeaway boxes; `F` drinks or eats, the coffee
+`cup` — the fridge's cans, the takeaway boxes, and the `headlamp`, which is
+written down only while it is off your head; `F` drinks or eats, the coffee
 writes `player.boostUntil`, the kitchen `bin` destroys empties, and the `phone`'s
 delivery is walked in by the courier in `state/courier.ts` and lands at
-`deliverySpot` in `world/derive.ts`). Keep the list short.
+`deliverySpot` in `world/derive.ts` — a takeaway, or an **arXiv paper**, which
+is downloaded and indexed by [core/src/paper.rs](core/src/paper.rs) and then
+carried in as an ordinary book). Keep the list short.
 
 **Records are dealt, not arranged.** Every `recordshelf` takes a slice of `music/`
 in folder order, so nothing has to be written down for a few hundred sleeves to
@@ -153,7 +156,16 @@ a box runs `emptyBoxOntoShelves`, which fills empty rows nearest case first;
 `E` takes one book out or puts one back into the box you are looking at. The
 boxes are furniture you manage: `X` carries one, `Backspace` breaks an empty one
 down, and `E` on the kitchen's `boxstack` makes a new one up — spawned and
-removed boxes are layout state (`books.json`, schema 7), never `library.json`.
+removed boxes are layout state (`books.json`, currently schema 9), never
+`library.json`.
+
+**Some furniture you carry off.** `PORTABLE` in `world/derive.ts` is the list —
+the folding chair and the folding table, which live on the porch — and `X` picks
+one up and sets it down exactly the way it does a box, writing a
+`FurnitureOverride` into `books.json`. They are ordinary furniture in every other
+respect: you sit on the one and put a book on the other, so the crosshair offers
+both verbs at once. The document says where a piece *lives*; the override says
+where you left it.
 
 **Books live in `<library>/books/`.** `index::discover` confines the scan to that
 folder when it exists — `music/`, `artwork/`, `video/` and `roms/` are the
@@ -203,9 +215,12 @@ nowhere useful.
 **The ground is walkable, and the outdoors is world data.**
 [src/world/terrain.ts](src/world/terrain.ts) owns the site — ground height, the lake
 as an ellipse, the beach, the path round it, the trail between the buildings, the
-radius the world ends at — and both `Outside.tsx` and `floorAt` read it, because a
+brook that comes down the east side of the houses into the water, the radius the
+world ends at — and both `Outside.tsx` and `floorAt` read it, because a
 shoreline you can see in one place and stand in in another is the bug that
-arrangement prevents. [src/world/forest.ts](src/world/forest.ts) does the same for
+arrangement prevents. The brook is that rule twice over: it is water you cannot
+walk in, it fords where it fans out over the beach so the walk round the lake
+stays a ring, and the plank across it is a floor `terrainAt` hands back. [src/world/forest.ts](src/world/forest.ts) does the same for
 the trees: grown once in `deriveWorld`, then both drawn and collided with from that
 one list. Only trunks are solid. A library folder may describe **more than one
 building** — the default map has the cabin and the lake house — which needs nothing
@@ -231,22 +246,38 @@ title-carrying, so the marginalia read without the app.
 `state/ambience.ts`, `state/media.ts`, `state/video.ts` and `state/arcade.ts` own
 the smaller save files, the record player, the television and the arcade machine
 — the _running_ CHIP-8 in the arcade is a plain mutable object beside its store,
-stepped per frame by `scene/Arcade.tsx`. `state/player.ts`, `state/cat.ts` and
-`state/metrics.ts` are plain mutable objects deliberately outside zustand — they
-change every frame and must not trigger React renders.
+stepped per frame by `scene/Arcade.tsx`. `state/player.ts`, `state/cat.ts`,
+`state/courier.ts` and `state/metrics.ts` are plain mutable objects deliberately
+outside zustand — they change every frame and must not trigger React renders,
+and `scene/ambienceBlend.ts` and `scene/shaderWarm.ts` are the same thing kept
+next to the code that advances them.
 
 **A room fact goes in the library folder; a machine fact does not.** Which lamps
 are on, whether it is night and whether it is raining live in `ambience.json` and
-travel with the library. Low Performance Mode, the body, the volumes and the
-mouse sensitivity live in `state/settings.ts`, backed by `localStorage` — a
-folder you sync to another computer must not carry an assertion about that
-computer's GPU.
+travel with the library. Low Performance Mode, the body, the volumes, the mouse
+sensitivity and whether night follows this machine's clock live in
+`state/settings.ts`, backed by `localStorage` — a folder you sync to another
+computer must not carry an assertion about that computer's GPU, or about what
+time it is where that computer is.
 
 **The rain is synthesised, not sampled.** [src/scene/rainSound.ts](src/scene/rainSound.ts)
 is looping filtered noise through a low-pass whose cutoff tracks how much sky is
 over you; `Sound.tsx` derives that from the room you are in and the openings in
 it. Every failure — no `AudioContext`, a context that will not start — falls back
-to silence rather than throwing.
+to silence rather than throwing. [src/scene/ambientSound.ts](src/scene/ambientSound.ts)
+is the same trick for the room's own noises: loops that sit somewhere (a fire, a
+purr, the lake), one-shots fired where they happen (a footfall keyed to the floor
+you are on, a landed book, a door), and choruses that are birds by day and
+crickets after dark. One shared `AudioContext`, opened on the first sound and
+closed when the last one is done, and the same fall-back-to-silence rule.
+
+**The room's dressing is one instanced mesh per idea.** Contact shadows, lamp
+bloom, dust motes, fireflies, falling leaves, undergrowth and the sky's clouds
+and glints are each a draw call or three, seeded so a room comes back the same,
+faded by `ambienceBlend` rather than mounted and unmounted, and thinned or
+dropped in Low Performance Mode — except `ContactShadows.tsx` and `LampGlow.tsx`,
+which are deliberately kept, because with the shadow map off they are the only
+things grounding furniture and making a lit lamp read as lit.
 
 **The HUD is what is under the crosshair and what is going wrong; everything else
 is behind a key.** The main menu (`src/ui/MainMenu.tsx`) chooses a library while
@@ -310,12 +341,15 @@ time it is drawn. "Tear out" is the gesture, not the effect.
   sentence.
 - TS is strict with `noUncheckedIndexedAccess` and `noUnusedLocals`; `tsconfig.json`
   covers `src`, `tests`, `scripts`, and the config files.
-- `tests/collision.spec.ts` and `tests/world.spec.ts` unit-test pure modules through the
-  Playwright runner (no browser); `tests/smoke.spec.ts` drives the real bundle. The
-  browser tests reach the app through `window.__app` in [src/App.tsx](src/App.tsx) — a
-  deliberate verification surface (teleport, look, stats, readForTest, pins, tapes) that
-  exists because pointer lock is unavailable headlessly. Extend it when a new behaviour
-  needs covering.
+- `tests/collision.spec.ts`, `tests/world.spec.ts`, `tests/chip8.spec.ts` and
+  `tests/annotations.spec.ts` unit-test pure modules through the Playwright runner (no
+  browser); `tests/smoke.spec.ts` drives the real bundle. The browser tests reach the app
+  through `window.__app` in [src/App.tsx](src/App.tsx) — a deliberate verification surface
+  (teleport, look, stats, readForTest, the lamps, the pins, records, tapes, the arcade,
+  props, the courier, page ink, the cat) that exists because pointer lock is unavailable
+  headlessly. Extend it when a new behaviour needs covering; its `…ForTest` calls exist
+  for things you cannot sanely aim at headlessly (a can on a counter, a moving cat), not
+  as a way round the crosshair.
 - Assertions are on measurable facts (draw calls, triangles, frames, zero console errors);
   screenshots are for a human to glance at, not for comparison. Anything whose value
   depends on how many frames have been rendered is _waited for_, not sampled after a

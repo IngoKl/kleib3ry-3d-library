@@ -27,7 +27,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use kleib3ry_core::{catalog::Catalog, index, media, save_files, stamp_of, write_atomic};
+use kleib3ry_core::{catalog::Catalog, index, media, paper, save_files, stamp_of, write_atomic};
 use serde_json::json;
 
 use http::{Request, Response};
@@ -233,6 +233,28 @@ fn route(request: &Request, state: &State) -> Handler {
                 })
                 .collect();
             Ok(Response::json(&serde_json::to_value(with_covers).map_err(oops)?))
+        }
+
+        // A paper off arXiv, downloaded into the mounted folder and indexed.
+        // The one route that reaches out of the container, and it is the same
+        // core function the desktop app calls — see `core/src/paper.rs` for why
+        // the fetch happens down here rather than in the browser.
+        ("POST", "/api/paper") => {
+            let id = std::str::from_utf8(&request.body).unwrap_or("").trim().to_string();
+            match paper::fetch(&state.config.root, &files.index, &files.covers, &id) {
+                Ok(mut book) => {
+                    if let Some(name) = &book.cover {
+                        book.cover = Some(files.covers.join(name).to_string_lossy().to_string());
+                    }
+                    Ok(Response::json(&serde_json::to_value(book).map_err(oops)?))
+                }
+                // The id was wrong, or arXiv has nothing under it: the person
+                // typing gets told which, because the two have different fixes.
+                Err(e @ (kleib3ry_core::Error::BadPaperId(_) | kleib3ry_core::Error::UnknownPaper(_))) => {
+                    Ok(Response::text(404, &e.to_string()))
+                }
+                Err(e) => Ok(Response::text(502, &e.to_string())),
+            }
         }
 
         ("POST", "/api/scan") => {

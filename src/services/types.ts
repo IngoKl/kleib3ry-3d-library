@@ -2,9 +2,10 @@
  * The one seam between the app and the machine's files.
  *
  * Everything the UI knows about the filesystem goes through this interface, so
- * the eventual Linux-hosted web build is a driver swap (HTTP against a
- * server-side library folder) rather than a rewrite. Nothing above this layer
- * may import `@tauri-apps/*` directly.
+ * the hosted mode is a driver swap (HTTP against a server-side library folder)
+ * rather than a rewrite — which is what it turned out to be: the container was
+ * added without a change above this layer. Nothing above it may import
+ * `@tauri-apps/*` directly.
  */
 
 export type BookFormat = 'pdf' | 'epub'
@@ -316,6 +317,16 @@ export interface LibraryService {
   /** False when the host cannot index real files (the browser driver). */
   readonly canIndex: boolean
 
+  /**
+   * False when the host cannot fetch a paper into the library.
+   *
+   * The same split as `canIndex` in practice — both non-browser drivers have a
+   * real folder and a Rust core behind them — but a separate capability
+   * because it answers a separate question, and because a build with no
+   * network has every reason to turn this off and keep indexing.
+   */
+  readonly canFetchPapers: boolean
+
   getRoot(): Promise<string | null>
   setRoot(path: string): Promise<void>
   /** Prompt for a folder. Resolves to null if the user cancels or cannot pick. */
@@ -330,6 +341,19 @@ export interface LibraryService {
   readBook(id: string): Promise<Uint8Array>
   /** Cache a cover the front end rendered. Returns its absolute path. */
   saveRenderedCover(id: string, dataUrl: string): Promise<string>
+
+  /**
+   * Download an arXiv paper into the library folder and index it, answering
+   * with the book it became.
+   *
+   * Below this seam rather than above it for two reasons, both in
+   * `core/src/paper.rs`: arxiv.org does not invite cross-origin requests, so a
+   * `fetch` from the page would fail in both shipped modes; and the result is a
+   * file in your library folder, which nothing above `src/services/` may make.
+   * `id` is whatever was typed — a bare id, an `arXiv:` citation, or the URL of
+   * either page — and the core is what decides whether that is an id at all.
+   */
+  fetchPaper(id: string): Promise<IndexedBook>
 
   /**
    * The hand-edited world document, as text — comments and formatting intact,

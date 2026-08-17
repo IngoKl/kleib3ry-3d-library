@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { PORTABLE } from '../world/derive'
 import { sceneRefs } from './refs'
 import { useShelfTransforms } from './transforms'
 import { insertionIndex, rowFits, rowKey } from './shelving'
@@ -100,6 +101,7 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
@@ -117,13 +119,14 @@ export function Interaction() {
       return
     }
 
-    // Carrying a moving box fills your arms: nothing else is offered, because
+    // Carrying furniture fills your arms: nothing else is offered, because
     // everything else needs a hand you have not got.
-    if (store.carriedBox !== null) {
+    if (store.carried !== null) {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
@@ -162,6 +165,7 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
       store.setFocusedCrate(null)
@@ -233,6 +237,7 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
       store.setFocusedCrate(null)
@@ -263,6 +268,7 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
       store.setFocusedCrate(null)
@@ -316,6 +322,7 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
       store.setFocusedCrate(null)
@@ -346,6 +353,7 @@ export function Interaction() {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
       store.setFocusedCrate(null)
@@ -425,6 +433,7 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
       store.setFocusedBox(null)
+      store.setFocusedPortable(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
       store.setFocusedCrate(null)
@@ -487,6 +496,12 @@ export function Interaction() {
       store.setShelfTarget(null)
       store.setBoxTarget(null)
       store.setSurfaceTarget(null)
+
+      /** That id, if it names furniture you could pick up and walk off with. */
+      const portableOf = (id: string | null) => {
+        const kind = id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
+        return kind && PORTABLE.has(kind) ? id : null
+      }
 
       // The cat, if it is nearer than anything else. Not offered while you are
       // sitting, for the same reason a chair is not: `E` from a seat means stand up.
@@ -635,6 +650,7 @@ export function Interaction() {
         store.setFocusedBook(null)
         store.setFocusedSeat(null)
         store.setFocusedBox(null)
+        store.setFocusedPortable(null)
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
         store.setFocusedCrate(null)
@@ -651,6 +667,7 @@ export function Interaction() {
         store.setFocusedBook(null)
         store.setFocusedSeat(null)
         store.setFocusedBox(null)
+        store.setFocusedPortable(null)
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
         store.setFocusedCrate(null)
@@ -666,6 +683,9 @@ export function Interaction() {
         store.setFocusedBook(null)
         store.setFocusedSeat(seat.id)
         store.setFocusedBox(null)
+        // A folding chair is a seat you can also pick up, so it raises both
+        // verbs at once: E sits, X carries.
+        store.setFocusedPortable(portableOf(seat.id))
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
         store.setFocusedCrate(null)
@@ -678,6 +698,13 @@ export function Interaction() {
         // the way — the cardboard itself.
         const cardboard = box && (!best || box.distance < best.distance) ? box.id : null
         store.setFocusedBox(best?.inBox ?? cardboard)
+
+        // The folding table: it is a surface like any other and so has no
+        // question of its own on the crosshair, which is exactly why the one
+        // thing it *can* be asked has to be offered from here.
+        store.setFocusedPortable(
+          topHit && topId && (!best || topHit.distance < best.distance) ? portableOf(topId) : null,
+        )
 
         // A record, a tape, a lamp and a prop are only offered when nothing
         // readable is nearer, so reaching past a crate for a book cannot start

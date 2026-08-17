@@ -26,7 +26,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['R'], 'Read the book in your hand — PDF or EPUB'],
       [['G'], 'Empty the box you are looking at onto the nearest shelves'],
       [[',', '.'], 'Browse the pile in a box (the wheel works too)'],
-      [['X'], 'Pick up a moving box and carry it; again to set it down'],
+      [['X'], 'Carry a box, or the folding chair or table; again to set it down'],
       [['⌫'], 'Break down an empty box — spares wait on the stack in the kitchen, E takes one'],
       [['L'], 'Write a label on the bookcase you are aiming at'],
       [['T'], 'Write a note to pin up; E sticks it to whatever wall you look at'],
@@ -83,7 +83,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     title: 'Reading',
     rows: [
       [['drag'], 'Pull a page across to turn it — let go early and it falls back'],
-      [['←', '→'], 'Turn pages'],
+      [['←', '→', 'space'], 'Turn pages — space goes forward'],
       [['B'], 'Put a bookmark in, or take it out'],
       [['N'], 'Write a note on this page — the tab on the fore-edge marks it'],
       [['D'], 'Pick the pen up — drag draws on the page; D again puts it down'],

@@ -15,6 +15,7 @@
 pub mod catalog;
 pub mod index;
 pub mod media;
+pub mod paper;
 pub mod probe;
 
 /// What can go wrong below the shell.
@@ -37,6 +38,14 @@ pub enum Error {
     UnknownBook(String),
     #[error("bad image data: {0}")]
     BadImage(String),
+    /// The only failures in this crate that are somebody else's fault: arXiv is
+    /// the one thing kleib3ry talks to that it does not own — see `paper`.
+    #[error("{0}")]
+    Network(String),
+    #[error("no paper on arXiv with id {0}")]
+    UnknownPaper(String),
+    #[error("that does not look like an arXiv id: {0}")]
+    BadPaperId(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

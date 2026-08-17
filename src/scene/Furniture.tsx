@@ -159,8 +159,13 @@ function Sofa({ width }: { width: number }) {
     useMemo(
       () => ({
         cloth: [
-          chamferBlock(width, 0.16, 0.8, 0.02, 0, 0.36, 0),
-          rakedBack(width, 0.52, 0.16, 0.1, 0, 0.6, -0.32),
+          // The seat and the back stop a centimetre inside the arms rather than
+          // flush with them. Flush puts their side faces in exactly the plane of
+          // the arm's outer face, and two surfaces in one plane shimmer against
+          // each other as you walk past — the arm is what you see from the side,
+          // so this tucks the ends inside it where they cannot fight.
+          chamferBlock(width - 0.02, 0.16, 0.8, 0.02, 0, 0.36, 0),
+          rakedBack(width - 0.02, 0.52, 0.16, 0.1, 0, 0.6, -0.32),
           // Two cushions rather than one long slab, which is what makes it a sofa.
           cushion(width / 4 - 0.05, 0.085, 0.35, -width / 4, 0.48, 0.03),
           cushion(width / 4 - 0.05, 0.085, 0.35, width / 4, 0.48, 0.03),
@@ -228,6 +233,95 @@ function Bench({ width }: { width: number }) {
     <mesh geometry={parts.pine} castShadow receiveShadow>
       <meshStandardMaterial color={PINE} roughness={0.8} map={woodGrainTexture()} />
     </mesh>
+  )
+}
+
+/** A batten tipped about X, for the splayed legs of anything that folds. */
+function splayed(w: number, h: number, d: number, tilt: number, x: number, y: number, z: number) {
+  const leg = block(w, h, d, 0, 0, 0)
+  leg.rotateX(tilt)
+  leg.translate(x, y, z)
+  return leg
+}
+
+/**
+ * A folding chair: two splayed frames crossing under a slatted seat, with a
+ * low back. Drawn open, always — a folded one would be a different piece of
+ * furniture, and what you carry is a preview anyway (see `Handling`).
+ */
+function FoldingChair() {
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        pine: [
+          // Seat slats, with the gaps that say "this thing folds".
+          ...[-0.16, 0, 0.16].map((z) => chamferBlock(0.44, 0.03, 0.12, 0.006, 0, 0.45, z)),
+          rakedBack(0.4, 0.2, 0.03, 0.16, 0, 0.76, -0.19),
+          ...[-0.21, 0.21].map((x) => block(0.035, 0.36, 0.035, x, 0.62, -0.2)),
+        ],
+        steel: [
+          // The two frames, crossing: back legs raked forward, front legs back.
+          ...[-0.2, 0.2].flatMap((x) => [
+            splayed(0.028, 0.5, 0.028, 0.26, x, 0.23, -0.13),
+            splayed(0.028, 0.5, 0.028, -0.26, x, 0.23, 0.13),
+          ]),
+          // The pivot bar the two frames turn on.
+          block(0.42, 0.022, 0.022, 0, 0.23, 0),
+        ],
+      }),
+      [],
+    ),
+  )
+  return (
+    <group>
+      <mesh geometry={parts.pine} castShadow receiveShadow>
+        <meshStandardMaterial color={PINE} roughness={0.75} map={woodGrainTexture()} />
+      </mesh>
+      <mesh geometry={parts.steel} castShadow>
+        <meshStandardMaterial color={STEEL} roughness={0.4} metalness={0.6} />
+      </mesh>
+    </group>
+  )
+}
+
+/**
+ * A folding table: a slatted top on two trestles. Its top is a surface like any
+ * other table's, so a book, a cup or a record set down on it lands on the
+ * boards rather than on the grass under them.
+ */
+function FoldingTable({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const top = height - 0.03
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        pine: [
+          chamferBlock(width, 0.035, depth, 0.008, 0, top, 0),
+          // A batten under each end, which is what the trestles fold against.
+          ...[-1, 1].map((side) =>
+            block(0.05, 0.03, depth - 0.08, (side * (width - 0.14)) / 2, top - 0.03, 0),
+          ),
+        ],
+        steel: [-1, 1].flatMap((side) => {
+          const x = (side * (width - 0.18)) / 2
+          return [
+            splayed(0.03, top, 0.03, 0.2, x, top / 2, -0.08),
+            splayed(0.03, top, 0.03, -0.2, x, top / 2, 0.08),
+            block(0.03, 0.024, depth - 0.14, x, top * 0.4, 0),
+          ]
+        }),
+      }),
+      [width, depth, top],
+    ),
+  )
+  return (
+    <group>
+      <mesh geometry={parts.pine} castShadow receiveShadow>
+        <meshStandardMaterial color={PINE} roughness={0.78} map={woodGrainTexture()} />
+      </mesh>
+      <mesh geometry={parts.steel} castShadow>
+        <meshStandardMaterial color={STEEL} roughness={0.4} metalness={0.6} />
+      </mesh>
+    </group>
   )
 }
 
@@ -2412,6 +2506,10 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <Desk width={item.width} depth={item.depth} height={item.height} />
       case 'bed':
         return <Bed width={item.width} depth={item.depth} />
+      case 'foldingchair':
+        return <FoldingChair />
+      case 'foldingtable':
+        return <FoldingTable width={item.width} depth={item.depth} height={item.height} />
       case 'rug':
         return <Rug width={item.width} depth={item.depth} />
       case 'floorlamp':

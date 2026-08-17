@@ -66,6 +66,13 @@ export type Settings = {
    * another continent should follow *that* machine's evening.
    */
   matchClock: boolean
+  /**
+   * Whether a row with room in it leans back on the side panel the way a real
+   * part-empty shelf does. Taste, not tidiness: some people want the shelf they
+   * arranged to stand plumb. It changes how a row *looks*, never what is in it
+   * or how much fits — see `packRow`.
+   */
+  booksLean: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -78,6 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1,
   boxPerFolder: false,
   matchClock: false,
+  booksLean: true,
 }
 
 /** Whether this machine's clock says it is evening: before 7, or from 19:00. */
@@ -105,6 +113,7 @@ function read(): Settings {
       sensitivity: clamp(parsed.sensitivity ?? DEFAULT_SETTINGS.sensitivity, 0.2, 3),
       boxPerFolder: parsed.boxPerFolder ?? DEFAULT_SETTINGS.boxPerFolder,
       matchClock: parsed.matchClock ?? DEFAULT_SETTINGS.matchClock,
+      booksLean: parsed.booksLean ?? DEFAULT_SETTINGS.booksLean,
     }
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -179,6 +188,7 @@ function persist(state: Settings) {
         sensitivity: state.sensitivity,
         boxPerFolder: state.boxPerFolder,
         matchClock: state.matchClock,
+        booksLean: state.booksLean,
       } satisfies Settings),
     )
   } catch {

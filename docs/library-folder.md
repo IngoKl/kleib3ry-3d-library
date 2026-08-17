@@ -246,9 +246,9 @@ far a staircase climbs), and `on` (whether a lamp starts lit).
 | `floorlamp` `pendant` `fireplace` `fairylights`  | light. `E` switches it; the state goes to `ambience.json`, with the night and the weather                                                                              |
 | `lightswitch`                                    | hung like a picture; `E` works every light in the library at once                                                                                                      |
 | `recordplayer` `coffeemaker`                     | `E` works it. Give it a `y` so it stands on something. The coffee maker brews a pot, hands you its one cup, and the coffee makes you quicker for a while               |
-| `phone` `fridge` `bin`                          | the kitchen's verbs: `E` orders food — a courier walks it to the nearest `step` — takes a cold can, and swallows the empties; `F` drinks or eats what you hold          |
-| `headlamp`                                      | lying on the porch table; `E` wears it — hands free, the beam follows your eyes — and a bare tabletop takes it off again                                                |
-| `door` `tent` `campfire`                        | a hinged door for a doorway (`E` swings it; closed blocks), and the camp: an A-frame tent, and a fire lit at the fire itself                                            |
+| `phone` `fridge` `bin`                           | the kitchen's verbs: `E` orders food — a courier walks it to the nearest `step` — takes a cold can, and swallows the empties; `F` drinks or eats what you hold         |
+| `headlamp`                                       | lying on the porch table; `E` wears it — hands free, the beam follows your eyes — and a bare tabletop takes it off again                                               |
+| `door` `tent` `campfire`                         | a hinged door for a doorway (`E` swings it; closed blocks), and the camp: an A-frame tent, and a fire lit at the fire itself                                           |
 | `crt` `tapecrate`                                | a television and a crate that fills itself from your `video/` folder                                                                                                   |
 | `computer`                                       | the catalogue terminal: `E` searches the whole library and says where a thing is                                                                                       |
 | `postits`                                        | a pad of notes; `E` peels one off to write on                                                                                                                          |
@@ -277,7 +277,7 @@ list of book ids, and a map from box id to the books in that box:
 
 ```json
 {
-  "schemaVersion": 7,
+  "schemaVersion": 9,
   "rows": {
     "west-0:0": ["a3f1…", "9c02…"],
     "west-0:1": ["71bd…"]
@@ -334,9 +334,12 @@ document's boxes you have broken down. Both are the app's own edits to the box
 population, which is why they live here and never touch `library.json`.
 
 `props` are the small things — the coffee cup, the cans from the fridge, the
-takeaway boxes the deliveries leave — each with a real position, for the same
-reason `loose` has one. There is exactly one cup and its id is `cup`; cans and
-takeaway boxes are minted as they arrive and vanish into the kitchen bin.
+takeaway boxes the deliveries leave, and the headlamp — each with a real
+position, for the same reason `loose` has one. There is exactly one cup and its
+id is `cup`, and exactly one headlamp (`headlamp`), which is written down only
+while it is _off_ your head: worn, it is session state, and putting it on a
+table is what gives it a position again. Cans and takeaway boxes are minted as
+they arrive and vanish into the kitchen bin.
 
 Everything here is in `books.json` rather than in `library.json` for the same
 reason: **`library.json` is a file you wrote**, comments and all, and pushing a

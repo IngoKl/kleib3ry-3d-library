@@ -35,3 +35,4 @@ public/roms/
 # Demo data
 demo-data/demo-library/.library/ambience.json
 demo-data/demo-library/.library/library.json
+demo-data/demo-library/.library/annotations.json

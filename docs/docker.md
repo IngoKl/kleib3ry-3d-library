@@ -57,6 +57,7 @@ Exactly what the desktop app expects:
   music/        records for the player
   artwork/      pictures for the frames
   video/        tapes for the television
+  roms/         cartridges for the arcade machine
   .library/     everything the app writes — created for you
 ```
 
@@ -136,6 +137,7 @@ read side by side.
 | `GET /api/world/stamp`                         | cheap changed-ness, for live reload                    |
 | `GET /api/paths`                               | which files this library is saved into                 |
 | `GET`/`PUT` `/api/layout`                      | which book is where                                    |
+| `GET`/`PUT` `/api/annotations`                 | bookmarks, page notes and page ink                     |
 | `GET /api/music`, `/api/artwork`, `/api/video` | the media folders                                      |
 | `GET /api/roms`                                | the games for the arcade machine                       |
 | `GET /api/rom/<id>`                            | one ROM's bytes, by listing id — like a book's         |

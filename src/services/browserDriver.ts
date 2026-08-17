@@ -208,6 +208,7 @@ export const browserDriver: LibraryService = {
   kind: 'browser',
   canPickFolder: false,
   canIndex: false,
+  canFetchPapers: false,
 
   async getRoot() {
     return localStorage.getItem(ROOT_KEY)
@@ -245,6 +246,11 @@ export const browserDriver: LibraryService = {
 
   async saveRenderedCover(id) {
     throw new UnsupportedOperation(`caching a cover for ${id}`, 'browser')
+  },
+
+  async fetchPaper(id) {
+    // Not a network limit — a filesystem one. There is nowhere to put it.
+    throw new UnsupportedOperation(`fetching ${id}`, 'browser')
   },
 
   async loadWorld() {

@@ -194,6 +194,18 @@ export function SettingsCard() {
         onChange={(next) => settings.set('showBody', next)}
       />
       <Toggle
+        label="Books Lean"
+        hint="A row with room left in it settles back against the side panel. Off stands every book plumb."
+        on={settings.booksLean}
+        testId="books-lean"
+        onChange={(next) => {
+          settings.set('booksLean', next)
+          // The shelves are re-packed from the rows already saved, so this is a
+          // redraw and not a rearrangement: nothing moves shelf.
+          useLibraryStore.getState().rebuild()
+        }}
+      />
+      <Toggle
         label="Interface"
         hint="The cards and the status strip. H does this too."
         on={!hudHidden}

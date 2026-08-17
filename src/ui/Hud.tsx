@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { readerStatus } from '../reader/status'
 import { cat } from '../state/cat'
+import { courier } from '../state/courier'
 import { player } from '../state/player'
 import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useAnnotationsStore } from '../state/annotations'
@@ -16,6 +17,7 @@ import { JumpToPageField } from './JumpToPageField'
 import { NoteField } from './NoteField'
 import { BookNoteField } from './BookNoteField'
 import { SearchField } from './SearchField'
+import { PhoneCard } from './PhoneCard'
 import { ControlsCard } from './ControlsCard'
 import { SettingsCard } from './SettingsCard'
 import { MainMenu } from './MainMenu'
@@ -44,6 +46,14 @@ const FIXTURE_NAMES: Partial<Record<string, string>> = {
   rombox: 'The ROM Box',
   door: 'The Door',
   campfire: 'The Campfire',
+}
+
+/** What the card calls whatever is in your arms, or offering to be. */
+const CARRY_NAMES: Partial<Record<string, string>> = {
+  newbox: 'A New Box',
+  box: 'Moving Box',
+  foldingchair: 'Folding Chair',
+  foldingtable: 'Folding Table',
 }
 
 /** What each small thing in your hand is called, full and drunk. */
@@ -100,7 +110,8 @@ export function Hud() {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
   const controlsOpen = useAppStore((s) => s.controlsOpen)
   const surfaceTarget = useAppStore((s) => s.surfaceTarget)
-  const carriedBox = useAppStore((s) => s.carriedBox)
+  const carried = useAppStore((s) => s.carried)
+  const focusedPortable = useAppStore((s) => s.focusedPortable)
   const pointerLocked = useAppStore((s) => s.pointerLocked)
   const started = useAppStore((s) => s.started)
 
@@ -199,6 +210,13 @@ export function Hud() {
   const view = focusedBox ? boxViews[focusedBox] : undefined
   const browsing = Boolean(view && view.total > view.shown)
 
+  // What is in your arms, and what the crosshair is offering to put there. A
+  // box off the stack is not furniture yet, so it names itself.
+  const kindOf = (id: string | null) =>
+    id === null ? null : (world?.furniture.find((item) => item.id === id)?.kind ?? null)
+  const carriedKind = carried === NEW_BOX ? 'newbox' : kindOf(carried)
+  const portableKind = kindOf(focusedPortable)
+
   /**
    * The record the crosshair is offering: the sleeve itself, or — aimed at the
    * crate — the one you have riffled to, which is the one standing out in front
@@ -285,7 +303,7 @@ export function Hud() {
         return does('put the coffee on')
       }
       case 'phone':
-        return ordering ? refuses('The food is on its way…') : does('order some food')
+        return ordering ? refuses('A delivery is already on its way…') : does('order something')
       case 'fridge':
         return does('take a cold can')
       case 'bin':
@@ -416,6 +434,22 @@ export function Hud() {
             <div className="focus-card" data-testid="seat-card">
               <p className="focus-key">
                 <kbd>E</kbd> Sit down{held || heldProp ? ' with it' : ''}
+                {focusedPortable === focusedSeat && !held && (
+                  <>
+                    {' · '}
+                    <kbd>X</kbd> Carry it
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* The folding table, which is not a seat and has no card of its own. */}
+          {walking && focusedPortable && focusedPortable !== focusedSeat && !held && !seat && (
+            <div className="focus-card" data-testid="portable-card">
+              <p className="focus-title">{(portableKind && CARRY_NAMES[portableKind]) ?? 'Folding Furniture'}</p>
+              <p className="focus-key">
+                <kbd>X</kbd> Carry it
               </p>
             </div>
           )}
@@ -744,12 +778,12 @@ export function Hud() {
             </div>
           )}
 
-          {walking && carriedBox && (
+          {walking && carried && (
             <div className="held-card" data-testid="carry-card">
               <p className="held-label">Carrying</p>
-              <p className="focus-title">{carriedBox === NEW_BOX ? 'A New Box' : 'Moving Box'}</p>
+              <p className="focus-title">{(carriedKind && CARRY_NAMES[carriedKind]) ?? 'Moving Box'}</p>
               <p className="focus-key">
-                <kbd>X</kbd> {carriedBox === NEW_BOX ? 'Stand it up here' : 'Set it down'}
+                <kbd>X</kbd> {carried === NEW_BOX ? 'Stand it up here' : 'Set it down'}
               </p>
             </div>
           )}
@@ -933,7 +967,9 @@ export function Hud() {
 
             {ordering && (
               <p className="note" data-testid="delivery-note">
-                The food is on its way.
+                {courier.parcel.kind === 'book'
+                  ? `${courier.parcel.title} is on its way.`
+                  : 'The food is on its way.'}
               </p>
             )}
             {brisk && (
@@ -982,6 +1018,7 @@ export function Hud() {
       <NoteField />
       <BookNoteField />
       <SearchField />
+      <PhoneCard />
       <ControlsCard />
       <SettingsCard />
       <MainMenu />

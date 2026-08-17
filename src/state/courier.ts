@@ -2,8 +2,17 @@ import { deliverySpot, type DerivedWorld } from '../world/derive'
 import { terrainAt } from '../world/terrain'
 
 /**
- * The delivery courier: somebody who walks out of the trees with your food,
- * puts it down at the foot of the porch steps, and walks away again.
+ * What he is carrying: a takeaway, or a book — a paper you ordered off arXiv,
+ * which is delivered exactly the way the food is, because a delivery is a
+ * delivery. The id is the book's; the title is only for the card that says
+ * what is on its way.
+ */
+export type Parcel = { kind: 'takeaway' } | { kind: 'book'; id: string; title: string }
+
+/**
+ * The delivery courier: somebody who walks out of the trees with your food or
+ * your reading, puts it down at the foot of the porch steps, and walks away
+ * again.
  *
  * A plain mutable object outside zustand, like the player and the cat — he
  * moves every frame while he is about, and must not trigger React renders
@@ -23,8 +32,10 @@ export const courier = {
   target: { x: 0, y: 0, z: 0, yaw: 0 },
   /** Seconds left standing at the steps before the box goes down. */
   pause: 0,
-  /** True while the box is in his hands rather than on the ground. */
+  /** True while the parcel is in his hands rather than on the ground. */
   carrying: true,
+  /** What he is bringing. Read by the renderer and by the drop. */
+  parcel: { kind: 'takeaway' } as Parcel,
   /** Advanced by distance walked, for the stride bob. */
   stride: 0,
 }
@@ -67,13 +78,14 @@ function clearestWay(world: DerivedWorld, spot: { x: number; z: number; yaw: num
   return best
 }
 
-/** Send him walking. The box lands when he gets there, not on a timer. */
-export function startDelivery(world: DerivedWorld): void {
+/** Send him walking. The parcel lands when he gets there, not on a timer. */
+export function startDelivery(world: DerivedWorld, parcel: Parcel): void {
   const spot = deliverySpot(world)
   const way = clearestWay(world, spot)
   courier.active = true
   courier.phase = 'coming'
   courier.carrying = true
+  courier.parcel = parcel
   courier.pause = 0
   courier.target = spot
   courier.from = { x: spot.x + Math.sin(way) * APPROACH, z: spot.z + Math.cos(way) * APPROACH }

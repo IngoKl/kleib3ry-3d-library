@@ -24,8 +24,9 @@ That is a test fixture rather than a third way to run it — see
 
 There is a small real library in the repository, at
 [demo-data/demo-library/](../demo-data/demo-library/): ten
-[Standard Ebooks](https://standardebooks.org/) titles, two records, two pictures
-and a tape, all freely licensed — the credits are in the folder's own
+[Standard Ebooks](https://standardebooks.org/) titles, two records, two
+pictures, a tape and a Pong cartridge for the arcade machine, all freely
+licensed — the credits are in the folder's own
 [README](../demo-data/demo-library/README.md).
 
 Point the app at it like any other library folder: **Choose Folder…**, then
@@ -114,6 +115,9 @@ Things worth trying early:
 | **`E`** on the ROM box, then on the arcade    | boots the game; **`E`** again steps up to play, **`Esc`** steps away    |
 | **`E`** on the marker in the office           | picks it up — then hold the left mouse button to draw on the whiteboard |
 | **`E`** on the switch by the porch door       | works every light in the library at once                                |
+| **`E`** on the coffee maker, twice            | puts a pot on, then hands you the cup; **`F`** drinks it                |
+| **`E`** on the headlamp on the porch table    | wears it — hands free, and the beam follows your eyes                   |
+| **`E`** on the kitchen telephone              | orders a delivery; somebody walks it out of the trees to the steps      |
 | **`L`** at a bookcase                         | writes on its label                                                     |
 | **`P`** while reading                         | tears out a copy of the page — the book keeps its own                   |
 | **`T`**                                       | writes a note; **`E`** at a wall pins either one up                     |

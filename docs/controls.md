@@ -37,7 +37,9 @@ your hand.
 - **`G`** — empty the box you are looking at onto the shelves, nearest bookcase
   first.
 - **`X`** — pick up the moving box you are looking at and carry it; `X` again
-  sets it down.
+  sets it down. The folding chair and the folding table on the porch go the same
+  way, and can be stood down anywhere — by the water, at the camp, over the
+  brook.
 - **`Backspace`** — break down an empty box. Flattened spares wait on the stack
   in the kitchen, and `E` takes one.
 - **`,`** **`.`** — riffle down through the box you are looking at. The mouse
@@ -49,6 +51,8 @@ your hand.
 
 - **`E`** — take one out of a crate; then put a record on a deck or a tape in
   the television, file it in any crate, or set a record down on a table.
+- **`,`** **`.`** — flick through the crate you are looking at, a sleeve at a
+  time. The mouse wheel does it too.
 - **`F`** — take the record back off the deck, or the tape back out of the
   television.
 - **`Q`** — send it back to the crate the folder deals it into.
@@ -65,6 +69,27 @@ your hand.
 - **`F`** — take the cartridge back out. **`Q`** puts the one in your hand back
   in the box.
 
+## Food, Drink and the Dark
+
+- **`E`** — put a brew on at the coffee maker; when the pot is full, `E` again
+  hands you its one cup. There is only the one, and it goes back by the machine.
+- **`E`** — take a cold can out of the fridge. It never runs out.
+- **`F`** — drink or eat what is in your hand. The coffee makes you quicker for
+  a while.
+- **`E`** — at the telephone, order a delivery: **1** a takeaway, or **2** an
+  arXiv paper. A paper is asked for by id — `2401.12345`, `arXiv:2401.12345` or
+  the link to either page — downloaded into `books/arxiv/`, indexed like any
+  other book, and brought over. Either way a courier walks it out of the trees
+  and leaves it at the foot of the porch steps; the paper is a book lying there
+  to pick up and read.
+- **`E`** — throw an empty in the kitchen bin. It takes cans and takeaway boxes
+  and refuses the coffee cup.
+- **`E`** — take the headlamp off the porch table. It is _worn_, not held, so
+  both hands stay free and the beam follows your eyes; `E` at a bare tabletop
+  takes it off again.
+- **`E`** — set what you are holding down on any table. **`Q`** puts it at your
+  feet.
+
 ## The Whiteboard
 
 - **`E`** — pick the marker up off the office desk, and put it back.
@@ -80,7 +105,7 @@ your hand.
 ## Reading
 
 - **drag** — pull a page across to turn it. Let go early and it falls back.
-- **`←`** **`→`** — turn pages without dragging.
+- **`←`** **`→`** — turn pages without dragging. **`space`** goes forward too.
 - **`B`** — put a bookmark in the page you are on, or take it out again.
 - **`N`** — write a note on the page. A paper tab on the fore-edge marks it,
   and the Reading card lists the notes on the pages you are looking at, each
@@ -94,6 +119,9 @@ your hand.
 
 ## The Room
 
+- **`E`** — open and close the front door; light the campfire across the lake.
+  A shut door really blocks the doorway, and which doors stand open comes back
+  with the library.
 - **`N`** — day to night, and back.
 - **`K`** — rain on and off. You hear it as well as see it: loud on the grass,
   muffled indoors.
@@ -127,12 +155,26 @@ the button is off; see [modes.md](modes.md).
 Settings are `F2`, from the menu or from the room. Most of them are about your
 machine rather than about your library — **Low Performance Mode** (no shadows,
 no window light, one pixel per pixel, for an older GPU), **Show My Body**,
-**Interface**, **Mouse Sensitivity**, **Volume**, **Rain Volume**, **Sound in
-the Room**, and **One Box per Folder**, which decides whether a scan levels new
-books across the moving boxes or gives each folder of `books/` a box of its own.
-Those are kept in browser storage keyed by the app, so a library folder you copy
-to another computer does not carry an opinion about that computer's GPU.
+**Books Lean** (a row with room left in it settles back against the side panel;
+off stands every book plumb, and it changes how a shelf looks rather than what
+is on it), **Interface**, **Mouse Sensitivity**, **Volume**, **Rain Volume**,
+**Small Sounds** (the fire's crackle, the cat's purr, the dust on a record), **Sound in
+the Room** (the deck and the television get quieter as you walk away, and come
+from where they stand), and **One Box per Folder**, which decides whether a scan
+levels new books across the moving boxes or gives each folder of `books/` a box
+of its own. Those are kept in browser storage keyed by the app, so a library
+folder you copy to another computer does not carry an opinion about that
+computer's GPU.
 
 **Night** and **Rain** are on the same card but are not the same kind of thing:
 along with which lamps are on, they are facts about the room, so they live in
 the library folder in `.library/ambience.json` and come back with it.
+**Match the Clock** sits between them and is a machine setting again — with it
+on, a library opens into an evening room when this computer says it is evening,
+which is a fact about where _you_ are and not about the library. `N` still works
+afterwards.
+
+The same card carries three buttons that move the whole library at once:
+**Clear the Shelves** puts every book back in the boxes, **Box the Strays**
+collects the books lying on floors (ones left on tables stay put), and **Export
+Annotations** writes every bookmark and note out as Markdown.

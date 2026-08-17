@@ -139,6 +139,7 @@ export default function App() {
         else if (app.annotating) app.setAnnotating(false)
         else if (app.noting) app.setNoting(false)
         else if (app.labelling !== null) app.setLabelling(null)
+        else if (app.phoning !== null) app.setPhoning(null)
         else return
         e.stopImmediatePropagation()
       }

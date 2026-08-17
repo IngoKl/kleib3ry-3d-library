@@ -20,6 +20,12 @@ zip = "4.2.0"
 quick-xml = "0.39.4"
 sha2 = "0.10.9"
 lopdf = "0.36.0"
+# The one dependency that reaches the network, for `paper`: arXiv is fetched
+# here rather than in the front end, because a browser cannot make that request
+# and because what comes back is a file in the library folder. Blocking and
+# rustls-backed, so there is no async runtime and no system OpenSSL in the
+# container image.
+ureq = "3.4.0"
 
 [profile.release]
 codegen-units = 1

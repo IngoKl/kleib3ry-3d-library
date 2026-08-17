@@ -310,6 +310,21 @@ fn list_books(app: AppHandle) -> Result<Vec<Book>> {
     Ok(absolutise(catalog.list_books(&root, &covers), &covers))
 }
 
+/// Fetch a paper off arXiv into the library folder, and hand back the book.
+///
+/// `async` for the same reason `scan_library` is: this one waits on a network
+/// round trip and a download, and doing that on the main thread is a window
+/// Windows will offer to close for you.
+#[tauri::command(async)]
+fn fetch_paper(app: AppHandle, id: String) -> Result<Book> {
+    let root = root_of(&app)?;
+    let covers = allow_covers(&app)?;
+    let book = kleib3ry_core::paper::fetch(&root, &index_file(&app)?, &covers, &id)?;
+    // The cover is a file name in the cache; the WebView needs a path it can
+    // load, exactly as `list_books` hands one back.
+    Ok(absolutise(vec![book], &covers).remove(0))
+}
+
 /// Walk the library folder and reconcile the index with it.
 ///
 /// `async` is load-bearing: a plain `#[tauri::command]` runs on the main thread,
@@ -597,6 +612,7 @@ pub fn run() {
             get_library_root,
             set_library_root,
             list_books,
+            fetch_paper,
             scan_library,
             save_rendered_cover,
             read_book_file,

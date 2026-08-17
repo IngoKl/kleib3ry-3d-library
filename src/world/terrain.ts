@@ -27,16 +27,28 @@ export const SHORE_Y = -0.225
 export const WATER_Y = -0.21
 
 /**
+ * The brook's own two sheets, four millimetres under the lake's — so that where
+ * the one runs into the other there is a winner rather than a fight. Two
+ * surfaces at exactly one height shimmer against each other, which is the whole
+ * reason these numbers are written down in one place.
+ */
+export const BROOK_BED_Y = SHORE_Y - 0.004
+export const BROOK_WATER_Y = WATER_Y - 0.004
+
+/**
  * How far the ground reaches before the fog has swallowed it anyway, and how
  * far you are allowed to walk.
  *
- * The walkable radius is deliberately well inside the visible one. At 96 m the
+ * The walkable radius is deliberately well inside the visible one. At 118 m the
  * fog is dense enough that the refusal reads as "the forest goes on" rather
  * than as a wall — which is the cheapest honest end to a world whose point is a
- * cabin, not a continent.
+ * cabin, not a continent. Everything else out here is written in terms of these
+ * two, so the valley can be grown by changing them and nothing is left behind:
+ * the ground disc's rings, where the swell starts, the hills, how far the
+ * forest is sown.
  */
-export const GROUND_RADIUS = 150
-export const WALK_RADIUS = 96
+export const GROUND_RADIUS = 176
+export const WALK_RADIUS = 118
 
 /**
  * The lake.
@@ -115,11 +127,13 @@ export const SHORE_EDGE = 1.078
 
 /**
  * What the ground underfoot is made of, for anything that wants to sound or
- * look like it — the beach ring is sand, everything else out of doors is
- * grass. Owned here so the shore you hear is the shore you see.
+ * look like it — the beach ring and the brook's gravel banks are sand,
+ * everything else out of doors is grass. Owned here so the shore you hear is
+ * the shore you see.
  */
 export function groundSurface(x: number, z: number): 'sand' | 'grass' {
-  return lakeRadius(x, z) < SHORE_EDGE ? 'sand' : 'grass'
+  if (lakeRadius(x, z) < SHORE_EDGE) return 'sand'
+  return alongStream(x, z, 0.7) ? 'sand' : 'grass'
 }
 
 /**
@@ -178,6 +192,167 @@ export const TRAILS: readonly (readonly (readonly [number, number])[])[] = [TRAI
 /** How wide the trodden ground is. Two abreast, which is what a path is. */
 export const TRAIL_WIDTH = 1.6
 
+/**
+ * The brook.
+ *
+ * The valley had water on one side of the houses and nothing on the other. This
+ * is the other: a stream out of the south-east forest, past the office's east
+ * window, and down into the lake — which means the lake is no longer somewhere
+ * you go, it is somewhere the ground you are standing on is going.
+ *
+ * A polyline like the trail, and here rather than in `Outside.tsx` for the same
+ * reason the lake is: three things have to agree about where the water runs.
+ * The renderer draws it, the forest is grown around it, and the walk controller
+ * refuses to step into it — and a brook you can see in one place and walk
+ * through in another is precisely the bug this module exists to prevent.
+ */
+export const STREAM: readonly (readonly [number, number])[] = [
+  [92, 86],
+  [64, 58],
+  [43, 37],
+  [30, 23],
+  [22, 14],
+  [17.5, 7],
+  [15.6, 0],
+  [14.2, -7],
+  [12.6, -13],
+  [11, -17.4],
+]
+
+/** How wide the water is at the spring and at the mouth. A brook gathers. */
+const STREAM_WIDTH = [1.7, 3.6] as const
+
+/** How wide the brook is `along` its length, 0 at the spring and 1 at the mouth. */
+export const streamWidth = (along: number): number =>
+  STREAM_WIDTH[0] + (STREAM_WIDTH[1] - STREAM_WIDTH[0]) * Math.max(0, Math.min(1, along))
+
+/**
+ * Where a point falls on a polyline: how far off the middle of it, and how far
+ * down it as a fraction of the whole.
+ */
+function nearestOn(
+  line: readonly (readonly [number, number])[],
+  x: number,
+  z: number,
+): { distance: number; along: number } {
+  let best = Infinity
+  let at = 0
+  let travelled = 0
+  for (let i = 1; i < line.length; i++) {
+    const [ax, az] = line[i - 1]!
+    const [bx, bz] = line[i]!
+    const dx = bx - ax
+    const dz = bz - az
+    const length = Math.hypot(dx, dz)
+    if (length === 0) continue
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (length * length)))
+    const distance = Math.hypot(x - (ax + dx * t), z - (az + dz * t))
+    if (distance < best) {
+      best = distance
+      at = travelled + t * length
+    }
+    travelled += length
+  }
+  return { distance: best, along: travelled === 0 ? 0 : at / travelled }
+}
+
+/** True within `margin` of the water's edge — the banks, where nothing grows. */
+export function alongStream(x: number, z: number, margin = 0): boolean {
+  const brook = nearestOn(STREAM, x, z)
+  return brook.distance <= streamWidth(brook.along) / 2 + margin
+}
+
+/**
+ * True where the brook is water you cannot walk in.
+ *
+ * Not the whole of it: across the shore the stream fans out over the sand and
+ * runs ankle deep, so the last few metres are a ford. That is what a stream
+ * does where it meets a beach, and it is also what keeps the walk round the
+ * lake in one piece — a brook that blocked all the way to the waterline would
+ * cut the ring path, and the crossing would be a bridge standing in a puddle.
+ */
+export function inStream(x: number, z: number): boolean {
+  return alongStream(x, z) && lakeRadius(x, z) > PATH.to
+}
+
+/**
+ * A plank crossing: where it is, which way the water runs under it, and how far
+ * the deck reaches across.
+ *
+ * Written as "somewhere you would want to cross", snapped to the middle of the
+ * brook and squared up to the flow, because the decision is the *where* and
+ * the rest is arithmetic that must not be allowed to disagree with the water.
+ */
+export type Bridge = {
+  x: number
+  z: number
+  /** Unit vector along the flow. The deck lies across it. */
+  dx: number
+  dz: number
+  /** Half the deck's length, across the water, with a footing on each bank. */
+  reach: number
+}
+
+/** Half the deck's width, along the flow: two abreast, like the trail. */
+export const BRIDGE_DECK = 1.05
+
+/** The deck stands a little proud of the bank, the way a plank bridge does. */
+export const BRIDGE_Y = GROUND_Y + 0.06
+
+/** One crossing, out of the cabin's east side past the office. */
+const CROSSINGS: readonly (readonly [number, number])[] = [[16.6, 3.6]]
+
+export const BRIDGES: readonly Bridge[] = CROSSINGS.map(([tx, tz]) => {
+  let best = { distance: Infinity, x: tx!, z: tz!, dx: 0, dz: 1, along: 0 }
+  let travelled = 0
+  let total = 0
+  for (let i = 1; i < STREAM.length; i++) total += Math.hypot(
+    STREAM[i]![0] - STREAM[i - 1]![0],
+    STREAM[i]![1] - STREAM[i - 1]![1],
+  )
+  for (let i = 1; i < STREAM.length; i++) {
+    const [ax, az] = STREAM[i - 1]!
+    const [bx, bz] = STREAM[i]!
+    const dx = bx - ax
+    const dz = bz - az
+    const length = Math.hypot(dx, dz)
+    const t = Math.max(0, Math.min(1, ((tx! - ax) * dx + (tz! - az) * dz) / (length * length)))
+    const px = ax + dx * t
+    const pz = az + dz * t
+    const distance = Math.hypot(tx! - px, tz! - pz)
+    if (distance < best.distance) {
+      best = {
+        distance,
+        x: px,
+        z: pz,
+        dx: dx / length,
+        dz: dz / length,
+        along: (travelled + t * length) / total,
+      }
+    }
+    travelled += length
+  }
+  return {
+    x: best.x,
+    z: best.z,
+    dx: best.dx,
+    dz: best.dz,
+    reach: streamWidth(best.along) / 2 + 1.1,
+  }
+})
+
+/** The height of the deck under a point, or null where there is no bridge. */
+export function bridgeAt(x: number, z: number): number | null {
+  for (const bridge of BRIDGES) {
+    const ox = x - bridge.x
+    const oz = z - bridge.z
+    const along = ox * bridge.dx + oz * bridge.dz
+    const across = ox * bridge.dz - oz * bridge.dx
+    if (Math.abs(along) <= BRIDGE_DECK && Math.abs(across) <= bridge.reach) return BRIDGE_Y
+  }
+  return null
+}
+
 /** Distance from a point to a segment, in plan. */
 function toSegment(
   x: number,
@@ -219,5 +394,10 @@ export function terrainAt(x: number, z: number): number | null {
   // whisker short of the edge rather than exactly on it, so you finish standing
   // on sand looking at the lake rather than ankle-deep in it.
   if (lakeRadius(x, z) < 1.004) return null
+  // The plank over the brook is a floor like any other, and it is asked about
+  // before the water it crosses.
+  const deck = bridgeAt(x, z)
+  if (deck !== null) return deck
+  if (inStream(x, z)) return null
   return GROUND_Y
 }

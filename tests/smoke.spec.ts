@@ -27,6 +27,8 @@ type Stats = {
   focusedTape: string | null
   heldTape: string | null
   focusedProp: string | null
+  ordering: boolean
+  phoning: 'menu' | 'paper' | null
 }
 
 type ShelfTarget = { shelf: number; shelfId: string; row: number; index: number }
@@ -2302,6 +2304,26 @@ test('the main menu holds the room until you go in', async ({ page }) => {
   await page.getByTestId('enter-library').click()
   await expect(page.getByTestId('main-menu')).toHaveCount(0)
   await expect(page.getByTestId('status')).toBeVisible()
+})
+
+test('the telephone asks what you want before it orders anything', async ({ page }) => {
+  await boot(page)
+
+  const at = await facePiece(page, 'phone', () => window.__app.stats().focusedFixture === 'phone')
+  expect(at, 'never found the telephone').toBe(true)
+
+  await page.keyboard.press('KeyE')
+  await expect(page.getByTestId('phone-card')).toBeVisible()
+  // Picking it up is not ordering: nothing is on its way until you say what.
+  expect(await page.evaluate(() => window.__app.stats().ordering)).toBe(false)
+  // A driver with no library folder has nowhere to put a paper, and the option
+  // says so rather than failing at the end of a keystroke.
+  await expect(page.getByTestId('order-paper')).toBeDisabled()
+
+  // And the room has its keyboard back the moment you hang up.
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('phone-card')).toHaveCount(0)
+  expect(await page.evaluate(() => window.__app.stats().phoning)).toBeNull()
 })
 
 test('a can lives a whole life: set down, picked up, drunk, and still an empty', async ({ page }) => {

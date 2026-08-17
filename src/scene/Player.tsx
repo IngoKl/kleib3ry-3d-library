@@ -478,7 +478,7 @@ export function Player() {
       // into real furniture when you set it down (X), like any carried box.
       // The stack never runs out: cardboard is not the scarce thing here.
       if (item.kind === 'boxstack') {
-        useAppStore.getState().setCarriedBox(NEW_BOX)
+        useAppStore.getState().setCarried(NEW_BOX)
         playOneShot('cardboard', 0.8)
         return
       }
@@ -523,9 +523,10 @@ export function Player() {
         app.brew(id)
         return
       }
-      // Ring for food. The box turns up at the porch steps a while later.
+      // Pick it up and ask what you want: a takeaway, or a paper off arXiv.
+      // Either turns up at the porch steps a while later, carried in.
       if (item.kind === 'phone') {
-        useAppStore.getState().order()
+        useAppStore.getState().setPhoning('menu')
         return
       }
       // The fridge never runs out of cans, the way the box stack never runs

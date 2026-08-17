@@ -19,7 +19,6 @@ export type BookDimensions = {
   height: number
   depth: number
   colour: string
-  lean: number
 }
 
 const SPINE_COLOURS = [
@@ -74,14 +73,15 @@ export function dimensionsFor(book: IndexedBook): BookDimensions {
   const hash = hashId(book.id)
   const a = ((hash >>> 0) % 1000) / 1000
   const b = ((hash >>> 10) % 1000) / 1000
-  const c = ((hash >>> 20) % 1000) / 1000
 
+  // No lean here: a book wedged between two others stands plumb, whatever its
+  // own character, and the only books with room to lean are the ones at the
+  // open end of a row. `packRow` settles those — see `shelving.ts`.
   return {
     thickness: thicknessFor(book),
     // Hardbacks run taller than paperbacks; EPUBs get the paperback range.
     height: book.format === 'pdf' ? 0.255 + a * 0.085 : 0.235 + a * 0.05,
     depth: 0.15 + b * 0.046,
     colour: SPINE_COLOURS[hash % SPINE_COLOURS.length]!,
-    lean: c > 0.94 ? (c - 0.97) * 2.6 : 0,
   }
 }

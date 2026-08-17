@@ -114,6 +114,7 @@ export const httpDriver: LibraryService = {
   kind: 'http',
   canPickFolder: false,
   canIndex: true,
+  canFetchPapers: true,
 
   async getRoot() {
     const { root } = await ask<{ root: string | null }>('/root')
@@ -166,6 +167,19 @@ export const httpDriver: LibraryService = {
       body: dataUrl,
     })
     return path
+  },
+
+  async fetchPaper(id) {
+    // Plain text in, a book out. The failure that matters is the one with a
+    // message in it — a bad id, or an id arXiv has nothing under — so the
+    // body is read and thrown rather than the status code.
+    const response = await fetch(`${API}/paper`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: id,
+    })
+    if (!response.ok) throw new Error((await response.text()).trim() || `${response.status}`)
+    return (await response.json()) as IndexedBook
   },
 
   async loadWorld() {

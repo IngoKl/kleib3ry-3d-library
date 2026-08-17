@@ -4,7 +4,11 @@ import { solidsAt, stepPlayer, type Stance } from '../src/scene/walk'
 import { shelfColliders } from '../src/world/shelf'
 import {
   FLOOR_SLAB,
+  FURNITURE_SIZE,
+  PORTABLE,
+  SITTABLE,
   STEP_UP,
+  WALL,
   WALL_MOUNTED,
   deliverySpot,
   deriveWorld,
@@ -12,11 +16,15 @@ import {
   roomBounds,
 } from '../src/world/derive'
 import {
+  BRIDGES,
+  BRIDGE_Y,
   GROUND_Y,
   LAKE,
   PATH,
   SHORE_EDGE,
+  STREAM,
   WALK_RADIUS,
+  inStream,
   lakePoint,
   lakeRadius,
   shoreShape,
@@ -40,7 +48,8 @@ import type { IndexedBook } from '../src/services/types'
  * Playwright transpiles; none of them need a page.
  */
 
-const WORLD = deriveWorld(parseWorldText(DEFAULT_WORLD_TEXT))
+const DOC = parseWorldText(DEFAULT_WORLD_TEXT)
+const WORLD = deriveWorld(DOC)
 
 function book(id: string, over: Partial<IndexedBook> = {}): IndexedBook {
   return {
@@ -136,8 +145,13 @@ test.describe('world document', () => {
           const b = roomBounds(over)
           if (at.x < b.minX || at.x > b.maxX || at.z < b.minZ || at.z > b.maxZ) continue
 
+          // The slab hangs between these two; the opening runs from its sill to
+          // its head. What is forbidden is the two *overlapping* — an opening
+          // wholly above the slab is a window in the upper room's own wall,
+          // which is what the loft's north window is.
           const underside = over.elevation - FLOOR_SLAB
-          if (head > underside + 1e-6) {
+          const sill = room.elevation + opening.sill
+          if (head > underside + 1e-6 && sill < over.elevation - 1e-6) {
             problems.push(
               `${room.id}'s ${opening.wall} ${opening.kind} reaches ${head.toFixed(2)} ` +
                 `but ${over.id}'s floor starts at ${underside.toFixed(2)}`,
@@ -148,6 +162,42 @@ test.describe('world document', () => {
     }
 
     expect(problems, problems.join('; ')).toEqual([])
+  })
+
+  test('two openings never share a stretch of wall', () => {
+    // `wallPanels` walks a wall's openings in order and cuts the leftovers into
+    // piers, aprons and lintels. Two that overlap along the wall cut each
+    // other's panels to ribbons — the apron of the second is drawn straight
+    // across the glass of the first — and the heights do not save you, because
+    // the cut is made in plan.
+    for (const room of WORLD.rooms) {
+      for (const wall of ['north', 'south', 'east', 'west'] as const) {
+        const on = room.openings.filter((o) => o.wall === wall).sort((a, b) => a.at - b.at)
+        for (let i = 1; i < on.length; i++) {
+          const previous = on[i - 1]!
+          const current = on[i]!
+          expect(
+            current.at - current.width / 2,
+            `${room.id}'s ${wall} wall has two openings over each other`,
+          ).toBeGreaterThanOrEqual(previous.at + previous.width / 2 - 1e-6)
+        }
+      }
+    }
+  })
+
+  test('the loft has a window of its own, in the wall the great room builds', () => {
+    // The loft stands inside the great room's volume and builds only its
+    // balustrade, so a window for it is an opening in *this* room's north wall,
+    // sitting above the loft floor. From below it is hidden behind the boards.
+    const loft = WORLD.rooms.find((room) => room.id === 'loft')!
+    const main = WORLD.rooms.find((room) => room.id === 'main')!
+    const window = main.openings.find(
+      (opening) => opening.kind === 'window' && opening.sill > loft.elevation,
+    )
+    expect(window, 'the loft has nothing to look out of').toBeDefined()
+    expect(window!.sill + window!.height).toBeLessThan(main.height)
+    // And the loft actually reaches the wall it is cut into.
+    expect(roomBounds(loft).minZ).toBeCloseTo(roomBounds(main).minZ, 6)
   })
 
   test('the office is walked into from the kitchen, not sealed off', () => {
@@ -355,8 +405,12 @@ test.describe('the roof', () => {
     // the great room, which is the bug this asserts against.
     const porch = roofOf('porch')!
     const room = WORLD.rooms.find((r) => r.id === 'porch')!
+    const wall = room.origin[1] - room.size[1] / 2
     expect(porch.kind).toBe('shed')
-    expect(porch.covers.minZ).toBeCloseTo(room.origin[1] - room.size[1] / 2, 6)
+    // Stopped inside the cabin's wall slab rather than level with its face:
+    // flush is two surfaces in one plane, which shimmers from the room below.
+    expect(porch.covers.minZ).toBeGreaterThan(wall)
+    expect(porch.covers.minZ).toBeLessThan(wall + WALL)
     // ...and it still stands out over the decking on its low side.
     expect(porch.covers.maxZ).toBeGreaterThan(room.origin[1] + room.size[1] / 2 + 0.2)
 
@@ -365,10 +419,12 @@ test.describe('the roof', () => {
     expect(porch.peak).toBeLessThan(cabin.elevation + cabin.height)
 
     // The kitchen's gable end abuts the great room's east wall for the same
-    // reason, and is flush with it.
+    // reason, and stops inside it rather than reaching across the great room.
     const kitchen = roofOf('kitchen')!
     const kitchenRoom = WORLD.rooms.find((r) => r.id === 'kitchen')!
-    expect(kitchen.covers.minX).toBeCloseTo(kitchenRoom.origin[0] - kitchenRoom.size[0] / 2, 6)
+    const kitchenWall = kitchenRoom.origin[0] - kitchenRoom.size[0] / 2
+    expect(kitchen.covers.minX).toBeGreaterThan(kitchenWall)
+    expect(kitchen.covers.minX).toBeLessThan(kitchenWall + WALL)
   })
 
   test('nothing you can stand on is under a roof slope', () => {
@@ -447,6 +503,41 @@ test.describe('outside', () => {
       expect(occupied(x, z, keepOut), `a tree could grow at ${where}`).toBe(true)
       expect(blocked(solidsAt(solids, GROUND_Y), { x, z }, 0.28), `blocked: ${where}`).toBe(false)
     }
+  })
+
+  test('the brook is water you cannot walk into, and the plank over it is floor', () => {
+    const bridge = BRIDGES[0]!
+    // Up the flow from the crossing, and still on the same leg of the brook.
+    const up = { x: bridge.x - bridge.dx * 2.5, z: bridge.z - bridge.dz * 2.5 }
+    expect(inStream(up.x, up.z)).toBe(true)
+    expect(terrainAt(up.x, up.z)).toBeNull()
+
+    // The deck itself, and the bank you step onto it from — a plank stands a
+    // little proud of the ground, which is a step and not a climb.
+    expect(terrainAt(bridge.x, bridge.z)).toBe(BRIDGE_Y)
+    const bank = { x: bridge.x + bridge.dz * (bridge.reach + 0.5), z: bridge.z - bridge.dx * (bridge.reach + 0.5) }
+    expect(terrainAt(bank.x, bank.z)).toBe(GROUND_Y)
+    expect(BRIDGE_Y - GROUND_Y).toBeLessThan(STEP_UP)
+  })
+
+  test('the brook fords across the shore rather than cutting the walk round the lake', () => {
+    // Its last stretch runs over the beach, where a stream goes shallow — which
+    // is what keeps the ring path in one piece without a bridge in a puddle.
+    const [ax, az] = STREAM[STREAM.length - 2]!
+    const [bx, bz] = STREAM[STREAM.length - 1]!
+    expect(lakeRadius(bx, bz), 'the brook never reaches the water').toBeLessThan(1)
+
+    let fords = 0
+    for (let i = 0; i <= 200; i++) {
+      const t = i / 200
+      const x = ax + (bx - ax) * t
+      const z = az + (bz - az) * t
+      const r = lakeRadius(x, z)
+      if (r > PATH.to || r < 1.004) continue
+      fords += 1
+      expect(terrainAt(x, z), `no ground at (${x.toFixed(1)}, ${z.toFixed(1)})`).toBe(GROUND_Y)
+    }
+    expect(fords, 'the brook does not cross the shore path at all').toBeGreaterThan(10)
   })
 
   test('a tree is something you walk into, not through', () => {
@@ -673,6 +764,39 @@ test.describe('unpacking a box onto the shelves', () => {
     const shelved = Object.values(arranged.rows).flat()
     expect(shelved.length).toBeGreaterThan(100)
     expect(shelved.length + arranged.leftOver.length).toBe(ids.length)
+  })
+})
+
+test.describe('furniture you carry off', () => {
+  test('the folding pair stands on the porch, and is portable and useful', () => {
+    const folding = WORLD.furniture.filter((item) => PORTABLE.has(item.kind))
+    expect(folding.map((item) => item.id).sort()).toEqual(['folding-chair', 'folding-table'])
+    for (const item of folding) expect(item.roomId).toBe('porch')
+
+    // Both are solid, so you walk round them wherever they end up; the chair is
+    // something to sit on and the table something to put a book on. Being
+    // ordinary furniture is the whole point of them.
+    const chair = folding.find((item) => item.kind === 'foldingchair')!
+    const table = folding.find((item) => item.kind === 'foldingtable')!
+    expect(SITTABLE.has(chair.kind)).toBe(true)
+    expect(table.surface).toBe(true)
+    for (const item of folding) expect(FURNITURE_SIZE[item.kind].solid).toBe(true)
+  })
+
+  test('setting one down out on the grass is an override, like a shoved box', () => {
+    // Carried across the brook and stood at the water's edge: the override is
+    // room-local, because that is the frame the document is written in.
+    const porch = WORLD.rooms.find((room) => room.id === 'porch')!
+    const at: [number, number] = [12 - porch.origin[0], -12 - porch.origin[1]]
+    const moved = deriveWorld(DOC, { 'folding-chair': { at, facing: 90, elevation: GROUND_Y } })
+    const chair = moved.furniture.find((item) => item.id === 'folding-chair')!
+    expect(chair.x).toBeCloseTo(12, 6)
+    expect(chair.z).toBeCloseTo(-12, 6)
+    expect(chair.y).toBe(GROUND_Y)
+
+    // And it is solid where it now stands, not where the document put it.
+    const here = solidsAt(moved.solids, GROUND_Y)
+    expect(blocked(here, { x: 12, z: -12 }, 0.2)).toBe(true)
   })
 })
 

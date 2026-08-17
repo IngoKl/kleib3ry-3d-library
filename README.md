@@ -47,7 +47,8 @@ a network you trust — no accounts, no TLS ([docs/docker.md](docs/docker.md)).
 
 [`demo-data/demo-library/`](demo-data/demo-library/) is a complete, freely-licensed
 library folder: ten [Standard Ebooks](https://standardebooks.org/) titles, two
-records, two pictures and a tape. Point the desktop app at it, or mount it:
+records, two pictures, a tape and a Pong cartridge. Point the desktop app at it,
+or mount it:
 
 ```bash
 docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
