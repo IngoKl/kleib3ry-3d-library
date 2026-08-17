@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { block, join } from './geometry'
 import { sceneRefs } from './refs'
 import { stepPlayer } from './walk'
 import { shelfColliders } from '../world/shelf'
@@ -61,49 +61,55 @@ const FUR_DARK = '#413a34'
 const BELLY = '#a99b8b'
 const EYE = '#c8c46a'
 
-/** A box at a place, ready to be merged with its neighbours. */
-function block(w: number, h: number, d: number, x: number, y: number, z: number) {
-  const part = new THREE.BoxGeometry(w, h, d)
-  part.translate(x, y, z)
-  return part
-}
-
 /** Where a hip sits: leg tops, so a leg swings about its top rather than its middle. */
 const HIP_Y = 0.11
+/** Where the neck is: the head group pivots here, so a rotation is a look. */
+const NECK: [number, number, number] = [0, 0.27, 0.14]
+/** How far the head turns before only the body can go further — a cat, not an owl. */
+const HEAD_YAW = 0.6
+const HEAD_PITCH = 0.35
 
 /**
  * Its own body, as merged geometries — one per colour, plus one per diagonal
  * pair of legs.
  *
  * The head is at the +Z end, which is the same convention as every `facing` in
- * the building: `cat.yaw` points local +Z at where the cat is going.
+ * the building: `cat.yaw` points local +Z at where the cat is going. It is its
+ * own group, pivoted at the neck, so it can turn to you before the body does.
  *
  * The legs are two groups rather than four so a walk is two draw calls: a cat
  * moves diagonal pairs together, so front-left swings with back-right.
  */
-function CatBody({ legs }: { legs: [React.RefObject<THREE.Group | null>, React.RefObject<THREE.Group | null>] }) {
+function CatBody({
+  head,
+  legs,
+}: {
+  head: React.RefObject<THREE.Group | null>
+  legs: [React.RefObject<THREE.Group | null>, React.RefObject<THREE.Group | null>]
+}) {
   const parts = useMemo(() => {
     const fur = [
       // The barrel and the haunches — a cat is two masses, not one.
       block(0.15, 0.16, 0.36, 0, 0.19, 0),
       block(0.17, 0.18, 0.16, 0, 0.17, -0.14),
-      block(0.13, 0.12, 0.12, 0, 0.26, 0.21),
     ]
-    const pale = [
-      block(0.13, 0.07, 0.3, 0, 0.12, 0),
-      // The muzzle.
-      block(0.07, 0.05, 0.04, 0, 0.235, 0.275),
-    ]
-    const dark: THREE.BufferGeometry[] = []
+    const pale = [block(0.13, 0.07, 0.3, 0, 0.12, 0)]
+
+    // The head, built relative to NECK, so the group at the pivot reproduces
+    // the resting pose exactly and a rotation is a look.
+    const headFur = [block(0.13, 0.12, 0.12, 0, -0.01, 0.07)]
+    // The muzzle.
+    const muzzle = [block(0.07, 0.05, 0.04, 0, -0.035, 0.135)]
+    const ears: THREE.BufferGeometry[] = []
     for (const side of [-1, 1]) {
       const ear = new THREE.ConeGeometry(0.032, 0.07, 4)
-      ear.translate(side * 0.045, 0.335, 0.205)
-      dark.push(ear)
+      ear.translate(side * 0.045, 0.065, 0.065)
+      ears.push(ear)
     }
     const bright = [
-      block(0.018, 0.014, 0.008, 0, 0.235, 0.298),
-      block(0.022, 0.014, 0.006, -0.033, 0.272, 0.272),
-      block(0.022, 0.014, 0.006, 0.033, 0.272, 0.272),
+      block(0.018, 0.014, 0.008, 0, -0.035, 0.158),
+      block(0.022, 0.014, 0.006, -0.033, 0.002, 0.132),
+      block(0.022, 0.014, 0.006, 0.033, 0.002, 0.132),
     ]
 
     // Built hanging from the origin, so the group's rotation is a hip joint.
@@ -111,15 +117,12 @@ function CatBody({ legs }: { legs: [React.RefObject<THREE.Group | null>, React.R
     const pairA = [leg(-1, 0.13), leg(1, -0.13)]
     const pairB = [leg(1, 0.13), leg(-1, -0.13)]
 
-    const join = (list: THREE.BufferGeometry[]) => {
-      const merged = mergeGeometries(list, false)
-      list.forEach((part) => part.dispose())
-      return merged
-    }
     return {
       fur: join(fur),
       pale: join(pale),
-      dark: join(dark),
+      headFur: join(headFur),
+      muzzle: join(muzzle),
+      ears: join(ears),
       bright: join(bright),
       pairA: join(pairA),
       pairB: join(pairB),
@@ -130,7 +133,9 @@ function CatBody({ legs }: { legs: [React.RefObject<THREE.Group | null>, React.R
     () => () => {
       parts.fur?.dispose()
       parts.pale?.dispose()
-      parts.dark?.dispose()
+      parts.headFur?.dispose()
+      parts.muzzle?.dispose()
+      parts.ears?.dispose()
       parts.bright?.dispose()
       parts.pairA?.dispose()
       parts.pairB?.dispose()
@@ -150,24 +155,36 @@ function CatBody({ legs }: { legs: [React.RefObject<THREE.Group | null>, React.R
           <meshStandardMaterial color={BELLY} roughness={1} />
         </mesh>
       )}
-      {parts.dark && (
-        <mesh geometry={parts.dark} castShadow>
-          <meshStandardMaterial color={FUR_DARK} roughness={1} flatShading />
-        </mesh>
-      )}
-      {/* The nose and the eyes share a material rather than two: at this size
-          the difference between a pink nose and a yellow one is one pixel, and
-          the eyes are the ones worth having. */}
-      {parts.bright && (
-        <mesh geometry={parts.bright}>
-          <meshStandardMaterial
-            color={EYE}
-            emissive={EYE}
-            emissiveIntensity={0.35}
-            roughness={0.4}
-          />
-        </mesh>
-      )}
+      <group ref={head} position={NECK}>
+        {parts.headFur && (
+          <mesh geometry={parts.headFur} castShadow receiveShadow>
+            <meshStandardMaterial color={FUR} roughness={1} />
+          </mesh>
+        )}
+        {parts.muzzle && (
+          <mesh geometry={parts.muzzle} castShadow>
+            <meshStandardMaterial color={BELLY} roughness={1} />
+          </mesh>
+        )}
+        {parts.ears && (
+          <mesh geometry={parts.ears} castShadow>
+            <meshStandardMaterial color={FUR_DARK} roughness={1} flatShading />
+          </mesh>
+        )}
+        {/* The nose and the eyes share a material rather than two: at this size
+            the difference between a pink nose and a yellow one is one pixel, and
+            the eyes are the ones worth having. */}
+        {parts.bright && (
+          <mesh geometry={parts.bright}>
+            <meshStandardMaterial
+              color={EYE}
+              emissive={EYE}
+              emissiveIntensity={0.35}
+              roughness={0.4}
+            />
+          </mesh>
+        )}
+      </group>
       {[parts.pairA, parts.pairB].map((pair, i) =>
         pair ? (
           <group key={i} ref={legs[i]} position={[0, HIP_Y, 0]}>
@@ -237,10 +254,17 @@ export function Cat() {
   const group = useRef<THREE.Group>(null)
   const hitbox = useRef<THREE.Group>(null)
   const bob = useRef(0)
+  /** Time, not distance, so the breathing carries on while everything else stops. */
+  const breath = useRef(0)
   const tail = useRef<THREE.Group>(null)
+  /** The book in its mouth, and which one, so the box is only re-dressed on a change. */
+  const carried = useRef<THREE.Mesh>(null)
+  const carriedId = useRef<string | null>(null)
   /** The two diagonal pairs of legs, swung in opposite phase. */
   const legA = useRef<THREE.Group>(null)
   const legB = useRef<THREE.Group>(null)
+  /** The head, on its neck pivot, turned towards you before the body is. */
+  const head = useRef<THREE.Group>(null)
 
   const solids = useMemo(
     () => (world ? [...world.solids, ...shelfColliders(world.shelves)] : []),
@@ -378,21 +402,41 @@ export function Cat() {
       cat.yaw += shortestTurn(Math.atan2(dx, dz) - cat.yaw) * approach(6, delta)
     } else {
       cat.speed = 0
-      // Sitting near you, it looks at you.
-      if (distanceToYou < 3) {
+      // Sitting near you, it looks at you. Asleep, it does not — a sleeping
+      // cat that tracks you round the room is a security camera in a fur coat.
+      // Unhurried, because the head has already got there.
+      if (distanceToYou < 3 && cat.mood !== 'sleep') {
         cat.yaw += shortestTurn(Math.atan2(player.x - cat.x, player.z - cat.z) - cat.yaw) *
-          approach(3, delta)
+          approach(2, delta)
       }
     }
 
     // ---- drawing ----
     bob.current += delta * cat.speed * 6
+    breath.current += delta
     // A sitting cat settles onto its haunches and a sleeping one is a loaf. It
     // is done by dropping the whole animal rather than by folding its legs,
     // which at this size is the same picture and no bones.
     const crouch = cat.mood === 'sleep' ? 0.055 : cat.mood === 'sit' ? 0.025 : 0
-    node.position.set(cat.x, cat.floor + Math.sin(bob.current) * 0.012 - crouch, cat.z)
+    // The gait bob is distance-driven and stops with the cat, so an asleep cat
+    // would be perfectly still — the flank has to rise on its own clock.
+    const breathing = cat.mood === 'sleep' ? Math.sin(breath.current * 2.5) * 0.005 : 0
+    node.position.set(cat.x, cat.floor + Math.sin(bob.current) * 0.012 - crouch + breathing, cat.z)
     node.rotation.y = cat.yaw
+
+    // The book in its mouth: one box, re-dressed only when the errand changes,
+    // wearing the real book's size and cloth so what lands at your feet is
+    // recognisably what it fetched.
+    if (carried.current && carriedId.current !== cat.carrying) {
+      carriedId.current = cat.carrying
+      if (cat.carrying) {
+        const size = useLibraryStore.getState().dims.get(cat.carrying)
+        carried.current.scale.set(size?.height ?? 0.25, size?.thickness ?? 0.03, size?.depth ?? 0.16)
+        const cloth = carried.current.material as THREE.MeshStandardMaterial
+        cloth.color.set(size?.colour ?? '#6e4630')
+      }
+      carried.current.visible = cat.carrying !== null
+    }
 
     // The gait, advanced by distance rather than by time, so the legs stop when
     // the cat does. A sitting or sleeping cat folds them under itself.
@@ -400,6 +444,30 @@ export function Cat() {
     const swing = tucked ? 0 : Math.sin(bob.current) * Math.min(0.5, cat.speed * 0.5)
     if (legA.current) legA.current.rotation.x = swing
     if (legB.current) legB.current.rotation.x = -swing
+
+    // The head leads: near you and awake it turns and tilts to your eye before
+    // the body has moved. Out of range, asleep or trotting, it settles back.
+    if (head.current) {
+      const looking = distanceToYou < 3 && cat.mood !== 'sleep' && cat.speed < 1.2
+      let yawTo = 0
+      let pitchTo = 0
+      if (looking) {
+        yawTo = THREE.MathUtils.clamp(
+          shortestTurn(Math.atan2(player.x - cat.x, player.z - cat.z) - cat.yaw),
+          -HEAD_YAW,
+          HEAD_YAW,
+        )
+        // Negative x tips the muzzle up, so a standing player is looked up at.
+        pitchTo = THREE.MathUtils.clamp(
+          -Math.atan2(player.eye - (node.position.y + NECK[1]), distanceToYou),
+          -HEAD_PITCH,
+          HEAD_PITCH,
+        )
+      }
+      const blend = approach(8, delta)
+      head.current.rotation.y += (yawTo - head.current.rotation.y) * blend
+      head.current.rotation.x += (pitchTo - head.current.rotation.x) * blend
+    }
 
     if (tail.current) {
       // Slow when content, quick and low when walking. A still tail on a cat is
@@ -423,7 +491,14 @@ export function Cat() {
           <meshBasicMaterial />
         </mesh>
       </group>
-      <CatBody legs={[legA, legB]} />
+      <CatBody head={head} legs={[legA, legB]} />
+      {/* The carried book, hanging under the muzzle. Crosswise, gripped by the
+          middle of the spine, which is how a cat carries anything: proudly and
+          impractically. */}
+      <mesh ref={carried} position={[0, 0.205, 0.31]} visible={false} castShadow>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial roughness={0.9} />
+      </mesh>
       {/* The tail, at the -Z end now that the head is at +Z. */}
       <group ref={tail} position={[0, 0.25, -0.2]}>
         <mesh position={[0, 0.09, -0.03]} castShadow>

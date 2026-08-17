@@ -1,7 +1,14 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { colorCorners, mixColor, mixNumber, type Corners } from './ambienceBlend'
+import {
+  ambienceBlend,
+  colorCorners,
+  goldenWarmth,
+  mixColor,
+  mixNumber,
+  type Corners,
+} from './ambienceBlend'
 import { FurnitureLights } from './Furniture'
 import { roomBounds } from '../world/derive'
 import type { RoomSpec } from '../world/schema'
@@ -143,6 +150,12 @@ const SUN_COLOUR = colorCorners({
 })
 const SUN_INTENSITY = { day: 1.9, dayRain: 0.55, night: 0.35, nightRain: 0.35 }
 
+/** The golden-hour targets, lerped in by `goldenWarmth` after the corner mix. */
+const GOLDEN_SUN = new THREE.Color('#ff9a4d')
+const GOLDEN_SKY = new THREE.Color('#d9a06a')
+/** The blue-white everything pales to for a lightning frame. */
+const LIGHTNING_COLD = new THREE.Color('#dfe6ff')
+
 export function Lighting() {
   const world = useWorldStore((s) => s.world)
   /**
@@ -200,20 +213,30 @@ export function Lighting() {
   const sun = useRef<THREE.DirectionalLight>(null)
 
   // The sky-wide lights, faded along the ambience blend rather than switched:
-  // dusk is the sun cooling into the moon while the ambient floor warms.
+  // dusk is the sun cooling into the moon while the ambient floor warms — and
+  // passing, mid-fade, through the golden hour.
   useFrame(() => {
+    const warmth = goldenWarmth()
     if (ambient.current) {
       mixColor(ambient.current.color, AMBIENT_COLOUR)
-      ambient.current.intensity = mixNumber(AMBIENT_INTENSITY) + (low ? 0.16 : 0)
+      // The flash rides the ambient: everything pales at once, then the dark
+      // comes back over a few frames as the decay runs out.
+      ambient.current.color.lerp(LIGHTNING_COLD, Math.min(1, ambienceBlend.lightning * 0.6))
+      ambient.current.intensity =
+        mixNumber(AMBIENT_INTENSITY) + (low ? 0.16 : 0) + ambienceBlend.lightning * 1.1
     }
     if (hemisphere.current) {
       mixColor(hemisphere.current.color, HEMISPHERE_SKY)
+      hemisphere.current.color.lerp(GOLDEN_SKY, warmth * 0.25)
       mixColor(hemisphere.current.groundColor, HEMISPHERE_GROUND)
       hemisphere.current.intensity = mixNumber(HEMISPHERE_INTENSITY)
     }
     if (sun.current) {
       mixColor(sun.current.color, SUN_COLOUR)
-      sun.current.intensity = mixNumber(SUN_INTENSITY)
+      sun.current.color.lerp(GOLDEN_SUN, warmth * 0.85)
+      // The sun softens as it reddens: a setting sun is most of the colour
+      // and less of the push.
+      sun.current.intensity = mixNumber(SUN_INTENSITY) * (1 - 0.3 * warmth)
     }
   })
 

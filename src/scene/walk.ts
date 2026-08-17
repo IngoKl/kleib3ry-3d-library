@@ -1,5 +1,6 @@
-import { resolveMove, type Aabb, type Point } from './collision'
+import { aabbFromCentre, resolveMove, type Aabb, type Point } from './collision'
 import { STEP_UP, floorAt, type DerivedWorld, type Solid } from '../world/derive'
+import { shelfColliders } from '../world/shelf'
 
 /**
  * Walking, once a library has more than one floor.
@@ -22,6 +23,24 @@ import { STEP_UP, floorAt, type DerivedWorld, type Solid } from '../world/derive
  * a bigger climb possible, and it does it by being a floor that ramps.
  */
 export type Stance = Point & { floor: number }
+
+/**
+ * Everything a body can hit: the derived walls and furniture, the bookcase
+ * carcasses, and whichever doors are shut. Door state is ambience, which the
+ * static derivation deliberately does not know — callers rebuild on it, and a
+ * swing is an edit, so that is cheap. One list, so the player, a thrown book
+ * and anything else that collides all agree about what is solid.
+ */
+export function worldSolids(world: DerivedWorld, ambienceOn: Record<string, boolean>): Solid[] {
+  const doors = world.furniture
+    .filter((item) => item.kind === 'door' && !(ambienceOn[item.id] ?? (item.on ?? true)))
+    .map((door) => ({
+      ...aabbFromCentre(door.x, door.z, door.width, 0.16, door.rotationY),
+      bottom: door.y,
+      top: door.y + door.height,
+    }))
+  return [...world.solids, ...shelfColliders(world.shelves), ...doors]
+}
 
 /** The solids that can block someone standing at `floor`, flattened to 2D. */
 export function solidsAt(solids: readonly Solid[], floor: number, headroom = 1.7): Aabb[] {

@@ -25,6 +25,10 @@ export function ShelfLabelField() {
     // Pointer lock is released as soon as the field opens, so the focus lands.
     if (document.pointerLockElement) document.exitPointerLock()
     input.current?.focus()
+    // Selected once the old label has landed in the input — a frame later,
+    // because the value above is state — so typing replaces it, the way a
+    // rename field behaves everywhere else.
+    requestAnimationFrame(() => input.current?.select())
   }, [shelfId, labelOf])
 
   if (shelfId === null) return null

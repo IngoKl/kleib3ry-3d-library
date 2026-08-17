@@ -27,6 +27,8 @@ export type ShelfTarget = {
   row: number
   index: number
   localX: number
+  /** Whether the held book would actually go in — `shelve` refuses when false. */
+  fits: boolean
 }
 
 type AppState = {
@@ -202,6 +204,11 @@ type AppState = {
    * so nothing you press reaches the room until you have.
    */
   started: boolean
+  /**
+   * A line for the status strip: what just happened, briefly. One at a time,
+   * last write wins; the strip drops it once `until` passes.
+   */
+  notice: { text: string; until: number } | null
 
   setMode: (mode: Mode) => void
   setSeat: (id: string | null) => void
@@ -246,6 +253,8 @@ type AppState = {
   setSettingsOpen: (open: boolean) => void
   /** Leave the main menu and go in. One way: there is no menu to go back to. */
   start: () => void
+  /** Say something in the status strip for a few seconds. */
+  notify: (text: string) => void
   /** Ask the reader to open at `spread`. Cleared by the reader once it has. */
   requestJump: (spread: number | null) => void
   /** Start a brew. It runs for a while and then stops itself, pot full. */
@@ -334,13 +343,17 @@ const PREP_MS = 12_000
 /** What the coffee is for: quicker on your feet until it wears off. */
 const COFFEE_MS = 75_000
 
+/** How long a notice stays up in the status strip. */
+const NOTICE_MS = 4_000
+
 const sameTarget = (a: ShelfTarget | null, b: ShelfTarget | null) =>
   a === b ||
   (a !== null &&
     b !== null &&
     a.shelfId === b.shelfId &&
     a.row === b.row &&
-    a.index === b.index)
+    a.index === b.index &&
+    a.fits === b.fits)
 
 export const useAppStore = create<AppState>((set, get) => ({
   mode: 'walk',
@@ -396,6 +409,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   jumpTo: null,
   jumping: false,
   annotating: false,
+  notice: null,
 
   /**
    * Read mode without a book is a dead end — nothing renders, the walk
@@ -485,6 +499,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   start: () => set({ started: true, settingsOpen: false }),
   requestJump: (jumpTo) => set({ jumpTo, jumping: false }),
+  notify: (text) => set({ notice: { text, until: performance.now() + NOTICE_MS } }),
 
   brew: (id) => {
     if (get().brewing !== null) return

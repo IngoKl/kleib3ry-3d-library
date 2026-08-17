@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { mergePanels } from './geometry'
 import { ambienceBlend } from './ambienceBlend'
 import { sceneRefs } from './refs'
 import { MATERIALS, makeFloorTexture, wallWashTexture } from './materials'
@@ -9,7 +9,9 @@ import { useAmbienceStore } from '../state/ambience'
 import {
   FLOOR_SLAB,
   SKIRTING,
+  WALL,
   floorSlabs,
+  openingPanels,
   roomBounds,
   wallPanels,
   wallsOf,
@@ -54,17 +56,7 @@ function paneOf(pane: Panel): Panel {
  * books were drawn. They never move relative to each other, so they are merged
  * once per document and drawn as one.
  */
-function merge(panels: readonly Panel[]): THREE.BufferGeometry | null {
-  if (panels.length === 0) return null
-  const parts = panels.map((panel) => {
-    const box = new THREE.BoxGeometry(...panel.size)
-    box.translate(...panel.position)
-    return box
-  })
-  const merged = mergeGeometries(parts, false)
-  parts.forEach((part) => part.dispose())
-  return merged
-}
+const merge = mergePanels
 
 /** One merged pile of boxes, in one material. */
 function Shell({
@@ -197,6 +189,55 @@ function timberOf(room: RoomSpec): Panel[] {
   return panels
 }
 
+/**
+ * Joinery round the openings: frames, mullions and sills for the glazed
+ * windows, architraves for the doors. A hole cut straight through plaster
+ * reads as a render; a window is a window because timber surrounds it. All of
+ * it is boxes in the timber material, so it joins the rafters' merge and
+ * costs no draw call. Every piece stands proud of both wall faces by more
+ * than the pane's ±0.006 nudge, so glass and frame never fight for pixels.
+ */
+const TRIM = 0.045
+const ARCHITRAVE = 0.07
+
+function trimOf(room: RoomSpec): Panel[] {
+  const panels: Panel[] = []
+  for (const { panel, opening } of openingPanels(room)) {
+    const [x, y, z] = panel.position
+    const runsX = panel.size[0] > panel.size[2]
+    const w = runsX ? panel.size[0] : panel.size[2]
+    const h = panel.size[1]
+    /** A box at (du along the wall, dy up), centred on the wall's own plane. */
+    const box = (du: number, dy: number, su: number, sy: number, sn: number): Panel =>
+      runsX
+        ? { position: [x + du, y + dy, z], size: [su, sy, sn] }
+        : { position: [x, y + dy, z + du], size: [sn, sy, su] }
+
+    if (opening.kind === 'window' && opening.glazed) {
+      const s = TRIM
+      const t = WALL + 0.02
+      panels.push(box(-(w - s) / 2, 0, s, h, t))
+      panels.push(box((w - s) / 2, 0, s, h, t))
+      panels.push(box(0, (h - s) / 2, w, s, t))
+      // One vertical mullion and one horizontal muntin: four lites is enough
+      // to say sash without drawing a glazing catalogue.
+      panels.push(box(0, 0, s, h, t))
+      panels.push(box(0, 0, w, s, t))
+      // The sill, sunk a hair into the apron so the two never share a face.
+      panels.push(box(0, -(h - 0.035) / 2 - 0.002, w + 0.08, 0.035, WALL + 0.06))
+    } else if (opening.kind === 'door') {
+      const a = ARCHITRAVE
+      const t = WALL + 0.024
+      // Legs outside the opening, not in it: trim must never narrow a doorway
+      // the walk controller thinks is clear.
+      panels.push(box(-(w + a) / 2, a / 2, a, h + a, t))
+      panels.push(box((w + a) / 2, a / 2, a, h + a, t))
+      panels.push(box(0, (h + a) / 2, w + 2 * a, a, t))
+    }
+  }
+  return panels
+}
+
 function Room({ room }: { room: RoomSpec }) {
   const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy())
   const [width, depth] = room.size
@@ -231,7 +272,7 @@ function Room({ room }: { room: RoomSpec }) {
     for (let i = 0; i < room.id.length; i++) sum = (sum + room.id.charCodeAt(i)) % 7
     return -sum * 0.0004
   }, [room.id])
-  const timber = useMemo(() => timberOf(room), [room])
+  const timber = useMemo(() => [...timberOf(room), ...trimOf(room)], [room])
   const skirting = useMemo(
     () => (room.outdoor ? [] : walls.map((wall) => skirtingFor(room, wall))),
     [room, walls],

@@ -43,6 +43,13 @@ const SLEEP_SPEED = 0.06
 export type Support = (x: number, z: number, from: number) => number
 
 /**
+ * Whether a point is inside something solid — a wall, or the flank of a table
+ * or a bookcase. Optional because the shove already keeps kicked books slow;
+ * it is thrown books that used to sail through into the next room.
+ */
+export type Blocked = (x: number, y: number, z: number) => boolean
+
+/**
  * Bodies thrown this frame, waiting for the renderer to adopt them.
  *
  * The store's placement is just a point — it has nowhere to carry a velocity —
@@ -91,7 +98,13 @@ const MAX_CATCH_UP = 0.2
  * A resting body is returned unchanged and untouched, which is what keeps a
  * room full of dropped books free once they have settled.
  */
-export function stepBody(body: Body, thickness: number, dt: number, support: Support): Body {
+export function stepBody(
+  body: Body,
+  thickness: number,
+  dt: number,
+  support: Support,
+  blocked?: Blocked,
+): Body {
   if (body.resting) return body
 
   const elapsed = Math.min(Math.max(dt, 0), MAX_CATCH_UP)
@@ -99,12 +112,18 @@ export function stepBody(body: Body, thickness: number, dt: number, support: Sup
   const step = elapsed / count
 
   let out = body
-  for (let i = 0; i < count && !out.resting; i++) out = advance(out, thickness, step, support)
+  for (let i = 0; i < count && !out.resting; i++) out = advance(out, thickness, step, support, blocked)
   return out
 }
 
 /** One fixed step. Everything about the physics lives here; `stepBody` is the clock. */
-function advance(body: Body, thickness: number, step: number, support: Support): Body {
+function advance(
+  body: Body,
+  thickness: number,
+  step: number,
+  support: Support,
+  blocked?: Blocked,
+): Body {
   const next: Body = { ...body }
 
   next.vy -= GRAVITY * step
@@ -117,6 +136,19 @@ function advance(body: Body, thickness: number, step: number, support: Support):
   next.z += next.vz * step
   next.yaw += next.spin * step
   next.spin *= Math.max(0, 1 - 3 * step)
+
+  // A step into something solid is refused sideways: the book bumps the wall,
+  // sheds its travel, and drops where it hit — which is what paper does. A
+  // body already inside (released pressed up against a bookcase, whose collider
+  // the thrower's own radius overlaps) is left to fly clear instead of being
+  // pinned where it spawned.
+  if (blocked && blocked(next.x, next.y, next.z) && !blocked(body.x, body.y, body.z)) {
+    next.x = body.x
+    next.z = body.z
+    next.vx = 0
+    next.vz = 0
+    next.spin = 0
+  }
 
   // Where the floor — or the table it is over — is, measured from just above
   // the book so it lands on the surface it is falling towards rather than on

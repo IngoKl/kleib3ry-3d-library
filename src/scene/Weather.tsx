@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { ambienceBlend } from './ambienceBlend'
 import { holdRainGlass, releaseRainGlass } from './rainGlass'
 import { player } from '../state/player'
 import { useAmbienceStore } from '../state/ambience'
@@ -54,6 +55,7 @@ function Falling({ keepOut }: { keepOut: readonly { minX: number; maxX: number; 
   const low = useSettings((s) => s.lowPerformance)
   const count = low ? DROPS_LOW : DROPS
   const mesh = useRef<THREE.InstancedMesh>(null)
+  const paint = useRef<THREE.MeshBasicMaterial>(null)
 
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const at = useMemo(() => new THREE.Vector3(), [])
@@ -87,6 +89,9 @@ function Falling({ keepOut }: { keepOut: readonly { minX: number; maxX: number; 
     const node = mesh.current
     if (!node) return
     const delta = Math.min(rawDelta, 1 / 20)
+
+    // The streaks fade on the same eased blend the sky dries by.
+    if (paint.current) paint.current.opacity = 0.42 * ambienceBlend.rain
 
     for (let i = 0; i < drops.length; i++) {
       const drop = drops[i]!
@@ -125,16 +130,36 @@ function Falling({ keepOut }: { keepOut: readonly { minX: number; maxX: number; 
       {/* A streak rather than a drop: at any shutter speed a human eye has, a
           falling raindrop is a line. */}
       <boxGeometry args={[0.014, 0.36, 0.014]} />
-      <meshBasicMaterial color="#cfe4f2" transparent opacity={0.42} depthWrite={false} />
+      <meshBasicMaterial ref={paint} color="#cfe4f2" transparent opacity={0} depthWrite={false} />
     </instancedMesh>
   )
 }
 
 /** Water on one pane, laid a hair inside the glass so it never z-fights it. */
-function WetPane({ pane, texture }: { pane: Panel; texture: THREE.Texture }) {
+function WetPane({
+  pane,
+  texture,
+  register,
+}: {
+  pane: Panel
+  texture: THREE.Texture
+  register: Set<THREE.MeshBasicMaterial>
+}) {
   const [w, h, d] = pane.size
   const facesX = w < d
   const width = facesX ? d : w
+  const paint = useRef<THREE.MeshBasicMaterial>(null)
+
+  // The parent's one frame loop fades every pane — a subscription per window
+  // was a callback per frame each, all computing the same number.
+  useEffect(() => {
+    const bead = paint.current
+    if (!bead) return
+    register.add(bead)
+    return () => {
+      register.delete(bead)
+    }
+  }, [register])
 
   const own = useMemo(() => {
     const clone = texture.clone()
@@ -160,9 +185,10 @@ function WetPane({ pane, texture }: { pane: Panel; texture: THREE.Texture }) {
     >
       <planeGeometry args={[width * 0.995, h * 0.995]} />
       <meshBasicMaterial
+        ref={paint}
         map={own}
         transparent
-        opacity={0.85}
+        opacity={0}
         depthWrite={false}
         side={THREE.DoubleSide}
         toneMapped={false}
@@ -175,6 +201,19 @@ export function Weather() {
   const raining = useAmbienceStore((s) => s.rain)
   const world = useWorldStore((s) => s.world)
 
+  // `settling` is simply "there is still rain in the air": the eased blend is
+  // above zero. Stay mounted until it lands, so the shower dries out instead
+  // of cutting; one state write per change, and the panes' shared opacity is
+  // written here — one loop rather than one subscription per window.
+  const [settling, setSettling] = useState(false)
+  const paneMats = useRef(new Set<THREE.MeshBasicMaterial>())
+  useFrame(() => {
+    const wet = ambienceBlend.rain > 0
+    if (wet !== settling) setSettling(wet)
+    for (const paint of paneMats.current) paint.opacity = 0.85 * ambienceBlend.rain
+  })
+  const active = raining || settling
+
   const panes = useMemo(
     () => (world ? world.rooms.flatMap((room) => windowPanes(room)) : []),
     [world],
@@ -185,21 +224,21 @@ export function Weather() {
     [world],
   )
 
-  // Held only while it is actually raining: a canvas being repainted fifteen
+  // Held only while there is rain to draw: a canvas being repainted fifteen
   // times a second on a dry afternoon is fifteen times a second of nothing.
-  const texture = useMemo(() => (raining ? holdRainGlass() : null), [raining])
+  const texture = useMemo(() => (active ? holdRainGlass() : null), [active])
   useEffect(() => {
     if (!texture) return
     return () => releaseRainGlass()
   }, [texture])
 
-  if (!raining || !world || !texture) return null
+  if (!active || !world || !texture) return null
 
   return (
     <group>
       <Falling keepOut={keepOut} />
       {panes.map((pane, i) => (
-        <WetPane key={`wet-${i}`} pane={pane} texture={texture} />
+        <WetPane key={`wet-${i}`} pane={pane} texture={texture} register={paneMats.current} />
       ))}
     </group>
   )

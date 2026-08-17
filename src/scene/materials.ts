@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mulberry32 } from '../lib/rng'
 
 /**
  * Surfaces shared by every room. Sizes and positions come from the world
@@ -33,16 +34,6 @@ export const MATERIALS = {
 const FLOOR_TILE_M = 2.4
 /** Board width in metres -- narrow enough to read as flooring, not panelling. */
 const PLANK_WIDTH_M = 0.15
-
-/** Deterministic PRNG, so the floor is identical on every run and in every screenshot. */
-function mulberry32(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 /**
  * The three floors a room can have, as base colour plus how far the boards vary.
@@ -244,4 +235,194 @@ export function groundMottleTexture(): THREE.CanvasTexture {
   groundMottle.wrapS = THREE.RepeatWrapping
   groundMottle.wrapT = THREE.RepeatWrapping
   return groundMottle
+}
+
+/**
+ * Grain for the furniture: the floor's stroke pass at a fraction of the
+ * density, near-white and multiplied under each piece's own colour like the
+ * wall wash. Faces of merged boxes each sample the whole tile at their own
+ * scale, so the contrast stays low enough to read as tone, never as planks
+ * pointing the wrong way.
+ */
+let woodGrain: THREE.CanvasTexture | null = null
+export function woodGrainTexture(): THREE.CanvasTexture {
+  if (woodGrain) return woodGrain
+  const size = 256
+  const random = mulberry32(0x5eed)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = '#f3f0ea'
+  ctx.fillRect(0, 0, size, size)
+
+  // A few soft knots first, so the streaks have something to flow past.
+  for (let i = 0; i < 5; i++) {
+    const x = random() * size
+    const y = random() * size
+    const r = 8 + random() * 18
+    const knot = ctx.createRadialGradient(x, y, 0, x, y, r)
+    knot.addColorStop(0, 'rgba(120, 90, 60, 0.16)')
+    knot.addColorStop(0.6, 'rgba(140, 105, 70, 0.06)')
+    knot.addColorStop(1, 'rgba(140, 105, 70, 0)')
+    ctx.fillStyle = knot
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+
+  ctx.globalAlpha = 0.06
+  for (let i = 0; i < 500; i++) {
+    const y = random() * size
+    const x = random() * size
+    const len = 24 + random() * 120
+    ctx.strokeStyle = random() > 0.5 ? '#000000' : '#d8a878'
+    ctx.lineWidth = 0.5 + random()
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + len, y + (random() - 0.5) * 2)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  woodGrain = new THREE.CanvasTexture(canvas)
+  woodGrain.colorSpace = THREE.SRGBColorSpace
+  woodGrain.wrapS = THREE.RepeatWrapping
+  woodGrain.wrapT = THREE.RepeatWrapping
+  return woodGrain
+}
+
+/**
+ * Weave for the upholstery: a low-contrast crosshatch under the cloth
+ * colours. The threads are two pixels wide on purpose — at reading distance
+ * they resolve into tooth rather than gingham.
+ */
+let clothWeave: THREE.CanvasTexture | null = null
+export function clothWeaveTexture(): THREE.CanvasTexture {
+  if (clothWeave) return clothWeave
+  const size = 128
+  const random = mulberry32(0xc10c)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = '#f4f2ee'
+  ctx.fillRect(0, 0, size, size)
+
+  ctx.globalAlpha = 0.05
+  for (let x = 0; x < size; x += 3) {
+    ctx.fillStyle = random() > 0.5 ? '#ffffff' : '#b9b2a4'
+    ctx.fillRect(x, 0, 2, size)
+  }
+  for (let y = 0; y < size; y += 3) {
+    ctx.fillStyle = random() > 0.5 ? '#ffffff' : '#b9b2a4'
+    ctx.fillRect(0, y, size, 2)
+  }
+  ctx.globalAlpha = 1
+
+  // A few broad blotches so a large cushion is never one flat value.
+  for (let i = 0; i < 12; i++) {
+    const x = random() * size
+    const y = random() * size
+    const r = 14 + random() * 34
+    const tone = random() > 0.5 ? '255, 255, 255' : '205, 200, 190'
+    const blotch = ctx.createRadialGradient(x, y, 0, x, y, r)
+    blotch.addColorStop(0, `rgba(${tone}, 0.08)`)
+    blotch.addColorStop(1, `rgba(${tone}, 0)`)
+    ctx.fillStyle = blotch
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+
+  clothWeave = new THREE.CanvasTexture(canvas)
+  clothWeave.colorSpace = THREE.SRGBColorSpace
+  clothWeave.wrapS = THREE.RepeatWrapping
+  clothWeave.wrapT = THREE.RepeatWrapping
+  return clothWeave
+}
+
+/**
+ * Masonry courses for the hearth: joint lines and mottle under
+ * `MATERIALS.stone`. A hint, not brickwork — the geometry stays slabs, and at
+ * this contrast the joints read only where the light rakes.
+ */
+let stoneHint: THREE.CanvasTexture | null = null
+export function stoneHintTexture(): THREE.CanvasTexture {
+  if (stoneHint) return stoneHint
+  const size = 256
+  const random = mulberry32(0x570e)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = '#f2f1ee'
+  ctx.fillRect(0, 0, size, size)
+
+  // Mottle first, joints over it, so the courses stay legible.
+  for (let i = 0; i < 40; i++) {
+    const x = random() * size
+    const y = random() * size
+    const r = 12 + random() * 40
+    const tone = random() > 0.5 ? '255, 255, 255' : '200, 197, 190'
+    const patch = ctx.createRadialGradient(x, y, 0, x, y, r)
+    patch.addColorStop(0, `rgba(${tone}, 0.12)`)
+    patch.addColorStop(1, `rgba(${tone}, 0)`)
+    ctx.fillStyle = patch
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+
+  const course = 48
+  ctx.strokeStyle = 'rgba(70, 64, 56, 0.10)'
+  ctx.lineWidth = 2
+  for (let y = 0; y <= size; y += course) {
+    ctx.beginPath()
+    ctx.moveTo(0, y + (random() - 0.5) * 3)
+    ctx.lineTo(size, y + (random() - 0.5) * 3)
+    ctx.stroke()
+  }
+  for (let row = 0; row < size / course; row++) {
+    // Staggered verticals, the running bond.
+    let x = -random() * 60
+    while (x < size) {
+      x += 60 + random() * 70
+      ctx.beginPath()
+      ctx.moveTo(x, row * course)
+      ctx.lineTo(x + (random() - 0.5) * 2, (row + 1) * course)
+      ctx.stroke()
+    }
+  }
+
+  stoneHint = new THREE.CanvasTexture(canvas)
+  stoneHint.colorSpace = THREE.SRGBColorSpace
+  stoneHint.wrapS = THREE.RepeatWrapping
+  stoneHint.wrapT = THREE.RepeatWrapping
+  return stoneHint
+}
+
+/**
+ * The blob under a chair: white centre fading to black, read as an alphaMap —
+ * so one texture serves every contact shadow at any radius, and the material's
+ * own opacity is the only knob.
+ */
+let contactShadow: THREE.CanvasTexture | null = null
+export function contactShadowTexture(): THREE.CanvasTexture {
+  if (contactShadow) return contactShadow
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, size, size)
+  const half = size / 2
+  const blob = ctx.createRadialGradient(half, half, 0, half, half, half)
+  blob.addColorStop(0, 'rgba(255, 255, 255, 1)')
+  blob.addColorStop(0.55, 'rgba(255, 255, 255, 0.55)')
+  blob.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = blob
+  ctx.fillRect(0, 0, size, size)
+
+  contactShadow = new THREE.CanvasTexture(canvas)
+  return contactShadow
 }

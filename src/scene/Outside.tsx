@@ -2,7 +2,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { advanceAmbience, ambienceBlend, colorCorners, mixColor, mixNumber } from './ambienceBlend'
+import {
+  advanceAmbience,
+  ambienceBlend,
+  colorCorners,
+  goldenWarmth,
+  mixColor,
+  mixNumber,
+} from './ambienceBlend'
 import { between, mulberry32 } from '../lib/rng'
 import { CLEARING, PROPORTIONS, occupied, type Tree } from '../world/forest'
 import { roomBounds, type Bounds } from '../world/derive'
@@ -21,6 +28,11 @@ import {
   onTrail,
 } from '../world/terrain'
 import { groundMottleTexture } from './materials'
+import { MOON_DIRECTION, radialGlowTexture } from './sky'
+import { CloudBank, MoonGlint, SunGlow } from './SkyDressing'
+import { Undergrowth } from './Undergrowth'
+import { Fireflies } from './Fireflies'
+import { FallingLeaves } from './FallingLeaves'
 import { useAmbienceStore } from '../state/ambience'
 import { useWorldStore } from '../state/world'
 
@@ -32,8 +44,8 @@ import { useWorldStore } from '../state/world'
  * ground, a lake to the north, a few hundred conifers, and hills behind them.
  *
  * It is all generated from seeds and drawn in a handful of instanced meshes —
- * about a dozen draw calls for the entire outdoors, dressing included — because
- * none of it should ever compete with the books for frame budget.
+ * about two dozen draw calls for the entire outdoors, dressing included —
+ * because none of it should ever compete with the books for frame budget.
  *
  * What has changed is that it is no longer only scenery. You can walk out of
  * the porch and round the water now, so where the lake is and where the trees
@@ -48,6 +60,23 @@ const BIRCH_BARK = '#cfc9ba'
 const FIR_NEEDLES = ['#2f4634', '#35503b', '#28402f', '#3d5940']
 const PINE_NEEDLES = ['#2c4234', '#31493c', '#263c2e']
 const BIRCH_LEAVES = ['#5f7d40', '#6f8d4a', '#527239', '#7d9451']
+
+/**
+ * The canopies swaying: a few centimetres of lean, rising with height so the
+ * base stays planted, phased off each instance's root so the forest moves as
+ * hundreds of trees rather than one. Injected after `begin_vertex`, where
+ * `transformed` is still in the unit canopy's local space.
+ */
+const SWAY_GLSL = /* glsl */ `
+{
+  vec3 root = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+  float phase = root.x * 0.37 + root.z * 0.53;
+  float lean = max(transformed.y, 0.0);
+  float wave = sin(uTime * 0.8 + phase) + 0.55 * sin(uTime * 1.9 + phase * 1.7);
+  transformed.x += wave * 0.045 * lean * lean;
+  transformed.z += wave * 0.03 * lean * lean * sin(phase);
+}
+`
 
 /**
  * One instanced mesh per part: every trunk in one draw call, then one call per
@@ -66,6 +95,37 @@ function Forest({ trees }: { trees: Tree[] }) {
       birch: trees.filter((tree) => tree.species === 'birch'),
     }),
     [trees],
+  )
+
+  // One clock for every canopy: the three materials share this object, so a
+  // single write per frame sways the whole forest.
+  const sway = useMemo(() => ({ value: 0 }), [])
+  useFrame((s) => {
+    sway.value = s.clock.elapsedTime
+  })
+
+  // The depth material is deliberately left unpatched: canopy shadows holding
+  // still under a ~10 cm sway is imperceptible.
+  const canopyMaterials = useMemo(() => {
+    const make = () => {
+      const material = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true })
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = sway
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nuniform float uTime;')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>\n${SWAY_GLSL}`)
+      }
+      return material
+    }
+    return { fir: make(), pine: make(), birch: make() }
+  }, [sway])
+  useEffect(
+    () => () => {
+      canopyMaterials.fir.dispose()
+      canopyMaterials.pine.dispose()
+      canopyMaterials.birch.dispose()
+    },
+    [canopyMaterials],
   )
 
   // Canopy geometry per species, unit height with the base at y = 0 so an
@@ -98,18 +158,25 @@ function Forest({ trees }: { trees: Tree[] }) {
   useLayoutEffect(() => {
     const matrix = new THREE.Matrix4()
     const position = new THREE.Vector3()
-    const quaternion = new THREE.Quaternion()
     const turn = new THREE.Quaternion()
     const up = new THREE.Vector3(0, 1, 0)
     const scale = new THREE.Vector3()
     const colour = new THREE.Color()
 
+    // Per-tree squash and shade, seeded through the yaw the tree already
+    // carries so trunk and canopy agree without another field — an ellipse and
+    // a touch of light are what break "the same tree stamped 420 times".
+    const squash = (tree: Tree) => 1 + 0.12 * Math.sin(tree.yaw * 5)
+    const shade = (tree: Tree) => 0.92 + 0.16 * (0.5 + 0.5 * Math.sin(tree.yaw * 9.3))
+
     trees.forEach((tree, i) => {
       const shape = PROPORTIONS[tree.species]
       const trunkHeight = tree.height * shape.trunk
+      const girth = tree.spread * shape.girth
+      const oval = squash(tree)
       position.set(tree.x, trunkHeight / 2, tree.z)
-      scale.set(tree.spread * shape.girth, trunkHeight, tree.spread * shape.girth)
-      matrix.compose(position, quaternion.identity(), scale)
+      scale.set(girth * oval, trunkHeight, girth / oval)
+      matrix.compose(position, turn.setFromAxisAngle(up, tree.yaw), scale)
       trunks.current?.setMatrixAt(i, matrix)
       trunks.current?.setColorAt(i, colour.set(tree.species === 'birch' ? BIRCH_BARK : TRUNK))
     })
@@ -124,12 +191,13 @@ function Forest({ trees }: { trees: Tree[] }) {
       list.forEach((tree, i) => {
         const shape = PROPORTIONS[tree.species]
         const canopyHeight = tree.height * (1 - shape.canopyFrom)
+        const oval = squash(tree)
         position.set(tree.x, tree.height * shape.canopyFrom, tree.z)
-        scale.set(tree.spread, canopyHeight, tree.spread)
+        scale.set(tree.spread * oval, canopyHeight, tree.spread / oval)
         matrix.compose(position, turn.setFromAxisAngle(up, tree.yaw), scale)
         mesh.setMatrixAt(i, matrix)
         const palette = palettes[tree.species]
-        mesh.setColorAt(i, colour.set(palette[tree.tint % palette.length]!))
+        mesh.setColorAt(i, colour.set(palette[tree.tint % palette.length]!).multiplyScalar(shade(tree)))
       })
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
@@ -154,27 +222,76 @@ function Forest({ trees }: { trees: Tree[] }) {
       </instancedMesh>
       <instancedMesh
         ref={firs}
-        args={[canopyGeometry.fir, undefined, bySpecies.fir.length]}
+        args={[canopyGeometry.fir, canopyMaterials.fir, bySpecies.fir.length]}
         castShadow
-      >
-        <meshStandardMaterial roughness={1} flatShading />
-      </instancedMesh>
+      />
       <instancedMesh
         ref={pines}
-        args={[canopyGeometry.pine, undefined, bySpecies.pine.length]}
+        args={[canopyGeometry.pine, canopyMaterials.pine, bySpecies.pine.length]}
         castShadow
-      >
-        <meshStandardMaterial roughness={1} flatShading />
-      </instancedMesh>
+      />
       <instancedMesh
         ref={birches}
-        args={[canopyGeometry.birch, undefined, bySpecies.birch.length]}
+        args={[canopyGeometry.birch, canopyMaterials.birch, bySpecies.birch.length]}
         castShadow
-      >
-        <meshStandardMaterial roughness={1} flatShading />
-      </instancedMesh>
+      />
     </group>
   )
+}
+
+/**
+ * The ground disc with a swell on its rim.
+ *
+ * Flat across everything that walks or stands — `terrainAt` refuses steps past
+ * 96 m and the forest grows to about 100, so displacement is pinned to zero
+ * through both — then rising into a low undulation towards the rim, which is
+ * what stops the horizon under the mist reading as the edge of a perfect
+ * circle. Collision is untouched: the swell starts where you cannot go.
+ */
+function groundGeometry(segments = 48): THREE.BufferGeometry {
+  const rings = [96, 104, 113, 123, 136, 150]
+  const smooth = (t: number) => t * t * (3 - 2 * t)
+  // The three sines sum to at most 1.95; scaled so the rim reaches ±2.2 m.
+  const amplitude = 2.2 / 1.95
+  const swell = (r: number, a: number) =>
+    smooth(Math.max(0, (r - 104) / (150 - 104))) *
+    amplitude *
+    (Math.sin(3 * a + 1.2) + 0.6 * Math.sin(5 * a + 4.0) + 0.35 * Math.sin(8 * a + 2.4))
+
+  const positions: number[] = [0, 0, 0]
+  for (const r of rings) {
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2
+      positions.push(Math.cos(a) * r, swell(r, a), Math.sin(a) * r)
+    }
+  }
+
+  // Planar UVs in world metres, so the mottle neither cares about ring count
+  // nor stretches over the swell.
+  const uvs: number[] = []
+  for (let i = 0; i < positions.length; i += 3) {
+    uvs.push(positions[i]! / 300 + 0.5, positions[i + 2]! / 300 + 0.5)
+  }
+
+  const indices: number[] = []
+  // Centre fan out to the first ring; centre, next, current points the face up.
+  for (let i = 0; i < segments; i++) indices.push(0, 1 + ((i + 1) % segments), 1 + i)
+  for (let ring = 0; ring < rings.length - 1; ring++) {
+    const inner = 1 + ring * segments
+    const outer = inner + segments
+    for (let i = 0; i < segments; i++) {
+      const next = (i + 1) % segments
+      indices.push(inner + i, outer + next, outer + i)
+      indices.push(inner + i, inner + next, outer + next)
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
+  geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
 }
 
 /**
@@ -284,11 +401,12 @@ const SKY_STOPS = [
 ]
 
 /**
- * Where the moon hangs: the same corner of the sky the directional light comes
- * from at night — low over the lake to the north-west — so the shadows and the
- * disc agree about where the light is.
+ * Where each stop leans during the golden hour, strongest at the horizon —
+ * dusk lives where the sun is going down, and the zenith stays cool.
  */
-const MOON_DIRECTION = new THREE.Vector3(-0.38, 0.42, -0.78).normalize()
+const GOLDEN_SKY = ['#5a5f8a', '#c08a68', '#e8a05c', '#e8955a'].map((c) => new THREE.Color(c))
+const GOLDEN_SKY_STRENGTH = [0.15, 0.3, 0.55, 0.7] as const
+
 
 /**
  * The stars, as a point cloud on the inside of the dome rather than pixels in
@@ -457,28 +575,27 @@ function Sky() {
   useEffect(() => () => sky.texture.dispose(), [sky])
 
   // A soft radial glow behind the moon's disc, drawn once.
-  const halo = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 64
-    canvas.height = 64
-    const ctx = canvas.getContext('2d')!
-    const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 32)
-    gradient.addColorStop(0, 'rgba(214, 226, 248, 0.8)')
-    gradient.addColorStop(0.4, 'rgba(190, 205, 235, 0.28)')
-    gradient.addColorStop(1, 'rgba(190, 205, 235, 0)')
-    ctx.fillStyle = gradient
-    ctx.fillRect(0, 0, 64, 64)
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.colorSpace = THREE.SRGBColorSpace
-    return texture
-  }, [])
+  const halo = useMemo(
+    () =>
+      radialGlowTexture(64, [
+        [0, 'rgba(214, 226, 248, 0.8)'],
+        [0.4, 'rgba(190, 205, 235, 0.28)'],
+        [1, 'rgba(190, 205, 235, 0)'],
+      ]),
+    [],
+  )
   useEffect(() => () => halo.dispose(), [halo])
 
   const paint = (colour: THREE.Color) => {
     const { canvas, ctx, texture } = sky
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    // Golden hour: derived from the same two numbers the repaint check
+    // watches, so a settled sky still repaints only when night or rain moves.
+    const warmth = goldenWarmth()
     SKY_OFFSETS.forEach((offset, i) => {
-      gradient.addColorStop(offset, `#${mixColor(colour, SKY_STOPS[i]!).getHexString()}`)
+      mixColor(colour, SKY_STOPS[i]!)
+      colour.lerp(GOLDEN_SKY[i]!, GOLDEN_SKY_STRENGTH[i]! * warmth)
+      gradient.addColorStop(offset, `#${colour.getHexString()}`)
     })
     ctx.globalAlpha = 1
     ctx.fillStyle = gradient
@@ -647,7 +764,7 @@ function Hills() {
 }
 
 /** One piece of outdoor set dressing, ready to become an instance. */
-type Placed = {
+export type Placed = {
   x: number
   y: number
   z: number
@@ -658,7 +775,7 @@ type Placed = {
 }
 
 /** Fill an instanced mesh's matrices and colours in one pass. */
-function place(mesh: THREE.InstancedMesh | null, items: readonly Placed[]) {
+export function place(mesh: THREE.InstancedMesh | null, items: readonly Placed[]) {
   if (!mesh) return
   const matrix = new THREE.Matrix4()
   const position = new THREE.Vector3()
@@ -984,6 +1101,9 @@ const FOG_COLOUR = colorCorners({
   nightRain: '#161a21',
 })
 const FOG_DENSITY = { day: 0.0085, dayRain: 0.019, night: 0.0105, nightRain: 0.018 }
+/** The amber dusk leans the air towards, pre-parsed once. */
+const GOLDEN_BACKGROUND = new THREE.Color('#d99a6a')
+const GOLDEN_FOG = new THREE.Color('#cf9670')
 const WATER_COLOUR = colorCorners({
   day: '#3f6076',
   dayRain: '#4b5a63',
@@ -1090,9 +1210,12 @@ export function Outside() {
   useFrame(({ clock }, delta) => {
     advanceAmbience(night, rain, delta)
 
-    if (background.current) mixColor(background.current, BACKGROUND)
+    // The same warmth the sky stops lean by, so the air matches the dome.
+    const warmth = goldenWarmth()
+    if (background.current)
+      mixColor(background.current, BACKGROUND).lerp(GOLDEN_BACKGROUND, warmth * 0.35)
     if (fog.current) {
-      mixColor(fog.current.color, FOG_COLOUR)
+      mixColor(fog.current.color, FOG_COLOUR).lerp(GOLDEN_FOG, warmth * 0.3)
       fog.current.density = mixNumber(FOG_DENSITY)
     }
 
@@ -1117,12 +1240,14 @@ export function Outside() {
   // The water and the sand, cut once from the walkable outline.
   const water = useMemo(() => lakeSheet(1), [])
   const shore = useMemo(() => lakeSheet(SHORE_EDGE), [])
+  const ground = useMemo(() => groundGeometry(), [])
   useEffect(
     () => () => {
       water.dispose()
       shore.dispose()
+      ground.dispose()
     },
-    [water, shore],
+    [water, shore, ground],
   )
 
   // The same margin the forest keeps off the buildings, for the ground litter.
@@ -1147,6 +1272,12 @@ export function Outside() {
           haze is what makes a hundred metres of forest read as distance rather
           than as a lot of cones; at night it thickens a little and goes dark. */}
       <Sky />
+      {/* The sun's bloom, the clouds and the moon's glint on the water: the
+          day pieces and the night pieces gate each other off, so the three
+          calls are never all live at once. */}
+      <SunGlow />
+      <CloudBank />
+      <MoonGlint />
       <Hills />
       <MistRing />
       <Birds />
@@ -1155,8 +1286,7 @@ export function Outside() {
           never z-fight and the reveal reads as a shadow line at the base of a
           wall rather than as a cabin standing on air. The mottle is multiplied
           under the colour — meadow, not baize. */}
-      <mesh position={[0, GROUND_Y, 0]} rotation-x={-Math.PI / 2} receiveShadow>
-        <circleGeometry args={[GROUND_RADIUS, 48]} />
+      <mesh geometry={ground} position={[0, GROUND_Y, 0]} receiveShadow>
         <meshStandardMaterial color="#4a5c34" roughness={1} map={groundTexture} />
       </mesh>
 
@@ -1190,8 +1320,11 @@ export function Outside() {
 
       <Shoreline />
       <Erratics keepOut={keepOut} />
+      <Undergrowth keepOut={keepOut} />
 
       <Forest trees={trees} />
+      <Fireflies keepOut={keepOut} />
+      <FallingLeaves />
 
     </group>
   )

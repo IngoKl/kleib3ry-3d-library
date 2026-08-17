@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { block, chamferBlock, chamferBox, join, lathe } from './geometry'
 import { library } from '../services'
 import { sceneRefs } from './refs'
-import { MATERIALS } from './materials'
+import { MATERIALS, clothWeaveTexture, stoneHintTexture, woodGrainTexture } from './materials'
 import { drawing, makeBoardCanvas } from './board'
 import { MARKER_INKS, inkAt } from '../data/inks'
 import { useLibraryStore } from '../state/library'
@@ -66,184 +67,249 @@ const PUTTY_DARK = '#a29a86'
 /** Warm bulb colour, shared by everything that lights the room. */
 const BULB = '#ffd9a0'
 
+/**
+ * A piece's body as one geometry per material rather than a JSX tree of
+ * boxes: the FairyLights/Plant/Stairs idiom, shared. An armchair was nine
+ * draw calls and is three — the whole map's furniture was most of the frame's
+ * draw budget, and merging is what pays for the chamfers and turned legs.
+ * Callers build their part lists in a `useMemo` keyed on their dims, so a
+ * width prop changing rebuilds and the old geometries go back.
+ */
+function useMerged<K extends string>(
+  lists: Record<K, THREE.BufferGeometry[]>,
+): Record<K, THREE.BufferGeometry> {
+  const parts = useMemo(() => {
+    const merged = {} as Record<K, THREE.BufferGeometry>
+    for (const key of Object.keys(lists) as K[]) merged[key] = join(lists[key])
+    return merged
+  }, [lists])
+  useEffect(
+    () => () => {
+      for (const geometry of Object.values<THREE.BufferGeometry>(parts)) geometry.dispose()
+    },
+    [parts],
+  )
+  return parts
+}
+
+/** A puffed cushion: a squashed sphere, which reads as filling rather than slab. */
+function cushion(rx: number, ry: number, rz: number, x: number, y: number, z: number) {
+  const puff = new THREE.SphereGeometry(1, 10, 7)
+  puff.scale(rx, ry, rz)
+  puff.translate(x, y, z)
+  return puff
+}
+
+/** A chamfered box leaned back: the rake that separates a chair from a crate. */
+function rakedBack(w: number, h: number, d: number, rake: number, x: number, y: number, z: number) {
+  const back = chamferBox(w, h, d, 0.02)
+  back.rotateX(-rake)
+  back.translate(x, y, z)
+  return back
+}
+
 function Armchair() {
+  // Seat, raked back, two arms, a puffed cushion, four legs — nine boxes
+  // once, three merged meshes now.
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        cloth: [
+          chamferBlock(0.78, 0.16, 0.74, 0.02, 0, 0.4, 0),
+          rakedBack(0.78, 0.62, 0.16, 0.12, 0, 0.62, -0.29),
+          cushion(0.36, 0.09, 0.34, 0, 0.5, 0.02),
+        ],
+        clothDark: [
+          chamferBlock(0.14, 0.28, 0.72, 0.02, -0.35, 0.55, 0.02),
+          chamferBlock(0.14, 0.28, 0.72, 0.02, 0.35, 0.55, 0.02),
+        ],
+        oak: [-0.3, 0.3].flatMap((x) =>
+          [-0.28, 0.28].map((z) => block(0.07, 0.32, 0.07, x, 0.16, z)),
+        ),
+      }),
+      [],
+    ),
+  )
   return (
     <group>
-      {/* seat, back, two arms — a wing chair reduced to its four masses */}
-      <mesh position={[0, 0.4, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.78, 0.16, 0.74]} />
-        <meshStandardMaterial color={CLOTH} roughness={0.95} />
+      <mesh geometry={parts.cloth} castShadow receiveShadow>
+        <meshStandardMaterial color={CLOTH} roughness={0.95} map={clothWeaveTexture()} />
       </mesh>
-      <mesh position={[0, 0.62, -0.31]} castShadow receiveShadow>
-        <boxGeometry args={[0.78, 0.62, 0.16]} />
-        <meshStandardMaterial color={CLOTH} roughness={0.95} />
+      <mesh geometry={parts.clothDark} castShadow receiveShadow>
+        <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} map={clothWeaveTexture()} />
       </mesh>
-      <mesh position={[-0.35, 0.55, 0.02]} castShadow receiveShadow>
-        <boxGeometry args={[0.14, 0.28, 0.72]} />
-        <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} />
+      <mesh geometry={parts.oak} castShadow>
+        <meshStandardMaterial color={OAK} roughness={0.7} map={woodGrainTexture()} />
       </mesh>
-      <mesh position={[0.35, 0.55, 0.02]} castShadow receiveShadow>
-        <boxGeometry args={[0.14, 0.28, 0.72]} />
-        <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} />
-      </mesh>
-      {/* a seat cushion, slightly proud, so the seat is not a slab */}
-      <mesh position={[0, 0.5, 0.02]} castShadow>
-        <boxGeometry args={[0.7, 0.1, 0.66]} />
-        <meshStandardMaterial color={CLOTH} roughness={1} />
-      </mesh>
-      {[-0.3, 0.3].map((x) =>
-        [-0.28, 0.28].map((z) => (
-          <mesh key={`${x}:${z}`} position={[x, 0.16, z]} castShadow>
-            <boxGeometry args={[0.07, 0.32, 0.07]} />
-            <meshStandardMaterial color={OAK} roughness={0.7} />
-          </mesh>
-        )),
-      )}
     </group>
   )
 }
 
 function Sofa({ width }: { width: number }) {
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        cloth: [
+          chamferBlock(width, 0.16, 0.8, 0.02, 0, 0.36, 0),
+          rakedBack(width, 0.52, 0.16, 0.1, 0, 0.6, -0.32),
+          // Two cushions rather than one long slab, which is what makes it a sofa.
+          cushion(width / 4 - 0.05, 0.085, 0.35, -width / 4, 0.48, 0.03),
+          cushion(width / 4 - 0.05, 0.085, 0.35, width / 4, 0.48, 0.03),
+        ],
+        clothDark: [-1, 1].map((side) =>
+          chamferBlock(0.14, 0.28, 0.78, 0.02, (side * (width - 0.14)) / 2, 0.5, 0),
+        ),
+        oak: [-1, 1].flatMap((side) =>
+          [-0.3, 0.3].map((z) => block(0.07, 0.28, 0.07, (side * (width - 0.3)) / 2, 0.14, z)),
+        ),
+      }),
+      [width],
+    ),
+  )
   return (
     <group>
-      <mesh position={[0, 0.36, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, 0.16, 0.8]} />
-        <meshStandardMaterial color={CLOTH} roughness={0.95} />
+      <mesh geometry={parts.cloth} castShadow receiveShadow>
+        <meshStandardMaterial color={CLOTH} roughness={0.95} map={clothWeaveTexture()} />
       </mesh>
-      <mesh position={[0, 0.6, -0.34]} castShadow receiveShadow>
-        <boxGeometry args={[width, 0.52, 0.16]} />
-        <meshStandardMaterial color={CLOTH} roughness={0.95} />
+      <mesh geometry={parts.clothDark} castShadow receiveShadow>
+        <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} map={clothWeaveTexture()} />
       </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[(side * (width - 0.14)) / 2, 0.5, 0]} castShadow receiveShadow>
-          <boxGeometry args={[0.14, 0.28, 0.78]} />
-          <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} />
-        </mesh>
-      ))}
-      {/* Two cushions rather than one long slab, which is what makes it a sofa. */}
-      {[-1, 1].map((side) => (
-        <mesh key={`c${side}`} position={[(side * width) / 4, 0.48, 0.03]} castShadow>
-          <boxGeometry args={[width / 2 - 0.12, 0.11, 0.7]} />
-          <meshStandardMaterial color={CLOTH} roughness={1} />
-        </mesh>
-      ))}
-      {[-1, 1].map((side) =>
-        [-0.3, 0.3].map((z) => (
-          <mesh key={`l${side}:${z}`} position={[(side * (width - 0.3)) / 2, 0.14, z]} castShadow>
-            <boxGeometry args={[0.07, 0.28, 0.07]} />
-            <meshStandardMaterial color={OAK} roughness={0.7} />
-          </mesh>
-        )),
-      )}
+      <mesh geometry={parts.oak} castShadow>
+        <meshStandardMaterial color={OAK} roughness={0.7} map={woodGrainTexture()} />
+      </mesh>
     </group>
   )
 }
 
 function DiningChair() {
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        pine: [
+          chamferBlock(0.42, 0.04, 0.42, 0.008, 0, 0.44, 0),
+          rakedBack(0.4, 0.44, 0.035, 0.06, 0, 0.7, -0.19),
+          ...[-0.17, 0.17].flatMap((x) =>
+            [-0.17, 0.17].map((z) => block(0.04, 0.44, 0.04, x, 0.22, z)),
+          ),
+        ],
+      }),
+      [],
+    ),
+  )
   return (
-    <group>
-      <mesh position={[0, 0.44, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.42, 0.04, 0.42]} />
-        <meshStandardMaterial color={PINE} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, 0.7, -0.19]} castShadow receiveShadow>
-        <boxGeometry args={[0.4, 0.44, 0.035]} />
-        <meshStandardMaterial color={PINE} roughness={0.7} />
-      </mesh>
-      {[-0.17, 0.17].map((x) =>
-        [-0.17, 0.17].map((z) => (
-          <mesh key={`${x}:${z}`} position={[x, 0.22, z]} castShadow>
-            <boxGeometry args={[0.04, 0.44, 0.04]} />
-            <meshStandardMaterial color={PINE} roughness={0.75} />
-          </mesh>
-        )),
-      )}
-    </group>
+    <mesh geometry={parts.pine} castShadow receiveShadow>
+      <meshStandardMaterial color={PINE} roughness={0.72} map={woodGrainTexture()} />
+    </mesh>
   )
 }
 
 function Bench({ width }: { width: number }) {
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        pine: [
+          chamferBlock(width, 0.05, 0.36, 0.01, 0, 0.42, 0),
+          ...[-1, 1].map((side) => block(0.06, 0.4, 0.32, (side * (width - 0.16)) / 2, 0.2, 0)),
+        ],
+      }),
+      [width],
+    ),
+  )
   return (
-    <group>
-      <mesh position={[0, 0.42, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, 0.05, 0.36]} />
-        <meshStandardMaterial color={PINE} roughness={0.8} />
-      </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[(side * (width - 0.16)) / 2, 0.2, 0]} castShadow>
-          <boxGeometry args={[0.06, 0.4, 0.32]} />
-          <meshStandardMaterial color={PINE} roughness={0.8} />
-        </mesh>
-      ))}
-    </group>
+    <mesh geometry={parts.pine} castShadow receiveShadow>
+      <meshStandardMaterial color={PINE} roughness={0.8} map={woodGrainTexture()} />
+    </mesh>
   )
 }
 
 function Footstool() {
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        cloth: [chamferBlock(0.46, 0.14, 0.38, 0.025, 0, 0.3, 0)],
+        oak: [-0.17, 0.17].flatMap((x) =>
+          [-0.13, 0.13].map((z) => block(0.05, 0.24, 0.05, x, 0.12, z)),
+        ),
+      }),
+      [],
+    ),
+  )
   return (
     <group>
-      <mesh position={[0, 0.3, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.46, 0.14, 0.38]} />
-        <meshStandardMaterial color={CLOTH} roughness={1} />
+      <mesh geometry={parts.cloth} castShadow receiveShadow>
+        <meshStandardMaterial color={CLOTH} roughness={1} map={clothWeaveTexture()} />
       </mesh>
-      {[-0.17, 0.17].map((x) =>
-        [-0.13, 0.13].map((z) => (
-          <mesh key={`${x}:${z}`} position={[x, 0.12, z]} castShadow>
-            <boxGeometry args={[0.05, 0.24, 0.05]} />
-            <meshStandardMaterial color={OAK} roughness={0.7} />
-          </mesh>
-        )),
-      )}
+      <mesh geometry={parts.oak} castShadow>
+        <meshStandardMaterial color={OAK} roughness={0.7} map={woodGrainTexture()} />
+      </mesh>
     </group>
   )
 }
 
 function SideTable({ height }: { height: number }) {
-  const top = height - 0.02
-  return (
-    <group>
-      <mesh position={[0, top, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.46, 0.035, 0.46]} />
-        <meshStandardMaterial color={OAK} roughness={0.6} />
-      </mesh>
-      <mesh position={[0, top / 2, 0]} castShadow>
-        <cylinderGeometry args={[0.045, 0.055, top, 12]} />
-        <meshStandardMaterial color={OAK} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, 0.015, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.19, 0.2, 0.03, 16]} />
-        <meshStandardMaterial color={OAK} roughness={0.7} />
-      </mesh>
-    </group>
+  // Top, stem and base, all oak: one mesh where there were three.
+  const parts = useMerged(
+    useMemo(() => {
+      const top = height - 0.02
+      const stem = new THREE.CylinderGeometry(0.045, 0.055, top, 12)
+      stem.translate(0, top / 2, 0)
+      const base = new THREE.CylinderGeometry(0.19, 0.2, 0.03, 16)
+      base.translate(0, 0.015, 0)
+      return { oak: [chamferBlock(0.46, 0.035, 0.46, 0.008, 0, top, 0), stem, base] }
+    }, [height]),
   )
+  return (
+    <mesh geometry={parts.oak} castShadow receiveShadow>
+      <meshStandardMaterial color={OAK} roughness={0.65} map={woodGrainTexture()} />
+    </mesh>
+  )
+}
+
+/** A turned table leg, planted with its foot at y 0. */
+function turnedLeg(tall: number, x: number, z: number): THREE.BufferGeometry {
+  const leg = lathe(
+    [
+      [0.042, 0],
+      [0.04, 0.02],
+      [0.028, 0.05],
+      [0.034, tall * 0.42],
+      [0.026, tall * 0.55],
+      [0.036, tall * 0.62],
+      [0.035, tall],
+    ],
+    8,
+  )
+  leg.translate(x, 0, z)
+  return leg
 }
 
 function Table({ width, depth, height }: { width: number; depth: number; height: number }) {
   const inset = 0.09
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        pine: [
+          chamferBlock(width, 0.04, depth, 0.015, 0, height - 0.02, 0),
+          // An apron, so the top does not read as a plank floating on sticks.
+          block(width - 0.12, 0.08, depth - 0.12, 0, height - 0.09, 0),
+          ...[-1, 1].flatMap((sx) =>
+            [-1, 1].map((sz) =>
+              turnedLeg(
+                height - 0.04,
+                (sx * (width - inset * 2)) / 2,
+                (sz * (depth - inset * 2)) / 2,
+              ),
+            ),
+          ),
+        ],
+      }),
+      [width, depth, height],
+    ),
+  )
   return (
-    <group>
-      <mesh position={[0, height - 0.02, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, 0.04, depth]} />
-        <meshStandardMaterial color={PINE} roughness={0.62} />
-      </mesh>
-      {/* An apron, so the top does not read as a plank floating on sticks. */}
-      <mesh position={[0, height - 0.09, 0]} castShadow>
-        <boxGeometry args={[width - 0.12, 0.08, depth - 0.12]} />
-        <meshStandardMaterial color={PINE} roughness={0.8} />
-      </mesh>
-      {[-1, 1].map((sx) =>
-        [-1, 1].map((sz) => (
-          <mesh
-            key={`${sx}:${sz}`}
-            position={[(sx * (width - inset * 2)) / 2, (height - 0.04) / 2, (sz * (depth - inset * 2)) / 2]}
-            castShadow
-          >
-            <boxGeometry args={[0.07, height - 0.04, 0.07]} />
-            <meshStandardMaterial color={PINE} roughness={0.8} />
-          </mesh>
-        )),
-      )}
-    </group>
+    <mesh geometry={parts.pine} castShadow receiveShadow>
+      <meshStandardMaterial color={PINE} roughness={0.68} map={woodGrainTexture()} />
+    </mesh>
   )
 }
 
@@ -253,31 +319,55 @@ function Table({ width, depth, height }: { width: number; depth: number; height:
  * the covers is exactly where books end up — and you can sit on the edge.
  */
 function Bed({ width, depth }: { width: number; depth: number }) {
+  const parts = useMerged(
+    useMemo(() => {
+      // The duvet sags into a dish and its hem droops over the frame — the
+      // one soft thing in the room must not read as a lid.
+      const duvet = new THREE.BoxGeometry(width + 0.04, 0.09, depth * 0.62, 6, 1, 4)
+      const spot = duvet.getAttribute('position') as THREE.BufferAttribute
+      for (let i = 0; i < spot.count; i++) {
+        const x = spot.getX(i)
+        const y = spot.getY(i)
+        const z = spot.getZ(i)
+        if (y > 0) {
+          const u = (2 * x) / (width + 0.04)
+          const v = (2 * z) / (depth * 0.62)
+          spot.setY(i, y - 0.028 * (1 - u * u) * (1 - v * v))
+        } else {
+          const edge = Math.max(Math.abs((2 * x) / (width + 0.04)), Math.abs((2 * z) / (depth * 0.62)))
+          if (edge > 0.9) spot.setY(i, y - 0.022)
+        }
+      }
+      duvet.computeVertexNormals()
+      duvet.translate(0, 0.43, depth * 0.17)
+      return {
+        pine: [chamferBlock(width, 0.24, depth, 0.015, 0, 0.12, 0)],
+        oak: [chamferBlock(width, 0.6, 0.05, 0.012, 0, 0.35, -depth / 2 + 0.025)],
+        linen: [
+          block(width - 0.08, 0.16, depth - 0.06, 0, 0.32, 0),
+          ...[-1, 1].map((side) =>
+            chamferBlock(width / 2 - 0.16, 0.1, 0.4, 0.03, side * (width / 4 - 0.02), 0.45, -depth / 2 + 0.3),
+          ),
+        ],
+        cloth: [duvet],
+      }
+    }, [width, depth]),
+  )
   return (
     <group>
-      <mesh position={[0, 0.12, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, 0.24, depth]} />
-        <meshStandardMaterial color={PINE} roughness={0.8} />
+      <mesh geometry={parts.pine} castShadow receiveShadow>
+        <meshStandardMaterial color={PINE} roughness={0.8} map={woodGrainTexture()} />
       </mesh>
-      <mesh position={[0, 0.35, -depth / 2 + 0.025]} castShadow>
-        <boxGeometry args={[width, 0.6, 0.05]} />
-        <meshStandardMaterial color={OAK} roughness={0.75} />
+      <mesh geometry={parts.oak} castShadow>
+        <meshStandardMaterial color={OAK} roughness={0.75} map={woodGrainTexture()} />
       </mesh>
-      <mesh position={[0, 0.32, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width - 0.08, 0.16, depth - 0.06]} />
-        <meshStandardMaterial color="#e7ded0" roughness={0.95} />
+      <mesh geometry={parts.linen} castShadow receiveShadow>
+        <meshStandardMaterial color="#e7ded0" roughness={0.95} map={clothWeaveTexture()} />
       </mesh>
       {/* The duvet, thrown over the foot two-thirds. */}
-      <mesh position={[0, 0.43, depth * 0.17]} castShadow receiveShadow>
-        <boxGeometry args={[width - 0.02, 0.09, depth * 0.62]} />
-        <meshStandardMaterial color={CLOTH} roughness={1} />
+      <mesh geometry={parts.cloth} castShadow receiveShadow>
+        <meshStandardMaterial color={CLOTH} roughness={1} map={clothWeaveTexture()} />
       </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * (width / 4 - 0.02), 0.45, -depth / 2 + 0.3]} castShadow>
-          <boxGeometry args={[width / 2 - 0.16, 0.1, 0.4]} />
-          <meshStandardMaterial color={SHADE} roughness={0.95} />
-        </mesh>
-      ))}
     </group>
   )
 }
@@ -287,26 +377,46 @@ function Rug({ width, depth }: { width: number; depth: number }) {
     <group>
       <mesh position={[0, 0.006, 0]} receiveShadow>
         <boxGeometry args={[width, 0.012, depth]} />
-        <meshStandardMaterial color={WOOL} roughness={1} />
+        <meshStandardMaterial color={WOOL} roughness={1} map={clothWeaveTexture()} />
       </mesh>
       {/* a border, so it reads as a rug rather than as a stain on the floor */}
       <mesh position={[0, 0.013, 0]} receiveShadow>
         <boxGeometry args={[width - 0.22, 0.002, depth - 0.22]} />
-        <meshStandardMaterial color="#9d8064" roughness={1} />
+        <meshStandardMaterial color="#9d8064" roughness={1} map={clothWeaveTexture()} />
       </mesh>
     </group>
   )
 }
 
 function FloorLamp({ lit }: { lit: boolean }) {
+  // Base, bead and stem as one turned brass column; the shade stays its own
+  // mesh because `lit` drives its emissive.
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        brass: [
+          lathe(
+            [
+              [0.17, 0],
+              [0.16, 0.028],
+              [0.06, 0.045],
+              [0.028, 0.075],
+              [0.016, 0.11],
+              [0.016, 1.3],
+              [0.024, 1.34],
+              [0.016, 1.38],
+              [0.016, 1.42],
+            ],
+            12,
+          ),
+        ],
+      }),
+      [],
+    ),
+  )
   return (
     <group>
-      <mesh position={[0, 0.02, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.16, 0.17, 0.04, 16]} />
-        <meshStandardMaterial color={BRASS} roughness={0.4} metalness={0.7} />
-      </mesh>
-      <mesh position={[0, 0.72, 0]} castShadow>
-        <cylinderGeometry args={[0.016, 0.016, 1.4, 10]} />
+      <mesh geometry={parts.brass} castShadow receiveShadow>
         <meshStandardMaterial color={BRASS} roughness={0.4} metalness={0.7} />
       </mesh>
       <mesh position={[0, 1.5, 0]} castShadow>
@@ -325,10 +435,17 @@ function FloorLamp({ lit }: { lit: boolean }) {
 
 /** A pendant on a flex. Its `y` is the fitting, so it hangs from there down. */
 function Pendant({ lit }: { lit: boolean }) {
+  // The shade stays its own mesh: `lit` drives its colour and emissive.
+  const parts = useMerged(
+    useMemo(() => {
+      const flex = new THREE.CylinderGeometry(0.008, 0.008, 0.64, 6)
+      flex.translate(0, 0.32, 0)
+      return { flex: [flex] }
+    }, []),
+  )
   return (
     <group>
-      <mesh position={[0, 0.32, 0]}>
-        <cylinderGeometry args={[0.008, 0.008, 0.64, 6]} />
+      <mesh geometry={parts.flex}>
         <meshStandardMaterial color="#3a332c" roughness={1} />
       </mesh>
       <mesh position={[0, -0.06, 0]} castShadow>
@@ -439,27 +556,39 @@ function LightSwitch({ width, height, allOn }: { width: number; height: number; 
 function Fireplace({ width, height, lit }: { width: number; height: number; lit: boolean }) {
   const openingW = width * 0.55
   const openingH = height * 0.42
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        // The surround with the firebox cut out, plus a hearth stone in
+        // front — a fire straight onto floorboards read as a stage prop.
+        stone: [
+          block(width, height, 0.26, 0, height / 2, -0.12),
+          ...[-1, 1].map((side) =>
+            block(
+              (width - openingW) / 2,
+              openingH,
+              0.24,
+              (side * (width - (width - openingW) / 2)) / 2,
+              openingH / 2,
+              0.06,
+            ),
+          ),
+          block(width, height - openingH, 0.24, 0, openingH + (height - openingH) / 2, 0.06),
+          chamferBlock(width * 0.9, 0.045, 0.5, 0.012, 0, 0.0225, 0.42),
+        ],
+        oak: [chamferBlock(width + 0.16, 0.07, 0.32, 0.015, 0, height + 0.03, 0.06)],
+      }),
+      [width, height, openingW, openingH],
+    ),
+  )
   return (
     <group>
-      {/* A stone surround with the firebox cut out of it, as four slabs. */}
-      <mesh position={[0, height / 2, -0.12]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, 0.26]} />
-        <meshStandardMaterial color={MATERIALS.stone} roughness={1} />
-      </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[(side * (width - (width - openingW) / 2)) / 2, openingH / 2, 0.06]} castShadow>
-          <boxGeometry args={[(width - openingW) / 2, openingH, 0.24]} />
-          <meshStandardMaterial color={MATERIALS.stone} roughness={1} />
-        </mesh>
-      ))}
-      <mesh position={[0, openingH + (height - openingH) / 2, 0.06]} castShadow receiveShadow>
-        <boxGeometry args={[width, height - openingH, 0.24]} />
-        <meshStandardMaterial color={MATERIALS.stone} roughness={1} />
+      <mesh geometry={parts.stone} castShadow receiveShadow>
+        <meshStandardMaterial color={MATERIALS.stone} roughness={1} map={stoneHintTexture()} />
       </mesh>
       {/* A mantel to put things on. */}
-      <mesh position={[0, height + 0.03, 0.06]} castShadow receiveShadow>
-        <boxGeometry args={[width + 0.16, 0.07, 0.32]} />
-        <meshStandardMaterial color={OAK} roughness={0.7} />
+      <mesh geometry={parts.oak} castShadow receiveShadow>
+        <meshStandardMaterial color={OAK} roughness={0.7} map={woodGrainTexture()} />
       </mesh>
       {/* The fire itself: two blocks of glow behind the opening. Nothing
           animates — a flicker you see out of the corner of your eye all evening
@@ -536,36 +665,40 @@ function Plant({ height }: { height: number }) {
 }
 
 function KitchenCounter({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const parts = useMerged(
+    useMemo(() => {
+      // A sink and its tap, because a kitchen counter without one is a sideboard.
+      const tap = new THREE.CylinderGeometry(0.015, 0.015, 0.28, 8)
+      tap.translate(width * 0.3, height + 0.14, -depth * 0.28)
+      return {
+        wood: [block(width, height - 0.1, depth - 0.04, 0, (height - 0.04) / 2 + 0.06, 0)],
+        // A worktop, proud on every side, which is what makes it a counter.
+        slate: [chamferBlock(width + 0.03, 0.04, depth, 0.01, 0, height - 0.02, 0)],
+        plinth: [block(width - 0.06, 0.06, depth - 0.12, 0, 0.03, -0.02)],
+        // Two drawer lines scored across the front.
+        lines: [0.3, 0.62].map((f) =>
+          block(width - 0.1, 0.012, 0.02, 0, height * f, depth / 2 - 0.015),
+        ),
+        steel: [block(0.4, 0.03, depth * 0.6, width * 0.3, height - 0.03, 0), tap],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, (height - 0.04) / 2 + 0.06, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height - 0.1, depth - 0.04]} />
-        <meshStandardMaterial color="#6f5540" roughness={0.8} />
+      <mesh geometry={parts.wood} castShadow receiveShadow>
+        <meshStandardMaterial color="#6f5540" roughness={0.8} map={woodGrainTexture()} />
       </mesh>
-      {/* A worktop, proud on every side, which is what makes it a counter. */}
-      <mesh position={[0, height - 0.02, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width + 0.03, 0.04, depth]} />
+      <mesh geometry={parts.slate} castShadow receiveShadow>
         <meshStandardMaterial color={SLATE} roughness={0.35} metalness={0.15} />
       </mesh>
-      {/* Recessed plinth, and two drawer lines scored across the front. */}
-      <mesh position={[0, 0.03, -0.02]}>
-        <boxGeometry args={[width - 0.06, 0.06, depth - 0.12]} />
+      <mesh geometry={parts.plinth}>
         <meshStandardMaterial color="#3a2e24" roughness={1} />
       </mesh>
-      {[0.3, 0.62].map((f) => (
-        <mesh key={f} position={[0, height * f, depth / 2 - 0.015]}>
-          <boxGeometry args={[width - 0.1, 0.012, 0.02]} />
-          <meshStandardMaterial color="#54402f" roughness={1} />
-        </mesh>
-      ))}
-      {/* A sink, because a kitchen counter without one is a sideboard. */}
-      <mesh position={[width * 0.3, height - 0.03, 0]}>
-        <boxGeometry args={[0.4, 0.03, depth * 0.6]} />
-        <meshStandardMaterial color={STEEL} roughness={0.28} metalness={0.75} />
+      <mesh geometry={parts.lines}>
+        <meshStandardMaterial color="#54402f" roughness={1} />
       </mesh>
-      <mesh position={[width * 0.3, height + 0.14, -depth * 0.28]}>
-        <cylinderGeometry args={[0.015, 0.015, 0.28, 8]} />
-        <meshStandardMaterial color={STEEL} roughness={0.25} metalness={0.8} />
+      <mesh geometry={parts.steel}>
+        <meshStandardMaterial color={STEEL} roughness={0.26} metalness={0.78} />
       </mesh>
     </group>
   )
@@ -577,28 +710,35 @@ function KitchenCounter({ width, depth, height }: { width: number; depth: number
  * from anywhere you stand, a bath is its surface.
  */
 function Bathtub({ width, depth, height }: { width: number; depth: number; height: number }) {
-  const wall = 0.055
+  const parts = useMerged(
+    useMemo(() => {
+      const wall = 0.055
+      const riser = new THREE.CylinderGeometry(0.015, 0.015, 0.24, 8)
+      riser.translate(-width / 2 + 0.1, height + 0.12, 0)
+      const spout = new THREE.CylinderGeometry(0.012, 0.012, 0.14, 8)
+      spout.rotateZ(Math.PI / 2)
+      spout.translate(-width / 2 + 0.17, height + 0.22, 0)
+      return {
+        porcelain: [block(width, height, depth, 0, height / 2, 0)],
+        // The well, sunk into the top.
+        well: [block(width - wall * 2, 0.04, depth - wall * 2, 0, height - 0.02, 0)],
+        water: [block(width - wall * 2.4, 0.01, depth - wall * 2.4, 0, height - 0.06, 0)],
+        steel: [riser, spout],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
+      <mesh geometry={parts.porcelain} castShadow receiveShadow>
         <meshStandardMaterial color={PORCELAIN} roughness={0.28} />
       </mesh>
-      {/* The well, sunk into the top. */}
-      <mesh position={[0, height - 0.02, 0]}>
-        <boxGeometry args={[width - wall * 2, 0.04, depth - wall * 2]} />
+      <mesh geometry={parts.well}>
         <meshStandardMaterial color="#cfd6d4" roughness={0.35} />
       </mesh>
-      <mesh position={[0, height - 0.06, 0]}>
-        <boxGeometry args={[width - wall * 2.4, 0.01, depth - wall * 2.4]} />
+      <mesh geometry={parts.water}>
         <meshStandardMaterial color="#8fb6bd" roughness={0.15} transparent opacity={0.72} />
       </mesh>
-      <mesh position={[-width / 2 + 0.1, height + 0.12, 0]} castShadow>
-        <cylinderGeometry args={[0.015, 0.015, 0.24, 8]} />
-        <meshStandardMaterial color={STEEL} roughness={0.24} metalness={0.8} />
-      </mesh>
-      <mesh position={[-width / 2 + 0.17, height + 0.22, 0]} rotation-z={Math.PI / 2}>
-        <cylinderGeometry args={[0.012, 0.012, 0.14, 8]} />
+      <mesh geometry={parts.steel} castShadow>
         <meshStandardMaterial color={STEEL} roughness={0.24} metalness={0.8} />
       </mesh>
     </group>
@@ -607,18 +747,24 @@ function Bathtub({ width, depth, height }: { width: number; depth: number; heigh
 
 /** A cistern, a pan and a lid. Facing points the seat into the room. */
 function Toilet({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const parts = useMerged(
+    useMemo(() => {
+      const pan = new THREE.CylinderGeometry(width * 0.36, width * 0.26, 0.4, 14)
+      pan.translate(0, 0.2, depth * 0.06)
+      const lid = new THREE.CylinderGeometry(width * 0.44, width * 0.42, 0.05, 16)
+      lid.translate(0, 0.42, depth * 0.06)
+      return {
+        porcelain: [block(width, height * 0.56, 0.18, 0, height * 0.72, -depth / 2 + 0.09), pan],
+        lid: [lid],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, height * 0.72, -depth / 2 + 0.09]} castShadow receiveShadow>
-        <boxGeometry args={[width, height * 0.56, 0.18]} />
+      <mesh geometry={parts.porcelain} castShadow receiveShadow>
         <meshStandardMaterial color={PORCELAIN} roughness={0.3} />
       </mesh>
-      <mesh position={[0, 0.2, depth * 0.06]} castShadow receiveShadow>
-        <cylinderGeometry args={[width * 0.36, width * 0.26, 0.4, 14]} />
-        <meshStandardMaterial color={PORCELAIN} roughness={0.3} />
-      </mesh>
-      <mesh position={[0, 0.42, depth * 0.06]} castShadow>
-        <cylinderGeometry args={[width * 0.44, width * 0.42, 0.05, 16]} />
+      <mesh geometry={parts.lid} castShadow>
         <meshStandardMaterial color="#e9e6df" roughness={0.5} />
       </mesh>
     </group>
@@ -627,22 +773,28 @@ function Toilet({ width, depth, height }: { width: number; depth: number; height
 
 /** A basin on a pedestal, with a mirror-less tap. */
 function Basin({ width, depth, height }: { width: number; depth: number; height: number }) {
+  const parts = useMerged(
+    useMemo(() => {
+      const pedestal = new THREE.CylinderGeometry(width * 0.2, width * 0.26, height * 0.8, 12)
+      pedestal.translate(0, height * 0.4, 0)
+      const tap = new THREE.CylinderGeometry(0.014, 0.014, 0.16, 8)
+      tap.translate(0, height + 0.08, -depth / 2 + 0.06)
+      return {
+        porcelain: [pedestal, block(width, 0.12, depth, 0, height - 0.06, 0)],
+        bowl: [block(width - 0.14, 0.03, depth - 0.14, 0, height - 0.02, 0.02)],
+        steel: [tap],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, height * 0.4, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[width * 0.2, width * 0.26, height * 0.8, 12]} />
-        <meshStandardMaterial color={PORCELAIN} roughness={0.32} />
+      <mesh geometry={parts.porcelain} castShadow receiveShadow>
+        <meshStandardMaterial color={PORCELAIN} roughness={0.3} />
       </mesh>
-      <mesh position={[0, height - 0.06, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, 0.12, depth]} />
-        <meshStandardMaterial color={PORCELAIN} roughness={0.28} />
-      </mesh>
-      <mesh position={[0, height - 0.02, 0.02]}>
-        <boxGeometry args={[width - 0.14, 0.03, depth - 0.14]} />
+      <mesh geometry={parts.bowl}>
         <meshStandardMaterial color="#d3d8d5" roughness={0.36} />
       </mesh>
-      <mesh position={[0, height + 0.08, -depth / 2 + 0.06]} castShadow>
-        <cylinderGeometry args={[0.014, 0.014, 0.16, 8]} />
+      <mesh geometry={parts.steel} castShadow>
         <meshStandardMaterial color={STEEL} roughness={0.24} metalness={0.8} />
       </mesh>
     </group>
@@ -675,6 +827,34 @@ function Clock({ size }: { size: number }) {
   })
 
   const radius = size / 2
+
+  // Everything but the hands is static: case, face, the twelve marks and the
+  // brass pin, one mesh per material where the marks alone were twelve.
+  const parts = useMerged(
+    useMemo(() => {
+      // The case: a cylinder laid on its side, so it faces the room.
+      const shell = new THREE.CylinderGeometry(radius, radius, 0.05, 28)
+      shell.rotateX(Math.PI / 2)
+      const face = new THREE.CircleGeometry(radius * 0.88, 28)
+      face.translate(0, 0, 0.026)
+      const pin = new THREE.CylinderGeometry(0.012, 0.012, 0.008, 10)
+      pin.rotateX(Math.PI / 2)
+      pin.translate(0, 0, 0.037)
+      // Twelve marks, the quarters longer — enough to read the time by from
+      // across the great room, which is the only distance it is seen from.
+      const marks = Array.from({ length: 12 }, (_, i) => {
+        const angle = (i / 12) * Math.PI * 2
+        const long = i % 3 === 0
+        const at = radius * 0.75
+        const mark = new THREE.BoxGeometry(long ? 0.018 : 0.009, long ? 0.05 : 0.03, 0.004)
+        mark.rotateZ(-angle)
+        mark.translate(Math.sin(angle) * at, Math.cos(angle) * at, 0.028)
+        return mark
+      })
+      return { oak: [shell], face: [face], marks, brass: [pin] }
+    }, [radius]),
+  )
+
   const hand = (length: number, thickness: number, colour: string, z: number) => (
     <mesh position={[0, length / 2 - thickness, z]}>
       <boxGeometry args={[thickness, length, 0.006]} />
@@ -684,37 +864,19 @@ function Clock({ size }: { size: number }) {
 
   return (
     <group>
-      {/* The case: a cylinder laid on its side, so it faces the room. */}
-      <mesh rotation-x={Math.PI / 2} castShadow receiveShadow>
-        <cylinderGeometry args={[radius, radius, 0.05, 28]} />
-        <meshStandardMaterial color={OAK} roughness={0.6} />
+      <mesh geometry={parts.oak} castShadow receiveShadow>
+        <meshStandardMaterial color={OAK} roughness={0.6} map={woodGrainTexture()} />
       </mesh>
-      <mesh position={[0, 0, 0.026]}>
-        <circleGeometry args={[radius * 0.88, 28]} />
+      <mesh geometry={parts.face}>
         <meshStandardMaterial color="#f2ece0" roughness={0.85} />
       </mesh>
-      {/* Twelve marks, the quarters longer — enough to read the time by from
-          across the great room, which is the only distance it is seen from. */}
-      {Array.from({ length: 12 }, (_, i) => {
-        const angle = (i / 12) * Math.PI * 2
-        const long = i % 3 === 0
-        const at = radius * 0.75
-        return (
-          <mesh
-            key={i}
-            position={[Math.sin(angle) * at, Math.cos(angle) * at, 0.028]}
-            rotation-z={-angle}
-          >
-            <boxGeometry args={[long ? 0.018 : 0.009, long ? 0.05 : 0.03, 0.004]} />
-            <meshStandardMaterial color="#2c2620" roughness={0.8} />
-          </mesh>
-        )
-      })}
+      <mesh geometry={parts.marks}>
+        <meshStandardMaterial color="#2c2620" roughness={0.8} />
+      </mesh>
       <group ref={hour}>{hand(radius * 0.52, 0.016, '#2c2620', 0.031)}</group>
       <group ref={minute}>{hand(radius * 0.76, 0.011, '#2c2620', 0.033)}</group>
       <group ref={second}>{hand(radius * 0.8, 0.005, '#8c3a2c', 0.035)}</group>
-      <mesh position={[0, 0, 0.037]} rotation-x={Math.PI / 2}>
-        <cylinderGeometry args={[0.012, 0.012, 0.008, 10]} />
+      <mesh geometry={parts.brass}>
         <meshStandardMaterial color={BRASS} roughness={0.4} metalness={0.7} />
       </mesh>
     </group>
@@ -839,36 +1001,38 @@ function Steam() {
 /** A rotary telephone: bakelite body, a dial on the slope, the handset across the top. */
 function Phone({ width, depth, height }: { width: number; depth: number; height: number }) {
   const BAKELITE = '#33302c'
+  const parts = useMerged(
+    useMemo(() => {
+      // The dial's centre, tipped up the slope of the face like the dial.
+      const hub = new THREE.CylinderGeometry(width * 0.07, width * 0.07, 0.012, 10)
+      hub.rotateX(-0.6)
+      hub.translate(0, height * 0.44, depth * 0.26)
+      // The ears at each end of the handset's bar.
+      const ears = [-1, 1].map((side) => {
+        const ear = new THREE.CylinderGeometry(width * 0.13, width * 0.15, height * 0.3, 10)
+        ear.translate(side * width * 0.36, height * 0.62, -depth * 0.08)
+        return ear
+      })
+      return {
+        bakelite: [
+          block(width * 0.82, height * 0.52, depth * 0.85, 0, height * 0.3, 0),
+          hub,
+          block(width * 0.72, height * 0.14, depth * 0.3, 0, height * 0.68, -depth * 0.08),
+          ...ears,
+        ],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, height * 0.3, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width * 0.82, height * 0.52, depth * 0.85]} />
-        <meshStandardMaterial color={BAKELITE} roughness={0.35} />
+      <mesh geometry={parts.bakelite} castShadow receiveShadow>
+        <meshStandardMaterial color={BAKELITE} roughness={0.36} />
       </mesh>
       {/* The dial, tipped up the slope of the face. */}
       <mesh position={[0, height * 0.42, depth * 0.24]} rotation-x={-0.6}>
         <cylinderGeometry args={[width * 0.2, width * 0.2, 0.01, 16]} />
         <meshStandardMaterial color="#e8e3d8" roughness={0.5} />
       </mesh>
-      <mesh position={[0, height * 0.44, depth * 0.26]} rotation-x={-0.6}>
-        <cylinderGeometry args={[width * 0.07, width * 0.07, 0.012, 10]} />
-        <meshStandardMaterial color={BAKELITE} roughness={0.4} />
-      </mesh>
-      {/* The handset: a bar with an ear at each end, in its cradle. */}
-      <mesh position={[0, height * 0.68, -depth * 0.08]} castShadow>
-        <boxGeometry args={[width * 0.72, height * 0.14, depth * 0.3]} />
-        <meshStandardMaterial color={BAKELITE} roughness={0.35} />
-      </mesh>
-      {[-1, 1].map((side) => (
-        <mesh
-          key={side}
-          position={[side * width * 0.36, height * 0.62, -depth * 0.08]}
-          castShadow
-        >
-          <cylinderGeometry args={[width * 0.13, width * 0.15, height * 0.3, 10]} />
-          <meshStandardMaterial color={BAKELITE} roughness={0.35} />
-        </mesh>
-      ))}
     </group>
   )
 }
@@ -944,6 +1108,28 @@ function DoorLeaf({ width, height, open }: { width: number; height: number; open
     if (swing.current) swing.current.rotation.y = angle.current
   })
 
+  // Leaf, panels and knobs merged per material inside the swing group; only
+  // the group turns, so the merged geometry swings whole.
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        oak: [chamferBlock(width, height, 0.045, 0.01, width / 2, height / 2, 0)],
+        // Two sunken panels, one each side, so it reads as joinery.
+        panel: [-1, 1].flatMap((face) =>
+          [0.3, 0.71].map((at) =>
+            block(width * 0.68, height * 0.28, 0.008, width / 2, height * at, face * 0.024),
+          ),
+        ),
+        brass: [-1, 1].map((face) => {
+          const knob = new THREE.SphereGeometry(0.028, 8, 8)
+          knob.translate(width * 0.86, height * 0.48, face * 0.045)
+          return knob
+        }),
+      }),
+      [width, height],
+    ),
+  )
+
   return (
     <group position={[-width / 2, 0, 0]}>
       {/* The post the hinges hang on. */}
@@ -952,25 +1138,15 @@ function DoorLeaf({ width, height, open }: { width: number; height: number; open
         <meshStandardMaterial color={OAK} roughness={0.7} />
       </mesh>
       <group ref={swing}>
-        <mesh position={[width / 2, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width, height, 0.045]} />
-          <meshStandardMaterial color={OAK} roughness={0.65} />
+        <mesh geometry={parts.oak} castShadow receiveShadow>
+          <meshStandardMaterial color={OAK} roughness={0.65} map={woodGrainTexture()} />
         </mesh>
-        {/* Two sunken panels, one each side, so it reads as joinery. */}
-        {[-1, 1].map((face) =>
-          [0.3, 0.71].map((at) => (
-            <mesh key={`${face}:${at}`} position={[width / 2, height * at, face * 0.024]}>
-              <boxGeometry args={[width * 0.68, height * 0.28, 0.008]} />
-              <meshStandardMaterial color="#6d4b2e" roughness={0.8} />
-            </mesh>
-          )),
-        )}
-        {[-1, 1].map((face) => (
-          <mesh key={`knob${face}`} position={[width * 0.86, height * 0.48, face * 0.045]}>
-            <sphereGeometry args={[0.028, 8, 8]} />
-            <meshStandardMaterial color={BRASS} roughness={0.35} metalness={0.7} />
-          </mesh>
-        ))}
+        <mesh geometry={parts.panel}>
+          <meshStandardMaterial color="#6d4b2e" roughness={0.8} map={woodGrainTexture()} />
+        </mesh>
+        <mesh geometry={parts.brass}>
+          <meshStandardMaterial color={BRASS} roughness={0.35} metalness={0.7} />
+        </mesh>
       </group>
     </group>
   )
@@ -982,75 +1158,87 @@ const DOOR_OPEN = -1.92
 /** An A-frame tent: two canvas slopes on a ridge pole, open at both ends. */
 function Tent({ width, depth, height }: { width: number; depth: number; height: number }) {
   const CANVAS = '#66704f'
-  const slope = Math.hypot(width / 2, height)
-  const pitch = Math.atan2(width / 2, height)
+  const parts = useMerged(
+    useMemo(() => {
+      const slope = Math.hypot(width / 2, height)
+      const pitch = Math.atan2(width / 2, height)
+      const sheets = [-1, 1].map((side) => {
+        const sheet = new THREE.BoxGeometry(slope, 0.025, depth)
+        sheet.rotateZ(-side * pitch)
+        sheet.translate((side * width) / 4, height / 2, 0)
+        return sheet
+      })
+      // Ridge pole and the two uprights it rests on.
+      const ridge = new THREE.CylinderGeometry(0.02, 0.02, depth + 0.16, 6)
+      ridge.rotateX(Math.PI / 2)
+      ridge.translate(0, height, 0)
+      const poles = [-1, 1].map((end) => {
+        const pole = new THREE.CylinderGeometry(0.02, 0.024, height, 6)
+        pole.translate(0, height / 2, (end * depth) / 2)
+        return pole
+      })
+      return {
+        ground: [block(width - 0.1, 0.03, depth - 0.1, 0, 0.015, 0)],
+        canvas: sheets,
+        oak: [ridge, ...poles],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, 0.015, 0]} receiveShadow>
-        <boxGeometry args={[width - 0.1, 0.03, depth - 0.1]} />
+      <mesh geometry={parts.ground} receiveShadow>
         <meshStandardMaterial color="#4c523f" roughness={1} />
       </mesh>
-      {[-1, 1].map((side) => (
-        <mesh
-          key={side}
-          position={[(side * width) / 4, height / 2, 0]}
-          rotation-z={-side * pitch}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[slope, 0.025, depth]} />
-          <meshStandardMaterial color={CANVAS} roughness={1} side={THREE.DoubleSide} />
-        </mesh>
-      ))}
-      {/* Ridge pole and the two uprights it rests on. */}
-      <mesh position={[0, height, 0]} rotation-x={Math.PI / 2} castShadow>
-        <cylinderGeometry args={[0.02, 0.02, depth + 0.16, 6]} />
-        <meshStandardMaterial color={OAK} roughness={0.8} />
+      <mesh geometry={parts.canvas} castShadow receiveShadow>
+        <meshStandardMaterial
+          color={CANVAS}
+          roughness={1}
+          side={THREE.DoubleSide}
+          map={clothWeaveTexture()}
+        />
       </mesh>
-      {[-1, 1].map((end) => (
-        <mesh key={`pole${end}`} position={[0, height / 2, (end * depth) / 2]} castShadow>
-          <cylinderGeometry args={[0.02, 0.024, height, 6]} />
-          <meshStandardMaterial color={OAK} roughness={0.8} />
-        </mesh>
-      ))}
+      <mesh geometry={parts.oak} castShadow>
+        <meshStandardMaterial color={OAK} roughness={0.8} map={woodGrainTexture()} />
+      </mesh>
     </group>
   )
 }
 
 /** A ring of stones, a few logs leaned together, and the fire when it is lit. */
 function Campfire({ lit }: { lit: boolean }) {
+  // Stones and logs merged per material; the embers and flame stay their own
+  // meshes because `lit` drives them.
+  const parts = useMerged(
+    useMemo(
+      () => ({
+        stone: Array.from({ length: 8 }, (_, i) => {
+          const angle = (i / 8) * Math.PI * 2 + 0.3
+          const rock = new THREE.BoxGeometry(0.15, 0.11, 0.12)
+          rock.rotateZ(((i * 17) % 5) / 25)
+          rock.rotateY(angle + ((i * 31) % 7) / 7)
+          rock.translate(Math.cos(angle) * 0.36, 0.05, Math.sin(angle) * 0.36)
+          return rock
+        }),
+        log: [0, 1, 2].map((i) => {
+          const angle = (i / 3) * Math.PI * 2 + 0.8
+          const log = new THREE.CylinderGeometry(0.04, 0.045, 0.5, 7)
+          log.rotateZ(Math.PI / 2 - 0.5)
+          log.rotateY(angle)
+          log.translate(Math.cos(angle) * 0.1, 0.12, Math.sin(angle) * 0.1)
+          return log
+        }),
+      }),
+      [],
+    ),
+  )
   return (
     <group>
-      {Array.from({ length: 8 }, (_, i) => {
-        const angle = (i / 8) * Math.PI * 2 + 0.3
-        return (
-          <mesh
-            key={i}
-            position={[Math.cos(angle) * 0.36, 0.05, Math.sin(angle) * 0.36]}
-            rotation-y={angle + ((i * 31) % 7) / 7}
-            rotation-z={((i * 17) % 5) / 25}
-            castShadow
-          >
-            <boxGeometry args={[0.15, 0.11, 0.12]} />
-            <meshStandardMaterial color={MATERIALS.stone} roughness={1} />
-          </mesh>
-        )
-      })}
-      {[0, 1, 2].map((i) => {
-        const angle = (i / 3) * Math.PI * 2 + 0.8
-        return (
-          <mesh
-            key={`log${i}`}
-            position={[Math.cos(angle) * 0.1, 0.12, Math.sin(angle) * 0.1]}
-            rotation-z={Math.PI / 2 - 0.5}
-            rotation-y={angle}
-            castShadow
-          >
-            <cylinderGeometry args={[0.04, 0.045, 0.5, 7]} />
-            <meshStandardMaterial color={TRUNK_BROWN} roughness={1} />
-          </mesh>
-        )
-      })}
+      <mesh geometry={parts.stone} castShadow>
+        <meshStandardMaterial color={MATERIALS.stone} roughness={1} map={stoneHintTexture()} />
+      </mesh>
+      <mesh geometry={parts.log} castShadow>
+        <meshStandardMaterial color={TRUNK_BROWN} roughness={1} map={woodGrainTexture()} />
+      </mesh>
       {/* The embers, and a low flame when it is going. Nothing animates — the
           same argument the hearth makes about flicker. */}
       <mesh position={[0, 0.06, 0]}>
@@ -1083,41 +1271,52 @@ const TRUNK_BROWN = '#4a3826'
 
 /** A crate for records, open at the front, with a top you can put things on. */
 function RecordShelf({ width, depth, height }: { width: number; depth: number; height: number }) {
-  const wall = 0.026
+  const parts = useMerged(
+    useMemo(() => {
+      const wall = 0.026
+      return {
+        oak: [
+          block(width, wall, depth, 0, height - wall / 2, 0),
+          block(width, wall, depth, 0, 0.06, 0),
+          ...[-1, 1].map((side) =>
+            block(wall, height, depth, (side * (width - wall)) / 2, height / 2, 0),
+          ),
+        ],
+        back: [block(width, height, wall, 0, height / 2, -depth / 2 + wall / 2)],
+        // A divider, so a half-empty crate does not look like a bookcase.
+        divider: [block(0.012, height - 0.12, depth - 0.06, 0, height / 2, 0)],
+        feet: [-0.1, 0.1].map((z) => block(width - 0.1, 0.05, 0.05, 0, 0.03, z)),
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, height - wall / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, wall, depth]} />
-        <meshStandardMaterial color={OAK} roughness={0.65} />
+      <mesh geometry={parts.oak} castShadow receiveShadow>
+        <meshStandardMaterial color={OAK} roughness={0.68} map={woodGrainTexture()} />
       </mesh>
-      <mesh position={[0, 0.06, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, wall, depth]} />
-        <meshStandardMaterial color={OAK} roughness={0.7} />
-      </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[(side * (width - wall)) / 2, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[wall, height, depth]} />
-          <meshStandardMaterial color={OAK} roughness={0.7} />
-        </mesh>
-      ))}
-      <mesh position={[0, height / 2, -depth / 2 + wall / 2]} receiveShadow>
-        <boxGeometry args={[width, height, wall]} />
+      <mesh geometry={parts.back} receiveShadow>
         <meshStandardMaterial color="#6d4b2e" roughness={0.9} />
       </mesh>
-      {/* A divider, so a half-empty crate does not look like a bookcase. */}
-      <mesh position={[0, height / 2, 0]} castShadow>
-        <boxGeometry args={[0.012, height - 0.12, depth - 0.06]} />
+      <mesh geometry={parts.divider} castShadow>
         <meshStandardMaterial color="#7a5638" roughness={0.8} />
       </mesh>
-      {[-0.1, 0.1].map((z) => (
-        <mesh key={z} position={[0, 0.03, z]}>
-          <boxGeometry args={[width - 0.1, 0.05, 0.05]} />
-          <meshStandardMaterial color="#5c3f27" roughness={1} />
-        </mesh>
-      ))}
+      <mesh geometry={parts.feet}>
+        <meshStandardMaterial color="#5c3f27" roughness={1} />
+      </mesh>
     </group>
   )
 }
+
+/** The tonearm's two stations: parked on its rest, and swung in over the groove. */
+const ARM_REST = -0.15
+const ARM_PLAY = -0.75
+/** The swing between them takes about 0.6 s — a hand's pace, not a switch's. */
+const ARM_SWING = Math.abs(ARM_PLAY - ARM_REST) / 0.6
+/** 33 1/3 rpm is 3.49 radians a second, which is genuinely what it is. */
+const PLATTER_SPEED = 3.49
+/** Up to speed in half a second; the coast down is longer — nothing brakes it. */
+const SPIN_UP = PLATTER_SPEED / 0.5
+const COAST_DOWN = PLATTER_SPEED / 1.5
 
 /**
  * The deck. A plinth, a platter, an arm — and, when a record is on, its disc
@@ -1126,7 +1325,10 @@ function RecordShelf({ width, depth, height }: { width: number; depth: number; h
  */
 function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: string | null }) {
   const platter = useRef<THREE.Group>(null)
+  const arm = useRef<THREE.Group>(null)
   const angle = useRef(0)
+  const speed = useRef(0)
+  const armAngle = useRef(ARM_REST)
 
   const track = useMediaStore((s) => (playing ? s.trackAt(playing) : undefined))
   const art = track ? sleeveArtFor(track) : null
@@ -1134,26 +1336,27 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
   useEffect(() => () => sleeve?.dispose(), [sleeve])
   const loaded = playing !== null
 
-  // Turned by hand rather than with useFrame from the parent: the platter is
-  // the only thing in the cabin that moves on its own, and it should stop when
-  // the needle lifts rather than free-wheel forever.
-  useEffect(() => {
-    if (!spinning) return
-    let running = true
-    let last = performance.now()
-    const tick = (now: number) => {
-      if (!running) return
-      // 33 1/3 rpm is 3.49 radians a second, which is genuinely what it is.
-      angle.current += ((now - last) / 1000) * 3.49
-      last = now
+  // The motor ramps rather than steps: pulled up to 33 1/3 quickly, and
+  // carried down by the platter's own weight; the arm swings at a hand's pace.
+  // On the scene's own clock, like everything else that moves.
+  useFrame((_, rawDelta) => {
+    const dt = Math.min(rawDelta, 1 / 20)
+    const speedTo = spinning ? PLATTER_SPEED : 0
+    speed.current =
+      speed.current < speedTo
+        ? Math.min(speedTo, speed.current + SPIN_UP * dt)
+        : Math.max(speedTo, speed.current - COAST_DOWN * dt)
+    if (speed.current > 0) {
+      angle.current += speed.current * dt
       if (platter.current) platter.current.rotation.y = angle.current
-      requestAnimationFrame(tick)
     }
-    requestAnimationFrame(tick)
-    return () => {
-      running = false
-    }
-  }, [spinning])
+    const armTo = spinning ? ARM_PLAY : ARM_REST
+    armAngle.current =
+      armAngle.current < armTo
+        ? Math.min(armTo, armAngle.current + ARM_SWING * dt)
+        : Math.max(armTo, armAngle.current - ARM_SWING * dt)
+    if (arm.current) arm.current.rotation.y = armAngle.current
+  })
 
   return (
     <group>
@@ -1197,8 +1400,8 @@ function RecordPlayer({ spinning, playing }: { spinning: boolean; playing: strin
           <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.8} />
         </mesh>
       </group>
-      {/* The tonearm, swung in over the record when one is playing. */}
-      <group position={[0.16, 0.09, -0.11]} rotation-y={spinning ? -0.75 : -0.15}>
+      {/* The tonearm, eased in over the record when one is playing. */}
+      <group ref={arm} position={[0.16, 0.09, -0.11]} rotation-y={ARM_REST}>
         <mesh position={[0, 0.02, 0]}>
           <cylinderGeometry args={[0.022, 0.026, 0.04, 10]} />
           <meshStandardMaterial color={STEEL} roughness={0.35} metalness={0.7} />
@@ -1308,50 +1511,40 @@ function Picture({ item, source }: { item: DerivedFurniture; source: string | nu
   )
 }
 
-/** An open moving box, flaps folded out. */
+/** An open moving box, flaps folded out. Two meshes: card, and darker card. */
 function MovingBox({ width, depth }: { width: number; depth: number }) {
-  const height = 0.36
-  const wall = 0.014
+  const parts = useMerged(
+    useMemo(() => {
+      const height = 0.36
+      const wall = 0.014
+      // Flaps, folded down the outside.
+      const flaps = [-1, 1].map((side) => {
+        const flap = new THREE.BoxGeometry(width * 0.98, 0.16, wall)
+        flap.rotateX(side * 0.5)
+        flap.translate(0, height - 0.06, (side * (depth + 0.02)) / 2)
+        return flap
+      })
+      return {
+        card: [
+          ...[-1, 1].map((side) =>
+            block(wall, height, depth, (side * (width - wall)) / 2, height / 2, 0),
+          ),
+          ...[-1, 1].map((side) =>
+            block(width, height, wall, 0, height / 2, (side * (depth - wall)) / 2),
+          ),
+        ],
+        cardDark: [block(width, wall, depth, 0, wall / 2, 0), ...flaps],
+      }
+    }, [width, depth]),
+  )
   return (
     <group>
-      <mesh position={[0, wall / 2, 0]} receiveShadow castShadow>
-        <boxGeometry args={[width, wall, depth]} />
+      <mesh geometry={parts.card} castShadow receiveShadow>
+        <meshStandardMaterial color={CARD} roughness={1} />
+      </mesh>
+      <mesh geometry={parts.cardDark} castShadow receiveShadow>
         <meshStandardMaterial color={CARD_DARK} roughness={1} />
       </mesh>
-      {[-1, 1].map((side) => (
-        <mesh
-          key={`x${side}`}
-          position={[(side * (width - wall)) / 2, height / 2, 0]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[wall, height, depth]} />
-          <meshStandardMaterial color={CARD} roughness={1} />
-        </mesh>
-      ))}
-      {[-1, 1].map((side) => (
-        <mesh
-          key={`z${side}`}
-          position={[0, height / 2, (side * (depth - wall)) / 2]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[width, height, wall]} />
-          <meshStandardMaterial color={CARD} roughness={1} />
-        </mesh>
-      ))}
-      {/* flaps, folded down the outside */}
-      {[-1, 1].map((side) => (
-        <mesh
-          key={`flap${side}`}
-          position={[0, height - 0.06, (side * (depth + 0.02)) / 2]}
-          rotation-x={side * 0.5}
-          castShadow
-        >
-          <boxGeometry args={[width * 0.98, 0.16, wall]} />
-          <meshStandardMaterial color={CARD_DARK} roughness={1} />
-        </mesh>
-      ))}
     </group>
   )
 }
@@ -1364,31 +1557,38 @@ function MovingBox({ width, depth }: { width: number; depth: number }) {
  * disagreeing, is what says "stack of cardboard" rather than "panel".
  */
 function BoxStack({ width, depth, height }: { width: number; depth: number; height: number }) {
-  const sheet = 0.016
-  const panels = 4
+  const parts = useMerged(
+    useMemo(() => {
+      const sheet = 0.016
+      const panels = 4
+      const card: THREE.BufferGeometry[] = []
+      const cardDark: THREE.BufferGeometry[] = []
+      for (let i = 0; i < panels; i++) {
+        const panel = new THREE.BoxGeometry(width * (1 - i * 0.04), height, sheet)
+        panel.rotateY((((i * 41) % 7) / 7) * 0.08 - 0.04)
+        panel.rotateX(0.16 + i * 0.045)
+        panel.translate(
+          ((i % 2) - 0.5) * 0.02,
+          height / 2 - i * 0.008,
+          -depth / 2 + sheet / 2 + i * (sheet + 0.006),
+        )
+        ;(i % 2 ? card : cardDark).push(panel)
+      }
+      // One lying flat at the base, which is where the next one comes off.
+      const flat = new THREE.BoxGeometry(width * 0.92, sheet, depth * 0.85)
+      flat.rotateY(0.09)
+      flat.translate(0.01, sheet / 2, depth * 0.18)
+      card.push(flat)
+      return { card, cardDark }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      {Array.from({ length: panels }, (_, i) => (
-        <mesh
-          key={i}
-          position={[
-            ((i % 2) - 0.5) * 0.02,
-            height / 2 - i * 0.008,
-            -depth / 2 + sheet / 2 + i * (sheet + 0.006),
-          ]}
-          rotation-x={0.16 + i * 0.045}
-          rotation-y={((i * 41) % 7) / 7 * 0.08 - 0.04}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[width * (1 - i * 0.04), height, sheet]} />
-          <meshStandardMaterial color={i % 2 ? CARD : CARD_DARK} roughness={1} />
-        </mesh>
-      ))}
-      {/* one lying flat at the base, which is where the next one comes off */}
-      <mesh position={[0.01, sheet / 2, depth * 0.18]} rotation-y={0.09} castShadow receiveShadow>
-        <boxGeometry args={[width * 0.92, sheet, depth * 0.85]} />
+      <mesh geometry={parts.card} castShadow receiveShadow>
         <meshStandardMaterial color={CARD} roughness={1} />
+      </mesh>
+      <mesh geometry={parts.cardDark} castShadow receiveShadow>
+        <meshStandardMaterial color={CARD_DARK} roughness={1} />
       </mesh>
     </group>
   )
@@ -1411,12 +1611,7 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
   // per flight: a staircase is the most box-heavy thing in the room and none of
   // it moves.
   const [treads, stringers] = useMemo(() => {
-    const box = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-      const part = new THREE.BoxGeometry(w, h, d)
-      part.translate(x, y, z)
-      return part
-    }
-
+    const box = block
     const tread: THREE.BufferGeometry[] = []
     const side: THREE.BufferGeometry[] = []
     for (let i = 0; i < steps; i++) {
@@ -1439,13 +1634,7 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
       }
     }
 
-    const merged: [THREE.BufferGeometry | null, THREE.BufferGeometry | null] = [
-      mergeGeometries(tread, false),
-      mergeGeometries(side, false),
-    ]
-    tread.forEach((part) => part.dispose())
-    side.forEach((part) => part.dispose())
-    return merged
+    return [join(tread), join(side)]
   }, [steps, run, rise, width, treadDepth, stepRise])
 
   useEffect(
@@ -1480,52 +1669,51 @@ function Stairs({ width, run, rise }: { width: number; run: number; rise: number
  * is a `surface` and the dining chairs are not.
  */
 function Desk({ width, depth, height }: { width: number; depth: number; height: number }) {
-  const top = 0.04
-  const leg = 0.07
-  const drawers = width * 0.34
-
-  return (
-    <group>
-      <mesh position={[0, height - top / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, top, depth]} />
-        <meshStandardMaterial color={OAK} roughness={0.62} />
-      </mesh>
-
-      {/* Two legs at the open end; the drawer bank carries the other. */}
-      {[-1, 1].map((side) => (
-        <mesh
-          key={`leg${side}`}
-          position={[-width / 2 + leg, (height - top) / 2, (side * (depth - leg * 2)) / 2]}
-          castShadow
-        >
-          <boxGeometry args={[leg, height - top, leg]} />
-          <meshStandardMaterial color={OAK} roughness={0.8} />
-        </mesh>
-      ))}
-
-      <mesh
-        position={[width / 2 - drawers / 2, (height - top) / 2, 0]}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry args={[drawers, height - top, depth * 0.92]} />
-        <meshStandardMaterial color={OAK} roughness={0.78} />
-      </mesh>
-      {/* Three drawer fronts, which is what makes the bank read as drawers
-          rather than as a plinth. */}
-      {[0, 1, 2].map((i) => (
-        <mesh
-          key={`drawer${i}`}
-          position={[
+  const parts = useMerged(
+    useMemo(() => {
+      const top = 0.04
+      const leg = 0.07
+      const drawers = width * 0.34
+      return {
+        oak: [
+          chamferBlock(width, top, depth, 0.012, 0, height - top / 2, 0),
+          // Two legs at the open end; the drawer bank carries the other.
+          ...[-1, 1].map((side) =>
+            block(
+              leg,
+              height - top,
+              leg,
+              -width / 2 + leg,
+              (height - top) / 2,
+              (side * (depth - leg * 2)) / 2,
+            ),
+          ),
+          block(drawers, height - top, depth * 0.92, width / 2 - drawers / 2, (height - top) / 2, 0),
+        ],
+        // Three drawer fronts, which is what makes the bank read as drawers
+        // rather than as a plinth.
+        pine: [0, 1, 2].map((i) =>
+          block(
+            drawers * 0.86,
+            (height - top) * 0.22,
+            0.016,
             width / 2 - drawers / 2,
             (height - top) * (0.22 + i * 0.28),
             (depth * 0.92) / 2 + 0.008,
-          ]}
-        >
-          <boxGeometry args={[drawers * 0.86, (height - top) * 0.22, 0.016]} />
-          <meshStandardMaterial color={PINE} roughness={0.7} />
-        </mesh>
-      ))}
+          ),
+        ),
+      }
+    }, [width, depth, height]),
+  )
+
+  return (
+    <group>
+      <mesh geometry={parts.oak} castShadow receiveShadow>
+        <meshStandardMaterial color={OAK} roughness={0.72} map={woodGrainTexture()} />
+      </mesh>
+      <mesh geometry={parts.pine}>
+        <meshStandardMaterial color={PINE} roughness={0.7} map={woodGrainTexture()} />
+      </mesh>
     </group>
   )
 }
@@ -1563,21 +1751,27 @@ function Whiteboard({ id, width, height }: { id: string; width: number; height: 
     if (drawing.boardId === id) painter.extend()
   })
 
+  // Frame and pen tray as one aluminium mesh; the face stays live, it carries
+  // the drawing's canvas.
+  const parts = useMerged(
+    useMemo(() => {
+      // Pen tray along the bottom edge, tipped up to hold what is in it.
+      const tray = new THREE.BoxGeometry(width * 0.55, 0.02, 0.07)
+      tray.rotateX(-0.35)
+      tray.translate(0, -height / 2 - frame, 0.05)
+      return { aluminium: [block(width + frame * 2, height + frame * 2, 0.05), tray] }
+    }, [width, height, frame]),
+  )
+
   return (
     <group>
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[width + frame * 2, height + frame * 2, 0.05]} />
-        <meshStandardMaterial color={ALUMINIUM} roughness={0.42} metalness={0.55} />
+      <mesh geometry={parts.aluminium} castShadow receiveShadow>
+        <meshStandardMaterial color={ALUMINIUM} roughness={0.44} metalness={0.52} />
       </mesh>
       {/* The face, a hair proud of the frame so the two never z-fight. */}
       <mesh position={[0, 0, 0.027]} receiveShadow>
         <planeGeometry args={[width, height]} />
         <meshStandardMaterial color={BOARD_WHITE} map={painter.texture} roughness={0.32} />
-      </mesh>
-      {/* Pen tray along the bottom edge, tipped up to hold what is in it. */}
-      <mesh position={[0, -height / 2 - frame, 0.05]} rotation-x={-0.35} castShadow>
-        <boxGeometry args={[width * 0.55, 0.02, 0.07]} />
-        <meshStandardMaterial color={ALUMINIUM} roughness={0.45} metalness={0.5} />
       </mesh>
       {MARKER_INKS.map((ink, i) => (
         <mesh
@@ -1595,25 +1789,30 @@ function Whiteboard({ id, width, height }: { id: string; width: number; height: 
 
 /** An open crate of tapes: four low sides and a base, and nothing else. */
 function TapeCrate({ width, depth, height }: { width: number; depth: number; height: number }) {
-  const wall = 0.016
+  const parts = useMerged(
+    useMemo(() => {
+      const wall = 0.016
+      return {
+        base: [block(width, wall, depth, 0, wall / 2, 0)],
+        oak: [
+          ...[-1, 1].map((side) =>
+            block(wall, height, depth, (side * (width - wall)) / 2, height / 2, 0),
+          ),
+          ...[-1, 1].map((side) =>
+            block(width, height, wall, 0, height / 2, (side * (depth - wall)) / 2),
+          ),
+        ],
+      }
+    }, [width, depth, height]),
+  )
   return (
     <group>
-      <mesh position={[0, wall / 2, 0]} receiveShadow castShadow>
-        <boxGeometry args={[width, wall, depth]} />
+      <mesh geometry={parts.base} castShadow receiveShadow>
         <meshStandardMaterial color={CARD_DARK} roughness={1} />
       </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={`x${side}`} position={[(side * (width - wall)) / 2, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[wall, height, depth]} />
-          <meshStandardMaterial color={OAK} roughness={0.85} />
-        </mesh>
-      ))}
-      {[-1, 1].map((side) => (
-        <mesh key={`z${side}`} position={[0, height / 2, (side * (depth - wall)) / 2]} castShadow receiveShadow>
-          <boxGeometry args={[width, height, wall]} />
-          <meshStandardMaterial color={OAK} roughness={0.85} />
-        </mesh>
-      ))}
+      <mesh geometry={parts.oak} castShadow receiveShadow>
+        <meshStandardMaterial color={OAK} roughness={0.85} map={woodGrainTexture()} />
+      </mesh>
     </group>
   )
 }
@@ -1645,6 +1844,11 @@ function Crt({
   const screenW = width * 0.78
   const screenH = height * 0.72
 
+  // The store flips `playing` on the keypress, a beat before the element has
+  // decoded anything — and a VideoTexture with no frame draws black. The glass
+  // stays its dead green until the store says this tape's first frame arrived.
+  const ready = useVideoStore((s) => s.ready)
+
   const picture = useMemo(() => {
     if (!playing) return null
     const texture = new THREE.VideoTexture(videoElement())
@@ -1658,65 +1862,63 @@ function Crt({
   }, [playing])
   useEffect(() => () => picture?.dispose(), [picture])
 
+  // The casing merged per colour; the glass stays live (keyed material), and
+  // the aerial stays its own mesh.
+  const parts = useMerged(
+    useMemo(() => {
+      // The control panel down the side of the glass: a dial, a smaller dial,
+      // and the slot the tape goes into.
+      const dials = [0.66, 0.5].map((at, i) => {
+        const dial = new THREE.CylinderGeometry(0.022 - i * 0.005, 0.022 - i * 0.005, 0.022, 12)
+        dial.rotateX(Math.PI / 2)
+        dial.translate(width * 0.42, height * at, depth / 2 + 0.012)
+        return dial
+      })
+      return {
+        // The casing, with the tube's depth in it.
+        casing: [block(width, height, depth, 0, height / 2, 0)],
+        // A recessed bezel so the glass sits inside the box, and the speaker
+        // grille under it.
+        casingDark: [
+          block(screenW + 0.035, screenH + 0.035, 0.02, 0, height * 0.54, depth / 2 + 0.004),
+          ...dials,
+          block(width * 0.5, 0.05, 0.01, -width * 0.1, height * 0.12, depth / 2 + 0.006),
+        ],
+        slot: [block(width * 0.11, 0.026, 0.012, width * 0.42, height * 0.2, depth / 2 + 0.006)],
+        feet: [-1, 1].flatMap((sx) =>
+          [-1, 1].map((sz) => block(0.05, 0.016, 0.05, (sx * width) / 2.6, 0.008, (sz * depth) / 2.8)),
+        ),
+      }
+    }, [width, depth, height, screenW, screenH]),
+  )
+
   return (
     <group>
-      {/* The casing, with the tube's depth in it. */}
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
+      <mesh geometry={parts.casing} castShadow receiveShadow>
         <meshStandardMaterial color={CASING} roughness={0.72} />
       </mesh>
-      {/* A recessed bezel, so the glass sits inside the box rather than on it. */}
-      <mesh position={[0, height * 0.54, depth / 2 + 0.004]}>
-        <boxGeometry args={[screenW + 0.035, screenH + 0.035, 0.02]} />
+      <mesh geometry={parts.casingDark}>
         <meshStandardMaterial color={CASING_DARK} roughness={0.8} />
+      </mesh>
+      <mesh geometry={parts.slot}>
+        <meshStandardMaterial color="#3a3630" roughness={0.9} />
+      </mesh>
+      <mesh geometry={parts.feet} castShadow>
+        <meshStandardMaterial color="#332f2b" roughness={0.9} />
       </mesh>
       <mesh position={[0, height * 0.54, depth / 2 + 0.016]}>
         <planeGeometry args={[screenW, screenH]} />
         {/* Keyed so a tape starting mounts a *new* material: swapping a map into
             a live one reuses its map-less shader program and draws black, which
             is the same trap the picture frames fell into. */}
-        {picture ? (
+        {picture && ready ? (
           <meshBasicMaterial key="tape" map={picture} toneMapped={false} />
         ) : (
           <meshStandardMaterial key="off" color={TUBE_OFF} roughness={0.16} metalness={0.3} />
         )}
       </mesh>
 
-      {/* The control panel down the side of the glass: a dial, a smaller dial,
-          and the slot the tape goes into. */}
-      {[0.66, 0.5].map((at, i) => (
-        <mesh
-          key={at}
-          position={[width * 0.42, height * at, depth / 2 + 0.012]}
-          rotation-x={Math.PI / 2}
-        >
-          <cylinderGeometry args={[0.022 - i * 0.005, 0.022 - i * 0.005, 0.022, 12]} />
-          <meshStandardMaterial color={CASING_DARK} roughness={0.55} />
-        </mesh>
-      ))}
-      <mesh position={[width * 0.42, height * 0.2, depth / 2 + 0.006]}>
-        <boxGeometry args={[width * 0.11, 0.026, 0.012]} />
-        <meshStandardMaterial color="#3a3630" roughness={0.9} />
-      </mesh>
-      {/* The speaker grille, under the glass. */}
-      <mesh position={[-width * 0.1, height * 0.12, depth / 2 + 0.006]}>
-        <boxGeometry args={[width * 0.5, 0.05, 0.01]} />
-        <meshStandardMaterial color={CASING_DARK} roughness={0.95} />
-      </mesh>
-
-      {/* Feet, and a telescopic aerial pulled up at the back. */}
-      {[-1, 1].map((sx) =>
-        [-1, 1].map((sz) => (
-          <mesh
-            key={`foot${sx}${sz}`}
-            position={[(sx * width) / 2.6, 0.008, (sz * depth) / 2.8]}
-            castShadow
-          >
-            <boxGeometry args={[0.05, 0.016, 0.05]} />
-            <meshStandardMaterial color="#332f2b" roughness={0.9} />
-          </mesh>
-        )),
-      )}
+      {/* A telescopic aerial pulled up at the back. */}
       <group position={[-width * 0.36, height, -depth * 0.3]} rotation-z={0.42}>
         <mesh position={[0, 0.22, 0]} castShadow>
           <cylinderGeometry args={[0.005, 0.007, 0.44, 6]} />
@@ -1753,11 +1955,21 @@ function ArcadeCabinet({
 }) {
   const screen = useMemo(makeArcadeScreen, [])
   useEffect(() => () => screen.dispose(), [screen])
+  const marquee = useRef<THREE.MeshStandardMaterial>(null)
+  const glass = useRef<THREE.MeshBasicMaterial>(null)
 
   // Repainted only while something is running; a dead machine was painted dark
   // once by `makeArcadeScreen` and stays that way without another upload.
   useFrame(() => {
-    if (running) screen.paint(arcadeMachine())
+    if (!running) return
+    const machine = arcadeMachine()
+    screen.paint(machine)
+    // A crash reads from across the room: the marquee drops to a glimmer and
+    // the tube greys behind the last frame it drew. Read per frame because
+    // `halted` lives on the machine, outside any store.
+    const halted = machine?.halted ?? false
+    if (marquee.current) marquee.current.emissiveIntensity = halted ? 0.12 : 0.9
+    if (glass.current) glass.current.color.setScalar(halted ? 0.3 : 1)
   })
 
   // A friendly machine, not a monolith: warm terracotta over cream, with the
@@ -1800,6 +2012,7 @@ function ArcadeCabinet({
         <boxGeometry args={[width * 0.94, 0.15, 0.03]} />
         {running ? (
           <meshStandardMaterial
+            ref={marquee}
             key="lit"
             color="#f4d9a0"
             emissive="#e8b45c"
@@ -1823,7 +2036,7 @@ function ArcadeCabinet({
           {/* Keyed, so power-on mounts a new material: swapping a map into a
               live one reuses its map-less shader program and draws black. */}
           {running ? (
-            <meshBasicMaterial key="on" map={screen.texture} toneMapped={false} />
+            <meshBasicMaterial ref={glass} key="on" map={screen.texture} toneMapped={false} />
           ) : (
             <meshStandardMaterial key="off" color={TUBE_OFF} roughness={0.16} metalness={0.3} />
           )}
@@ -1887,26 +2100,33 @@ function RomBox({ width, depth, height }: { width: number; depth: number; height
   const heldRom = useAppStore((s) => s.heldRom)
   const shells = Math.min(SHELL_SLOTS.length, Math.max(0, inCrate - (heldRom !== null ? 1 : 0)))
 
-  const wall = 0.016
+  // The crate merged per material; the shells stay live, their count is state.
+  const parts = useMerged(
+    useMemo(() => {
+      const wall = 0.016
+      return {
+        base: [block(width, wall, depth, 0, wall / 2, 0)],
+        card: [
+          ...[-1, 1].map((side) =>
+            block(wall, height, depth, (side * (width - wall)) / 2, height / 2, 0),
+          ),
+          ...[-1, 1].map((side) =>
+            block(width - wall * 2, height, wall, 0, height / 2, (side * (depth - wall)) / 2),
+          ),
+        ],
+      }
+    }, [width, depth, height]),
+  )
+
   return (
     <group>
       {/* An open crate: bottom and four sides. */}
-      <mesh position={[0, wall / 2, 0]} receiveShadow>
-        <boxGeometry args={[width, wall, depth]} />
+      <mesh geometry={parts.base} receiveShadow>
         <meshStandardMaterial color={CARD_DARK} roughness={1} />
       </mesh>
-      {[-1, 1].map((side) => (
-        <mesh key={`w${side}`} position={[(side * (width - wall)) / 2, height / 2, 0]} castShadow>
-          <boxGeometry args={[wall, height, depth]} />
-          <meshStandardMaterial color={CARD} roughness={1} />
-        </mesh>
-      ))}
-      {[-1, 1].map((side) => (
-        <mesh key={`d${side}`} position={[0, height / 2, (side * (depth - wall)) / 2]} castShadow>
-          <boxGeometry args={[width - wall * 2, height, wall]} />
-          <meshStandardMaterial color={CARD} roughness={1} />
-        </mesh>
-      ))}
+      <mesh geometry={parts.card} castShadow>
+        <meshStandardMaterial color={CARD} roughness={1} />
+      </mesh>
       {SHELL_SLOTS.slice(0, shells).map(([at, lean], i) => (
         <mesh
           key={at}
@@ -1933,15 +2153,35 @@ function Computer({ width, depth, height, awake }: { width: number; depth: numbe
   const screenW = width * 0.62
   const screenH = height * 0.5
 
+  // Case, base and keyboard merged per colour; the glass stays live, `awake`
+  // drives its emissive.
+  const parts = useMerged(
+    useMemo(() => {
+      // The case, tipped back a little on its own feet the way they were.
+      const shell = new THREE.BoxGeometry(width * 0.78, height * 0.7, depth * 0.62)
+      shell.rotateX(-0.07)
+      shell.translate(0, height * 0.42, -depth * 0.14)
+      const keyboard = new THREE.BoxGeometry(width * 0.86, 0.03, depth * 0.3)
+      keyboard.rotateX(-0.06)
+      keyboard.translate(0, 0.016, depth * 0.3)
+      return {
+        putty: [shell],
+        puttyDark: [
+          block(width * 0.64, height * 0.12, depth * 0.5, 0, height * 0.06, -depth * 0.14),
+          keyboard,
+        ],
+      }
+    }, [width, depth, height]),
+  )
+
   return (
     <group>
-      {/* The case, tipped back a little on its own feet the way they were. */}
-      <mesh position={[0, height * 0.42, -depth * 0.14]} rotation-x={-0.07} castShadow receiveShadow>
-        <boxGeometry args={[width * 0.78, height * 0.7, depth * 0.62]} />
+      <mesh geometry={parts.putty} castShadow receiveShadow>
         <meshStandardMaterial color={PUTTY} roughness={0.78} />
       </mesh>
-      <mesh position={[0, height * 0.06, -depth * 0.14]} castShadow>
-        <boxGeometry args={[width * 0.64, height * 0.12, depth * 0.5]} />
+      {/* The base under the case, and the keyboard at the front where a hand
+          would be. */}
+      <mesh geometry={parts.puttyDark} castShadow receiveShadow>
         <meshStandardMaterial color={PUTTY_DARK} roughness={0.85} />
       </mesh>
       {/* The glass, and the phosphor behind it. Not a texture: what is on this
@@ -1956,11 +2196,6 @@ function Computer({ width, depth, height, awake }: { width: number; depth: numbe
           roughness={0.2}
         />
       </mesh>
-      {/* The keyboard, at the front where a hand would be. */}
-      <mesh position={[0, 0.016, depth * 0.3]} rotation-x={-0.06} castShadow receiveShadow>
-        <boxGeometry args={[width * 0.86, 0.03, depth * 0.3]} />
-        <meshStandardMaterial color={PUTTY_DARK} roughness={0.85} />
-      </mesh>
     </group>
   )
 }
@@ -1974,22 +2209,31 @@ function Computer({ width, depth, height, awake }: { width: number; depth: numbe
  * cube". Taking one is `E`, which opens the field you write on it.
  */
 function PostIts({ width, depth }: { width: number; depth: number }) {
-  const leaves = 9
-  const leaf = 0.0035
+  const parts = useMerged(
+    useMemo(() => {
+      const leaves = 9
+      const leaf = 0.0035
+      const sheet = (i: number) => {
+        const g = new THREE.BoxGeometry(width, leaf, depth)
+        g.rotateY(((i * 37) % 11) / 11 - 0.5 > 0 ? 0.012 : -0.014)
+        g.translate(((i % 3) - 1) * 0.0009, leaf * (i + 0.5), ((i % 2) - 0.5) * 0.0012)
+        return g
+      }
+      return {
+        pad: Array.from({ length: leaves - 1 }, (_, i) => sheet(i)),
+        top: [sheet(leaves - 1)],
+      }
+    }, [width, depth]),
+  )
   return (
     <group>
-      {Array.from({ length: leaves }, (_, i) => (
-        <mesh
-          key={i}
-          position={[((i % 3) - 1) * 0.0009, leaf * (i + 0.5), ((i % 2) - 0.5) * 0.0012]}
-          rotation-y={((i * 37) % 11) / 11 - 0.5 > 0 ? 0.012 : -0.014}
-          castShadow={i === leaves - 1}
-          receiveShadow
-        >
-          <boxGeometry args={[width, leaf, depth]} />
-          <meshStandardMaterial color={i === leaves - 1 ? '#f4e276' : '#e8d76a'} roughness={0.95} />
-        </mesh>
-      ))}
+      <mesh geometry={parts.pad} receiveShadow>
+        <meshStandardMaterial color="#e8d76a" roughness={0.95} />
+      </mesh>
+      {/* The top sheet, its own paler mesh: the one you would take. */}
+      <mesh geometry={parts.top} castShadow receiveShadow>
+        <meshStandardMaterial color="#f4e276" roughness={0.95} />
+      </mesh>
     </group>
   )
 }
@@ -2003,22 +2247,19 @@ function PostIts({ width, depth }: { width: number; depth: number }) {
  * down. It hangs *below* its own origin, which is the top of the deck.
  */
 function Step({ width, depth, height }: { width: number; depth: number; height: number }) {
-  const tread = height / 2
-  const run = depth / 2
+  const parts = useMerged(
+    useMemo(() => {
+      const tread = height / 2
+      const run = depth / 2
+      return {
+        timber: [0, 1].map((i) => block(width, tread, run, 0, -tread * (i + 0.5), -run / 2 + run * i)),
+      }
+    }, [width, depth, height]),
+  )
   return (
-    <group>
-      {[0, 1].map((i) => (
-        <mesh
-          key={i}
-          position={[0, -tread * (i + 0.5), -run / 2 + run * i]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[width, tread, run]} />
-          <meshStandardMaterial color={MATERIALS.timber} roughness={0.92} />
-        </mesh>
-      ))}
-    </group>
+    <mesh geometry={parts.timber} castShadow receiveShadow>
+      <meshStandardMaterial color={MATERIALS.timber} roughness={0.92} map={woodGrainTexture()} />
+    </mesh>
   )
 }
 

@@ -31,6 +31,9 @@ import { Tapes } from './scene/Tapes'
 import { Weather } from './scene/Weather'
 import { ChimneySmoke } from './scene/ChimneySmoke'
 import { DustMotes } from './scene/DustMotes'
+import { LampGlow } from './scene/LampGlow'
+import { ContactShadows } from './scene/ContactShadows'
+import { SceneEnvironment } from './scene/SceneEnvironment'
 import { Cat } from './scene/Cat'
 import { Courier } from './scene/Courier'
 import { Body } from './scene/Body'
@@ -576,6 +579,9 @@ export default function App() {
         <Weather />
         <ChimneySmoke />
         <DustMotes />
+        <LampGlow />
+        <ContactShadows />
+        <SceneEnvironment />
         <PlacementGhost />
         <Interaction />
         <Handling />
@@ -593,6 +599,9 @@ export default function App() {
         <Headlamp />
         <Reader />
       </Canvas>
+      {/* A breath of vignette and grain over the picture — DOM, not a render
+          pass, so it costs the scene nothing and pointer lock passes through. */}
+      <div className="veil" aria-hidden="true" />
       <Hud />
     </div>
   )

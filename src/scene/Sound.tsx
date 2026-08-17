@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { ambienceBlend, strikeLightning } from './ambienceBlend'
 import { placeSound } from './audioRig'
 import { placeRain, stopRain } from './rainSound'
-import { placeLoop, stopAllLoops } from './ambientSound'
+import { placeChorus, placeLoop, playOneShot, stopAllChoruses, stopAllLoops } from './ambientSound'
 import { player } from '../state/player'
 import { cat } from '../state/cat'
-import { musicElement, useMediaStore } from '../state/media'
-import { useVideoStore, videoElement } from '../state/video'
+import { musicElement, musicFading, useMediaStore } from '../state/media'
+import { useVideoStore, videoElement, videoFading } from '../state/video'
 import { useAmbienceStore } from '../state/ambience'
 import { useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 import { openingSpots, roomAt, type DerivedWorld, type OpeningSpot } from '../world/derive'
+import { lakeRadius } from '../world/terrain'
 
 /**
  * Where the noise is coming from.
@@ -65,7 +67,6 @@ function openness(world: DerivedWorld, spots: Map<string, OpeningSpot[]>): numbe
 export function Sound() {
   const frame = useRef(0)
   const world = useWorldStore((s) => s.world)
-  const raining = useAmbienceStore((s) => s.rain)
 
   // One walk of the document per world rather than one per frame: openings do
   // not move, and this is read fifteen times a second.
@@ -75,16 +76,25 @@ export function Sound() {
     return map
   }, [world])
 
-  // Weather that has cleared gives its audio graph back rather than sitting
-  // there at zero gain until the tab closes. The small loops go with the
-  // scene the same way.
-  useEffect(() => {
-    if (!raining) stopRain()
-    return () => {
+  // The scene unmounting gives every audio graph back. Weather that has
+  // merely cleared is not cut here: the frame loop rides the sky's blend down
+  // first and stops the graph once it has settled dry.
+  // The next rumble's due time. A timestamp rather than a frame count so the
+  // storm keeps its pace on a renderer crawling at four frames a second.
+  const thunderAt = useRef<number | null>(null)
+  /** Echo and rumble timers in flight, cancelled if the scene unmounts. */
+  const pending = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  useEffect(
+    () => () => {
       stopRain()
       stopAllLoops()
-    }
-  }, [raining])
+      stopAllChoruses()
+      pending.current.forEach((timer) => clearTimeout(timer))
+      pending.current = []
+    },
+    [],
+  )
 
   useFrame(() => {
     frame.current += 1
@@ -111,8 +121,11 @@ export function Sound() {
     // Only touched while something is actually playing: creating the element
     // for a library with no music in it would allocate an audio graph nobody
     // asked for, and the stores create their elements lazily for that reason.
+    // A fade in flight is left alone — it owns the volume — but a merely
+    // paused element keeps being placed, or resuming would replay at the
+    // loudness of wherever you were standing when you paused.
     const music = useMediaStore.getState()
-    if (music.playing !== null) {
+    if (music.playing !== null && !musicFading()) {
       placeSound(
         musicElement(),
         sourceOf('recordplayer', music.deck),
@@ -123,7 +136,7 @@ export function Sound() {
     }
 
     const video = useVideoStore.getState()
-    if (video.playing !== null) {
+    if (video.playing !== null && !videoFading()) {
       placeSound(
         videoElement(),
         sourceOf('crt', video.crt),
@@ -133,20 +146,28 @@ export function Sound() {
       )
     }
 
-    if (raining && world) {
-      const open = openness(world, spots)
-      const level = RAIN_INSIDE + (RAIN_OUTSIDE - RAIN_INSIDE) * open
-      placeRain(settings.volume * settings.rainVolume * level, open)
-    }
-
-    // The small loops: a lit fire crackles, a close purring cat is audible, a
-    // spinning record carries its dust. Each is a level on a synthesised loop
-    // (`ambientSound`), attenuated here by plain distance — a zero level on a
-    // loop that never started costs nothing at all. All three ride the same
-    // Small Sounds slider, on top of the master volume like the rain.
     if (world) {
-      const small = settings.volume * settings.ambientVolume
       const ambience = useAmbienceStore.getState()
+      const open = openness(world, spots)
+
+      // The shower rides the same eased blend the sky dries by, so what you
+      // hear dies away with what you see; only once the blend has settled is
+      // the graph given back, and stopRain ramps off the last of it.
+      const wet = ambienceBlend.rain
+      if (ambience.rain || wet > 0) {
+        const level = RAIN_INSIDE + (RAIN_OUTSIDE - RAIN_INSIDE) * open
+        placeRain(settings.volume * settings.rainVolume * level * wet, open)
+      } else {
+        stopRain()
+      }
+
+      // The small loops: a lit fire crackles, a close purring cat is audible,
+      // a spinning record carries its dust, the lake washes its shore. Each is
+      // a level on a synthesised loop (`ambientSound`), attenuated here by
+      // plain distance — a zero level on a loop that never started costs
+      // nothing at all. All four ride the same Small Sounds slider, on top of
+      // the master volume like the rain.
+      const small = settings.volume * settings.ambientVolume
       let fire = 0
       for (const lamp of world.lights) {
         if (lamp.kind !== 'fireplace' && lamp.kind !== 'campfire') continue
@@ -169,6 +190,50 @@ export function Sound() {
         }
       }
       placeLoop('vinyl', small * 0.16 * vinyl * vinyl)
+
+      // The lake heard from the beach: all of it at the water's edge, gone by
+      // the tree line, and indoors only what an opening lets in — the same
+      // measure of sky the rain uses. `lakeRadius` is in shoreline units, so
+      // the wash follows the actual shore rather than a circle near it.
+      const ashore = Math.max(0, Math.min(1, (1.8 - lakeRadius(player.x, player.z)) / 0.8))
+      placeLoop('lake', small * 0.4 * ashore * ashore * open)
+
+      // The rest of the outdoors: wind always, up a little in weather; birds
+      // by day and crickets by night, crossfaded on the same eased blend the
+      // sky dims by, both hushed by rain and all let in by the same openings.
+      const night = ambienceBlend.night
+      placeLoop('wind', small * (0.26 + 0.2 * wet) * open)
+      placeChorus('birds', small * 0.5 * open * (1 - night) * (1 - 0.75 * wet))
+      placeChorus('crickets', small * 0.5 * open * night * (1 - 0.5 * wet))
+
+      // A distant rumble now and then while it pours: the first one lets the
+      // shower establish itself, and a shower that dries and returns gets its
+      // grace period back. Thunder is all low end and penetrates walls, so
+      // indoors softens it only mildly — and it rides the Rain slider.
+      if (wet > 0.4) {
+        const now = performance.now()
+        if (thunderAt.current === null) {
+          thunderAt.current = now + 8_000 + Math.random() * 22_000
+        } else if (now >= thunderAt.current) {
+          thunderAt.current = now + 25_000 + Math.random() * 45_000
+          // The flash first — twice, the classic double — and the rumble after
+          // the gap that says the strike is somewhere across the lake.
+          strikeLightning(0.7 + Math.random() * 0.5)
+          pending.current.push(
+            setTimeout(() => strikeLightning(0.4), 90 + Math.random() * 140),
+            setTimeout(
+              () =>
+                playOneShot('thunder', (0.55 + Math.random() * 0.45) * (0.5 + 0.5 * open), {
+                  rate: 0.75 + Math.random() * 0.4,
+                  rain: true,
+                }),
+              900 + Math.random() * 1_600,
+            ),
+          )
+        }
+      } else {
+        thunderAt.current = null
+      }
     }
   })
 

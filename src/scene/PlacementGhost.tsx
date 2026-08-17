@@ -59,6 +59,9 @@ export function PlacementGhost() {
 
   if (!pose) return null
 
+  // The warn colour when the row cannot take the book — the held card says why.
+  const marker = target?.fits === false ? '#e6c169' : '#f3d9a0'
+
   return (
     <group>
       <mesh position={pose.shelf} quaternion={pose.quaternion}>
@@ -74,7 +77,7 @@ export function PlacementGhost() {
 
       <mesh position={pose.book} quaternion={pose.quaternion}>
         <boxGeometry args={[pose.size.thickness, pose.size.height, pose.size.depth]} />
-        <meshBasicMaterial color="#f3d9a0" transparent opacity={0.34} depthWrite={false} />
+        <meshBasicMaterial color={marker} transparent opacity={0.34} depthWrite={false} />
       </mesh>
     </group>
   )

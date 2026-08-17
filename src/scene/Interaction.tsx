@@ -3,9 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
 import { useShelfTransforms } from './transforms'
-import { insertionIndex } from './shelving'
+import { insertionIndex, rowFits, rowKey } from './shelving'
 import { rowFromLocalY } from '../world/shelf'
-import { packedRow } from '../state/library'
+import { packedRow, useLibraryStore } from '../state/library'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
@@ -84,6 +84,13 @@ export function Interaction() {
   const local = useMemo(() => new THREE.Vector3(), [])
   const inverse = useMemo(() => new THREE.Matrix4(), [])
   const frame = useRef(0)
+  /** The last row-fit answer, keyed so a full row is not re-summed per frame. */
+  const fitCache = useRef<{
+    key: string | null
+    held: string | null
+    rows: unknown
+    fits: boolean
+  }>({ key: null, held: null, rows: null, fits: true })
 
   useFrame(() => {
     const store = useAppStore.getState()
@@ -405,6 +412,21 @@ export function Interaction() {
      * behind it.
      */
     if (store.heldPin !== null) {
+      // The full slate, like every other held-* branch: a leftover seat or
+      // fixture would keep offering an E that now pins.
+      store.setFocusedBook(null)
+      store.setShelfTarget(null)
+      store.setFocusedSeat(null)
+      store.setFocusedBox(null)
+      store.setBoxTarget(null)
+      store.setFocusedRecord(null)
+      store.setCrateTarget(null)
+      store.setFocusedTape(null)
+      store.setTapeCrateTarget(null)
+      store.setFocusedShelf(null)
+      store.setFocusedFixture(null)
+      store.setSurfaceTarget(null)
+      store.setFocusedCat(false)
       store.setFocusedPin(null)
       store.setFocusedProp(null)
 
@@ -787,12 +809,27 @@ export function Interaction() {
       return
     }
 
+    // Whether the held book would actually go in — the same test `shelve`
+    // applies, carried on the target so the card and the ghost can warn
+    // instead of leaving E silently dead on a full row. Re-summed only when
+    // the row, the book, or the shelving changes, not sixty times a second.
+    const { rows, dims } = useLibraryStore.getState()
+    const at = rowKey(shelf.id, row)
+    const fit = fitCache.current
+    if (fit.key !== at || fit.held !== store.held || fit.rows !== rows) {
+      fit.key = at
+      fit.held = store.held
+      fit.rows = rows
+      const standing = (rows[at] ?? []).filter((id) => id !== store.held)
+      fit.fits = rowFits([...standing, store.held], (id) => dims.get(id))
+    }
     store.setShelfTarget({
       shelf: nearest.shelf,
       shelfId: shelf.id,
       row,
       localX: local.x,
       index: insertionIndex(packedRow(nearest.shelf, row), local.x),
+      fits: fit.fits,
     })
   })
 

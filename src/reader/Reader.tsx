@@ -18,6 +18,7 @@ import {
 } from './pageInk'
 import type { BoardStroke, BookNote } from '../services/types'
 import { player } from '../state/player'
+import { playOneShot } from '../scene/ambientSound'
 import { approach } from '../lib/ease'
 
 /**
@@ -141,6 +142,20 @@ export function Reader() {
   }, [width, rise])
 
   const turnRef = useRef<Turn | null>(null)
+  /**
+   * One keyboard press remembered while a leaf is already in flight, started
+   * the moment that leaf lands — tapping twice to skim two pages must not lose
+   * the second tap. One, not a queue: a third press replaces the second.
+   */
+  const pendingRef = useRef<1 | -1 | null>(null)
+  /**
+   * True while a lift's faces are still rasterising — before `turnRef` exists.
+   * The queue has to see this window too, or a quick second tap on a cold
+   * spread starts a rival load instead of being remembered.
+   */
+  const armedRef = useRef(false)
+  /** `lift`, mirrored out of the input effect so the frame loop can start it. */
+  const liftRef = useRef<((dir: 1 | -1, held: boolean) => void) | null>(null)
   const spreadRef = useRef(spread)
   spreadRef.current = spread
 
@@ -192,6 +207,10 @@ export function Reader() {
     setSpread(useLibraryStore.getState().readProgress[reading] ?? 0)
 
     resetReaderStatus(reading)
+    // A press remembered in the last book must not turn a page in this one,
+    // and a lift still rasterising there must not arm a turn in this one.
+    pendingRef.current = null
+    armedRef.current = false
 
     // A PDF is rasterised by pdf.js and an EPUB is set in type here; which of
     // the two this is, is the last thing in read mode that knows.
@@ -291,6 +310,8 @@ export function Reader() {
       // would be whatever the last reset left behind.
       readerStatus.pages = doc?.pages ?? readerStatus.pages
       readerStatus.rendered = true
+      // Whatever was being sought, this is now what is shown.
+      readerStatus.seeking = false
       return true
     },
     [pages, sheets, doc],
@@ -390,6 +411,10 @@ export function Reader() {
       sheets.turning.mesh.visible = false
       readerStatus.turning = false
     }
+    // A remembered press would land after the jump and undo it, like the turn.
+    pendingRef.current = null
+    // The HUD says "Finding the page…" until the sheets catch up.
+    if (target !== spreadRef.current) readerStatus.seeking = true
     setSpread(target)
     clearJump(null)
   }, [jumpRequest, doc, spreadCount, sheets, clearJump])
@@ -426,7 +451,7 @@ export function Reader() {
      * rasterised, so a leaf never swings blank.
      */
     const lift = (dir: 1 | -1, held: boolean) => {
-      if (!doc || !pages || turnRef.current) return
+      if (!doc || !pages || turnRef.current || armedRef.current) return
       const s = spreadRef.current
       if (dir === 1 && rightPage(s) >= doc.pages) return
       if (dir === -1 && s <= 0) return
@@ -434,9 +459,17 @@ export function Reader() {
       const front = dir === 1 ? 2 * s + 1 : 2 * s - 1
       const back = dir === 1 ? 2 * s + 2 : 2 * s
 
+      armedRef.current = true
       void Promise.all([pages.load(front), pages.load(back)]).then(([a, b]) => {
+        armedRef.current = false
         // A second press while these were rendering already started a turn.
         if (turnRef.current) return
+        // And the reader may have closed under them: a leaf must not start
+        // turning in a book nobody is reading any more.
+        if (useAppStore.getState().reading !== reading) return
+        // Nor in one whose spread moved under the load — a jump landed first,
+        // and a turn from the old spread would quietly undo it.
+        if (spreadRef.current !== s) return
         sheets.turning.front.map = a
         sheets.turning.front.needsUpdate = true
         sheets.turning.back.map = b
@@ -455,6 +488,9 @@ export function Reader() {
         for (const page of spreadWindow(s + dir)) void pages.load(page)
       })
     }
+    // The frame loop consumes the remembered press the instant a turn lands,
+    // and `lift` lives in this effect, so it reaches out through a ref.
+    liftRef.current = lift
 
     const onKey = (e: KeyboardEvent) => {
       // While the page field or the settings panel is open, every key is a
@@ -491,6 +527,7 @@ export function Reader() {
         const page = rightPage(s) <= doc.pages ? rightPage(s) : leftPage(s)
         if (page < 1 || page > doc.pages) return
         app.setHeldPin({ kind: 'page', bookId: reading, page })
+        playOneShot('rustle', 0.9, { rate: 1.05 })
         return
       }
       if (e.code === 'KeyN') {
@@ -517,10 +554,15 @@ export function Reader() {
       }
       if (e.key === 'ArrowRight' || e.code === 'Space') {
         e.preventDefault()
-        lift(1, false)
+        // Mid-turn — or mid-load, before the leaf exists — the press is
+        // remembered rather than swallowed, so tapping twice skims two pages.
+        // Keyboard only: a drag is not a queueable wish.
+        if (turnRef.current || armedRef.current) pendingRef.current = 1
+        else lift(1, false)
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        lift(-1, false)
+        if (turnRef.current || armedRef.current) pendingRef.current = -1
+        else lift(-1, false)
       } else if (e.code === 'KeyB') {
         e.preventDefault()
         toggleBookmark(reading, spreadRef.current)
@@ -630,6 +672,7 @@ export function Reader() {
     canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('pointercancel', onPointerUp)
     return () => {
+      liftRef.current = null
       window.removeEventListener('keydown', onKey)
       canvas.removeEventListener('pointerdown', onPointerDown)
       canvas.removeEventListener('pointermove', onPointerMove)
@@ -670,6 +713,7 @@ export function Reader() {
         sheets.turning.mesh.visible = false
         readerStatus.turning = false
       }
+      pendingRef.current = null
       setSpread(target)
       return true
     }
@@ -716,6 +760,10 @@ export function Reader() {
         sheets.turning.mesh.visible = false
         readerStatus.turning = false
         readerStatus.progress = 0
+        // No spread landed, so there is nothing for a remembered press to follow.
+        pendingRef.current = null
+        // A leaf let fall back is quieter than a turn that lands.
+        playOneShot('swish', 0.4)
       }
 
       // Commit only once the destination is on the GPU, and do it in one frame:
@@ -729,6 +777,16 @@ export function Reader() {
           sheets.turning.mesh.visible = false
           readerStatus.turning = false
           setSpread(next)
+          playOneShot('swish')
+          // A press that arrived mid-turn starts now, from the spread just
+          // landed on; `lift` refuses one that would run off either cover.
+          const queued = pendingRef.current
+          pendingRef.current = null
+          if (queued) {
+            // `spreadRef` lags `setSpread` until the re-render.
+            spreadRef.current = next
+            liftRef.current?.(queued, false)
+          }
         } else if (pages) {
           // The prefetch started these a second ago and `load` deduplicates, so
           // this normally costs a map lookup. It is here so that waiting can

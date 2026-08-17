@@ -138,10 +138,16 @@ export function ChimneySmoke() {
   /** Every stack in one geometry: masonry never moves, so one call carries it. */
   const masonry = useMemo(() => {
     if (stacks.length === 0) return null
-    const parts = stacks.map((stack) => {
-      const box = new THREE.BoxGeometry(0.44, 1.1, 0.44)
-      box.translate(stack.x, stack.top - 0.55, stack.z)
-      return box
+    const parts = stacks.flatMap((stack) => {
+      const shaft = new THREE.BoxGeometry(0.44, 1.1, 0.44)
+      shaft.translate(stack.x, stack.top - 0.55, stack.z)
+      // A cap wider than the shaft and a short crown over it: the silhouette
+      // that says chimney rather than post, read mostly from the trail.
+      const cap = new THREE.BoxGeometry(0.56, 0.07, 0.56)
+      cap.translate(stack.x, stack.top + 0.035, stack.z)
+      const crown = new THREE.BoxGeometry(0.3, 0.16, 0.3)
+      crown.translate(stack.x, stack.top + 0.15, stack.z)
+      return [shaft, cap, crown]
     })
     const merged = mergeGeometries(parts, false)
     parts.forEach((part) => part.dispose())

@@ -697,8 +697,18 @@ test('the loft is a room you climb to, and cannot fall off', async ({ page }) =>
   await page.keyboard.down('KeyW')
   try {
     await page.waitForFunction(() => window.__app.room() === 'loft', null, { timeout: 90_000 })
-    // …and all the way to the top, rather than stopping part-way up it.
-    await page.waitForFunction(() => window.__app.player().floor > 2.3, null, { timeout: 90_000 })
+    // …and all the way to the top, rather than stopping part-way up it. The
+    // eye is part of the wait, not only the assertion: crossing the floor
+    // threshold happens on the ramp, a few millimetres of ease short of what
+    // standing on the loft measures.
+    await page.waitForFunction(
+      () => {
+        const p = window.__app.player()
+        return p.floor > 2.3 && p.eye > 3.92
+      },
+      null,
+      { timeout: 90_000 },
+    )
   } finally {
     await page.keyboard.up('KeyW')
   }
@@ -1163,17 +1173,30 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
     [1.1, -0.5],
     [0.75, -0.9],
   ]) {
-    await page.evaluate(
+    const from = await page.evaluate(
       ([chair, away, pitch]) => {
         const c = chair as { x: number; z: number }
         // Approach from the west, which is the open side of this one.
         window.__app.teleport(c.x - (away as number), c.z, -Math.PI / 2)
         window.__app.look(-Math.PI / 2, pitch as number)
+        return window.__app.stats().frames
       },
       [chair, away, pitch] as const,
     )
-    await page.waitForTimeout(450)
-    seen = await page.evaluate(() => window.__app.focusedSeat())
+    // The crosshair is read on rendered frames, so wait for frames rather
+    // than milliseconds — a loaded host renders one a second, and a sleep
+    // measures the host's spare capacity instead of the app. Polled from this
+    // side for the reason the seated settle below gives.
+    const deadline = Date.now() + 15_000
+    while (Date.now() < deadline) {
+      const at = await page.evaluate(() => ({
+        frames: window.__app.stats().frames,
+        seat: window.__app.focusedSeat(),
+      }))
+      seen = at.seat
+      if (seen !== null || at.frames > from + 4) break
+      await page.waitForTimeout(150)
+    }
     if (seen === 'chair') break
   }
   expect(seen, 'the armchair was not reachable from any pose').toBe('chair')
@@ -1561,10 +1584,13 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
   // shelved book costing anything at all — see the test below it, which is the
   // one that actually guards that.
   // Raised from 640 when the cabin grew a kitchen's worth of appliances, a
-  // games corner, a front door and the camp across the lake — furniture, which
-  // is exactly what this number tracks.
+  // games corner, a front door and the camp across the lake — then *lowered*
+  // from 700 when every furniture piece was merged to one geometry per
+  // material, which paid for the chamfers, the trim and the outdoor dressing
+  // and still measured 391 here. The margin is for furniture to come; going
+  // over it means merging, not raising it back.
   const stats = await page.evaluate(() => window.__app.stats())
-  expect(stats.drawCalls).toBeLessThan(700)
+  expect(stats.drawCalls).toBeLessThan(520)
 
   // Standing still costs nothing: no cell changes hands.
   const settled = near.reprinted

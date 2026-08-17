@@ -1,7 +1,9 @@
-import { useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import type * as THREE from 'three'
+import * as THREE from 'three'
+import { block, join } from './geometry'
 import { PropModel } from './Props'
+import { approach } from '../lib/ease'
 import { courier } from '../state/courier'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
@@ -16,6 +18,8 @@ import { terrainAt } from '../world/terrain'
  * planter is a worse story than one who brushes past it.
  */
 const WALK_SPEED = 1.5
+/** The forward hold of the arms while the parcel is in them. */
+const CARRY = -1.1
 
 export function Courier() {
   const about = useAppStore((s) => s.courierAbout)
@@ -25,6 +29,39 @@ export function Courier() {
 
 function Walker() {
   const group = useRef<THREE.Group>(null)
+  const legL = useRef<THREE.Group>(null)
+  const legR = useRef<THREE.Group>(null)
+  const armL = useRef<THREE.Group>(null)
+  const armR = useRef<THREE.Group>(null)
+  /** Eased 0..1 blends, so a phase flip folds the limbs rather than snapping them. */
+  const standing = useRef(0)
+  const armsFree = useRef(0)
+
+  // One geometry where nothing moves apart — torso, cap and brim are all the
+  // uniform's red. The limbs hang from the origin, so a group rotation is the
+  // joint; one geometry serves both sides.
+  const parts = useMemo(() => {
+    const cap = new THREE.CylinderGeometry(0.115, 0.115, 0.06, 10)
+    cap.translate(0, 1.64, 0.01)
+    return {
+      jacket: join([
+        block(0.42, 0.56, 0.24, 0, 1.12, 0),
+        cap,
+        block(0.16, 0.02, 0.1, 0, 1.62, 0.12),
+      ]),
+      leg: block(0.13, 0.84, 0.16, 0, -0.42, 0),
+      arm: block(0.09, 0.44, 0.09, 0, -0.22, 0),
+    }
+  }, [])
+
+  useEffect(
+    () => () => {
+      parts.jacket?.dispose()
+      parts.leg.dispose()
+      parts.arm.dispose()
+    },
+    [parts],
+  )
 
   useFrame((_, delta) => {
     const node = group.current
@@ -74,39 +111,48 @@ function Walker() {
     // The box rides his hands, so it is drawn only while he carries it.
     const parcel = node.getObjectByName('parcel')
     if (parcel) parcel.visible = courier.carrying
+
+    // The gait. Legs swing opposed in both walk phases; the arms swing only
+    // once the parcel is down — on the way in they are a shelf, not limbs.
+    standing.current += ((courier.phase === 'dropping' ? 1 : 0) - standing.current) * approach(8, delta)
+    armsFree.current += ((courier.phase === 'leaving' ? 1 : 0) - armsFree.current) * approach(8, delta)
+    const swing = Math.sin(courier.stride) * 0.45 * (1 - standing.current)
+    if (legL.current) legL.current.rotation.x = swing
+    if (legR.current) legR.current.rotation.x = -swing
+    // An arm opposes its own side's leg, the way a walk does.
+    if (armL.current) armL.current.rotation.x = CARRY * (1 - armsFree.current) - swing * armsFree.current
+    if (armR.current) armR.current.rotation.x = CARRY * (1 - armsFree.current) + swing * armsFree.current
   })
 
   return (
     <group ref={group}>
       {/* Legs, torso, head, cap: a courier at the distance you see him from. */}
       {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * 0.09, 0.42, 0]} castShadow>
-          <boxGeometry args={[0.13, 0.84, 0.16]} />
-          <meshStandardMaterial color="#3a3f46" roughness={0.9} />
-        </mesh>
+        <group key={side} ref={side < 0 ? legL : legR} position={[side * 0.09, 0.84, 0]}>
+          <mesh geometry={parts.leg} castShadow>
+            <meshStandardMaterial color="#3a3f46" roughness={0.9} />
+          </mesh>
+        </group>
       ))}
-      <mesh position={[0, 1.12, 0]} castShadow>
-        <boxGeometry args={[0.42, 0.56, 0.24]} />
+      <mesh geometry={parts.jacket} castShadow>
         <meshStandardMaterial color="#b8452e" roughness={0.8} />
       </mesh>
-      {/* Arms held forward, carrying. */}
+      {/* Arms held forward, carrying, until the drop frees them to swing. */}
       {[-1, 1].map((side) => (
-        <mesh key={`arm${side}`} position={[side * 0.19, 1.08, 0.2]} rotation-x={-1.1} castShadow>
-          <boxGeometry args={[0.09, 0.44, 0.09]} />
-          <meshStandardMaterial color="#b8452e" roughness={0.8} />
-        </mesh>
+        <group
+          key={`arm${side}`}
+          ref={side < 0 ? armL : armR}
+          position={[side * 0.19, 1.32, 0]}
+          rotation-x={CARRY}
+        >
+          <mesh geometry={parts.arm} castShadow>
+            <meshStandardMaterial color="#b8452e" roughness={0.8} />
+          </mesh>
+        </group>
       ))}
       <mesh position={[0, 1.55, 0]} castShadow>
         <sphereGeometry args={[0.11, 10, 8]} />
         <meshStandardMaterial color="#d8b59a" roughness={0.9} />
-      </mesh>
-      <mesh position={[0, 1.64, 0.01]}>
-        <cylinderGeometry args={[0.115, 0.115, 0.06, 10]} />
-        <meshStandardMaterial color="#b8452e" roughness={0.8} />
-      </mesh>
-      <mesh position={[0, 1.62, 0.12]}>
-        <boxGeometry args={[0.16, 0.02, 0.1]} />
-        <meshStandardMaterial color="#b8452e" roughness={0.8} />
       </mesh>
       {/* The food, in his hands until it is yours. */}
       <group name="parcel" position={[0, 1.02, 0.33]}>

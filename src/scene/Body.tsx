@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { block, join } from './geometry'
 import { EYE_HEIGHT, player } from '../state/player'
 import { approach, shortestTurn } from '../lib/ease'
 import { useAppStore } from '../state/store'
@@ -49,18 +49,6 @@ const BEHIND = 0.16
 const STRIDE = 0.55
 /** How far your head can turn before your shoulders follow it. */
 const NECK = 0.7
-
-const block = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-  const part = new THREE.BoxGeometry(w, h, d)
-  part.translate(x, y, z)
-  return part
-}
-
-const join = (parts: THREE.BufferGeometry[]) => {
-  const merged = mergeGeometries(parts, false)
-  parts.forEach((part) => part.dispose())
-  return merged
-}
 
 export function Body() {
   const show = useSettings((s) => s.showBody)

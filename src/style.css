@@ -145,6 +145,26 @@ button:disabled {
 
 /* --- game overlay ---------------------------------------------------- */
 
+/* A gentle vignette with a whisper of film grain over the whole picture.
+   DOM rather than a render pass: it costs the GPU scene nothing, survives Low
+   Performance Mode untouched, and pointer lock clicks pass straight through.
+   The corners stay under a third of black so the HUD's edges keep reading. */
+.veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 58%, rgba(8, 6, 4, 0.3) 100%);
+}
+
+.veil::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='128' height='128' filter='url(%23n)'/></svg>");
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+}
+
 .crosshair {
   position: fixed;
   inset: 0;
@@ -204,6 +224,30 @@ button:disabled {
   }
 }
 
+/* The same rise for the cards centred with their own -50% Y — the shared
+   keyframes would throw the centring away for the animation's duration. */
+@keyframes card-in-centred {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 5px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* And a fade alone, for a panel docked to an edge: a rise there would read as
+   it coming loose. */
+@keyframes card-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .focus-card,
 .held-card {
   position: fixed;
@@ -218,14 +262,6 @@ button:disabled {
   pointer-events: none;
   max-width: 440px;
   animation: card-in 130ms ease-out;
-}
-
-/* Somebody who has asked their system not to animate things means it. */
-@media (prefers-reduced-motion: reduce) {
-  .focus-card,
-  .held-card {
-    animation: none;
-  }
 }
 
 .focus-card {
@@ -289,6 +325,7 @@ button:disabled {
   backdrop-filter: blur(10px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
   min-width: 260px;
+  animation: card-in 130ms ease-out;
 }
 
 .field-label {
@@ -339,6 +376,7 @@ button:disabled {
   max-height: min(78vh, 640px);
   overflow-y: auto;
   font-size: 12px;
+  animation: card-in-centred 130ms ease-out;
 }
 
 .controls-heading {
@@ -475,6 +513,7 @@ code {
   box-shadow: 0 14px 48px rgba(0, 0, 0, 0.5);
   overflow-y: auto;
   font-size: 12px;
+  animation: card-fade 130ms ease-out;
 }
 
 .settings-head {
@@ -552,6 +591,17 @@ code {
     radial-gradient(ellipse at 50% 30%, rgba(30, 24, 18, 0.55), rgba(8, 7, 6, 0.92) 70%);
   backdrop-filter: blur(6px);
   z-index: 10;
+}
+
+/* Going in: the menu lets go rather than cuts, the blur releasing so the room
+   sharpens as it arrives. The component unmounts it a beat after the fade. */
+.menu-leaving {
+  opacity: 0;
+  backdrop-filter: blur(0px);
+  pointer-events: none;
+  transition:
+    opacity 320ms ease,
+    backdrop-filter 320ms ease;
 }
 
 .menu-card {
@@ -645,6 +695,7 @@ code {
   color: #9cf0bb;
   font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
   font-size: 12.5px;
+  animation: card-in-centred 130ms ease-out;
 }
 
 .terminal-head {
@@ -735,4 +786,21 @@ code {
   border-color: rgba(92, 224, 138, 0.4);
   background: rgba(92, 224, 138, 0.12);
   color: #b6e8c8;
+}
+
+/* Somebody who has asked their system not to animate things means it. Last,
+   because at equal specificity it only wins by coming after what it stills. */
+@media (prefers-reduced-motion: reduce) {
+  .focus-card,
+  .held-card,
+  .field-card,
+  .terminal,
+  .controls-card,
+  .settings-card {
+    animation: none;
+  }
+
+  .menu-leaving {
+    transition: none;
+  }
 }

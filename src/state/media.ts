@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { makeFader } from '../lib/mediaFade'
 import { library } from '../services'
 import type { IndexedArtwork, IndexedTrack } from '../services/types'
 
@@ -66,6 +67,12 @@ function audio(): HTMLAudioElement {
  */
 export const musicElement = audio
 
+/** The needle's lift — see `lib/mediaFade.ts` for why a pause is ramped. */
+const fader = makeFader()
+
+/** Whether the lift currently owns the element's volume — the scene checks. */
+export const musicFading = fader.fading
+
 export const useMediaStore = create<MediaState>((set, get) => ({
   tracks: [],
   artwork: [],
@@ -94,17 +101,24 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     if (deck !== undefined) set({ deck })
 
     // The record already on the deck: lift the needle, or put it back down.
+    // The store's flag rather than the element's, because during the lift's
+    // fade the element has not paused yet.
     if (get().playing === id) {
-      if (player.paused) {
+      if (get().paused) {
+        fader.cancelFade(player)
         void player.play().catch((e) => set({ error: String(e) }))
         set({ paused: false })
       } else {
-        player.pause()
+        // Marked paused before the fade, so the scene stops placing the
+        // element and the fade owns its volume.
         set({ paused: true })
+        fader.fadeOutThen(player)
       }
       return
     }
 
+    // A fade still running belongs to the record coming off, not this one.
+    fader.cancelFade(player)
     player.src = library.assetUrl(track.path)
     player.currentTime = 0
     player.onended = () => get().next()
@@ -125,14 +139,25 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   },
 
   stop: () => {
-    if (element) {
-      element.pause()
-      element.removeAttribute('src')
-    }
+    const player = element
+    // Cleared first: the scene stops placing the element the moment `playing`
+    // is null, which leaves the fade alone with the volume.
     set({ playing: null, paused: false, deck: null })
+    if (!player) return
+    // A record stopped in its run-out groove can end during the fade, and an
+    // ended handler still wired would put the next one on.
+    player.onended = null
+    if (player.paused) {
+      player.removeAttribute('src')
+    } else {
+      fader.fadeOutThen(player, () => player.removeAttribute('src'))
+    }
   },
 
   next: () => {
+    // A needle lifted in the run-out groove stays lifted: the element plays on
+    // under the pause fade, and its ending must not start the next side.
+    if (get().paused) return
     const { tracks, playing } = get()
     if (tracks.length === 0) return
     const at = tracks.findIndex((track) => track.id === playing)
@@ -142,6 +167,10 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   },
 
   setVolume: (volume) => {
-    if (element) element.volume = Math.max(0, Math.min(1, volume))
+    const level = Math.max(0, Math.min(1, volume))
+    // Mid-lift the fade owns the element; the new level lands where the fade
+    // restores to, instead of being stepped over and then snapped back.
+    if (fader.retarget(level)) return
+    if (element) element.volume = level
   },
 }))

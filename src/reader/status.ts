@@ -24,6 +24,12 @@ export type ReaderStatus = {
   progress: number
   /** True while the pen is picked up and a drag draws instead of turning. */
   pen: boolean
+  /**
+   * True from a jump being asked for until the sheets show its target. Owned
+   * here rather than inferred by the HUD, because the two values it would
+   * infer from are written on different schedules and disagree mid-turn.
+   */
+  seeking: boolean
   failure: string | null
 }
 
@@ -36,6 +42,7 @@ export const readerStatus: ReaderStatus = {
   turning: false,
   progress: 0,
   pen: false,
+  seeking: false,
   failure: null,
 }
 
@@ -56,5 +63,6 @@ export function resetReaderStatus(bookId: string | null) {
   readerStatus.turning = false
   readerStatus.progress = 0
   readerStatus.pen = false
+  readerStatus.seeking = false
   readerStatus.failure = null
 }

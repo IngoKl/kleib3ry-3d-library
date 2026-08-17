@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { groundAt, stepPlayer } from './walk'
-import { aabbFromCentre } from './collision'
+import { groundAt, stepPlayer, worldSolids } from './walk'
 import { askCatForBook, callCat, petCat } from './Cat'
-import { floorAt } from '../world/derive'
-import { shelfColliders } from '../world/shelf'
+import { floorAt, roomAt } from '../world/derive'
+import { groundSurface } from '../world/terrain'
+import { playOneShot } from './ambientSound'
 import { EYE_HEIGHT, KNEEL_HEIGHT, PLAYER_RADIUS, SEATED_EYE, player } from '../state/player'
 import { roomHasKeyboard, useAppStore } from '../state/store'
 import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
-import { useArcadeStore } from '../state/arcade'
+import { arcadeMachine, useArcadeStore } from '../state/arcade'
 import { useWorldStore } from '../state/world'
 import { useSettings } from '../state/settings'
 import { approach } from '../lib/ease'
@@ -73,30 +73,22 @@ export function Player() {
   const setPointerLocked = useAppStore((s) => s.setPointerLocked)
 
   const world = useWorldStore((s) => s.world)
-  // Walls and furniture come pre-derived; the bookcases are added here because
-  // their footprint belongs to the carcass rather than to the document. Each
-  // carries the height band it occupies, so the loft's balustrade is not a wall
-  // in the middle of the living room below it. Closed doors are added here
-  // too: whether one blocks is ambience state, which the static derivation
-  // deliberately does not know about — and swinging a door is an edit, so
-  // rebuilding this list on it is fine.
+  // The one shared list of what is solid — walls, carcasses, shut doors — so
+  // the player and a thrown book cannot disagree about a wall. See `walk.ts`.
   const ambienceOn = useAmbienceStore((s) => s.on)
-  const solids = useMemo(() => {
-    if (!world) return []
-    const doors = world.furniture
-      .filter((item) => item.kind === 'door' && !(ambienceOn[item.id] ?? (item.on ?? true)))
-      .map((door) => ({
-        ...aabbFromCentre(door.x, door.z, door.width, 0.16, door.rotationY),
-        bottom: door.y,
-        top: door.y + door.height,
-      }))
-    return [...world.solids, ...shelfColliders(world.shelves), ...doors]
-  }, [world, ambienceOn])
+  const solids = useMemo(
+    () => (world ? worldSolids(world, ambienceOn) : []),
+    [world, ambienceOn],
+  )
   const keys = useRef(new Set<string>())
   const velocity = useRef({ x: 0, z: 0 })
   /** Bob phase, advanced by distance, and how much of it is applied. */
   const bob = useRef(0)
   const bobWeight = useRef(0)
+  /** Its own clock: breathing is by time, unlike the bob, which is by distance. */
+  const breath = useRef(0)
+  /** The last stride the bob completed, so each footfall sounds exactly once. */
+  const lastStride = useRef(0)
   /** `performance.now()` before which no mouse delta is believed. See MAX_STEP_PX. */
   const settleUntil = useRef(0)
   /** Running average of how far the hand actually moves per event, in pixels. */
@@ -167,6 +159,7 @@ export function Player() {
           tilt,
         })
         setHeldPin(null)
+        playOneShot('rustle', 0.7)
         return
       }
 
@@ -175,6 +168,7 @@ export function Player() {
       if (focusedPin !== null) {
         const taken = shelf.unpin(focusedPin)
         if (taken) {
+          playOneShot('rustle', 0.6)
           setHeldPin(
             taken.kind === 'page'
               ? { kind: 'page', bookId: taken.bookId ?? '', page: taken.page ?? 1 }
@@ -293,7 +287,10 @@ export function Player() {
           }
           // The door swings with your hands full: an elbow works a handle.
           if (piece?.kind === 'door') {
-            useAmbienceStore.getState().toggle(piece.id, piece.on ?? true)
+            const open = useAmbienceStore.getState().toggle(piece.id, piece.on ?? true)
+            playOneShot(open ? 'door-open' : 'door-close', 0.9, {
+              rate: 0.92 + Math.random() * 0.12,
+            })
             return
           }
           if (piece?.kind === 'coffeemaker' && prop.kind === 'cup' && !prop.full) {
@@ -368,13 +365,17 @@ export function Player() {
         state.setDrawn(null)
         shelf.unshelve(focusedBook)
         setHeld(focusedBook)
+        playOneShot('slide', 0.7, { rate: 0.95 + Math.random() * 0.1 })
         return
       }
 
       // Into a box, which is how you sort books between them — and the way
       // back for a book you have decided against.
       if (boxTarget) {
-        if (shelf.putInBox(held, boxTarget)) setHeld(null)
+        if (shelf.putInBox(held, boxTarget)) {
+          setHeld(null)
+          playOneShot('cardboard', 0.6)
+        }
         return
       }
 
@@ -402,6 +403,7 @@ export function Player() {
       if (!shelfTarget) return
       if (shelf.shelve(held, shelfTarget.shelfId, shelfTarget.row, shelfTarget.index)) {
         setHeld(null)
+        playOneShot('slide', 0.8, { rate: 0.95 + Math.random() * 0.1 })
       }
     }
 
@@ -413,12 +415,16 @@ export function Player() {
 
       if (LAMPS.has(item.kind)) {
         useAmbienceStore.getState().toggle(id, item.on ?? true)
+        playOneShot('click', 0.9)
         return
       }
       // A door swings on the same one bit a lamp switches on, and it is
       // remembered the same way — which doors stand open travels with the room.
       if (item.kind === 'door') {
-        useAmbienceStore.getState().toggle(id, item.on ?? true)
+        const open = useAmbienceStore.getState().toggle(id, item.on ?? true)
+        playOneShot(open ? 'door-open' : 'door-close', 0.9, {
+          rate: 0.92 + Math.random() * 0.12,
+        })
         return
       }
       // The switch by the door: every light in the library, on or off together.
@@ -433,6 +439,7 @@ export function Player() {
           house.map((lamp) => lamp.id),
           !anyOn,
         )
+        playOneShot('click', 0.9)
         return
       }
       if (item.kind === 'recordplayer') {
@@ -455,6 +462,7 @@ export function Player() {
       // The stack never runs out: cardboard is not the scarce thing here.
       if (item.kind === 'boxstack') {
         useAppStore.getState().setCarriedBox(NEW_BOX)
+        playOneShot('cardboard', 0.8)
         return
       }
       if (item.kind === 'crt') {
@@ -469,8 +477,11 @@ export function Player() {
       // The cabinet: with a game in it, E steps you up to the controls and the
       // keyboard becomes the keypad — Esc steps you back. An empty machine
       // deliberately does not help itself to a cartridge, the television's rule.
+      // A crashed one refuses too, agreeing with the HUD: eject it first.
       if (item.kind === 'arcade') {
-        if (useArcadeStore.getState().inserted) useAppStore.getState().setMode('play')
+        if (useArcadeStore.getState().inserted && !arcadeMachine()?.halted) {
+          useAppStore.getState().setMode('play')
+        }
         return
       }
       // The ROM box: the first cartridge into your hand. E on the box again,
@@ -634,6 +645,7 @@ export function Player() {
         if (focusedBox) {
           e.preventDefault()
           browseBox(focusedBox, e.code === 'Period' || e.code === 'BracketRight' ? 1 : -1)
+          playOneShot('cardboard', 0.35, { rate: 1.1 + Math.random() * 0.2 })
         }
       } else if (e.code === 'KeyG') {
         e.preventDefault()
@@ -641,13 +653,32 @@ export function Player() {
         // marker in hand — wipe the board you are looking at. Deliberately not
         // E in either case: both throw away a lot of work at once, and neither
         // must be what happens when you meant to pick one book up, or draw.
-        const { held, focusedBox, heldMarker, boardTarget } = useAppStore.getState()
+        const { held, focusedBox, heldMarker, boardTarget, notify } = useAppStore.getState()
         if (heldMarker !== null) {
           if (boardTarget) useLibraryStore.getState().wipeBoard(boardTarget)
           return
         }
         if (held === null && focusedBox) {
-          useLibraryStore.getState().emptyBoxOntoShelves(focusedBox)
+          // The count comes back to the strip: an unpacking you cannot see all
+          // of, refused or cut short, must not read as a dead key.
+          const shelf = useLibraryStore.getState()
+          const inBox = shelf.boxes[focusedBox]?.length ?? 0
+          const moved = shelf.emptyBoxOntoShelves(focusedBox)
+          if (inBox === 0) return
+          if (moved > 0) {
+            // The boxful leaving and landing, in that order.
+            playOneShot('cardboard', 0.7)
+            playOneShot('slide', 0.9)
+          }
+          const left = inBox - moved
+          if (moved === 0) notify('No room on the shelves nearby.')
+          else if (left > 0)
+            notify(
+              `Shelved ${moved.toLocaleString()} — ${left.toLocaleString()} ${
+                left === 1 ? 'stays' : 'stay'
+              } in the box.`,
+            )
+          else notify(`Shelved ${moved.toLocaleString()} ${moved === 1 ? 'book' : 'books'}.`)
         }
       } else if (e.code === 'KeyH') {
         e.preventDefault()
@@ -823,6 +854,23 @@ export function Player() {
     }
   }, [searching, mode, gl])
 
+  /**
+   * And when a book closes or you step back from the cabinet: both leave on
+   * `Esc` too, so the same reasoning holds — without this the walk resumes
+   * with a dead mouse and the lock hint up.
+   */
+  const cameFrom = useRef(mode)
+  useEffect(() => {
+    const from = cameFrom.current
+    cameFrom.current = mode
+    if (mode !== 'walk' || from === 'walk' || !roomHasKeyboard()) return
+    // Wrapped for the same reason as the catalogue's: headless, the refusal
+    // must land in silence rather than in the console.
+    if (!document.pointerLockElement) {
+      void Promise.resolve(gl.domElement.requestPointerLock()).catch(() => {})
+    }
+  }, [mode, gl])
+
   // --- movement --------------------------------------------------------
 
   /** Put the camera where the player is. One place, so the hand-off applies to all three branches. */
@@ -941,8 +989,12 @@ export function Player() {
       delta * CROUCH_RATE,
     )
     const running = !kneeling && (pressed.has('ShiftLeft') || pressed.has('ShiftRight'))
-    // The coffee, while it lasts. It does not make kneeling any less a shuffle.
-    const brisk = !kneeling && performance.now() < player.boostUntil ? COFFEE_BOOST : 1
+    // The coffee, while it lasts — fading over its last two seconds rather than
+    // switching off, because caffeine wears off and mud is stepped in.
+    const boostLeft = (player.boostUntil - performance.now()) / 1000
+    const brisk = !kneeling && boostLeft > 0
+      ? 1 + (COFFEE_BOOST - 1) * Math.min(1, boostLeft / 2)
+      : 1
     const top = (kneeling ? KNEEL_SPEED : running ? RUN : WALK) * brisk
 
     // Normalise so diagonals are not faster than straight lines.
@@ -1011,15 +1063,52 @@ export function Player() {
     // runs on while you stand still. Two components: vertical at twice the
     // stride (one dip per foot), sideways at the stride (a sway onto each leg).
     bob.current += delta * player.speed * 7.5
+    // A footstep at each wrap of the per-foot phase — the dip is the foot
+    // landing. Surface by where you stand: the room's own floor finish, or
+    // terrain's word for the ground outside.
+    const stride = Math.floor(bob.current / Math.PI)
+    if (stride !== lastStride.current && player.speed > 0.2) {
+      const room = world ? roomAt(world, player.x, player.z, player.floor) : null
+      const surface = room
+        ? room.floor === 'stone'
+          ? 'step-stone'
+          : 'step-wood'
+        : groundSurface(player.x, player.z) === 'sand'
+          ? 'step-sand'
+          : 'step-grass'
+      // No two footfalls alike: pitch and weight jittered around a base the
+      // surface sets — stone a touch harder, sand softer and looser.
+      const base =
+        surface === 'step-stone'
+          ? 1.05
+          : surface === 'step-grass'
+            ? 0.97
+            : surface === 'step-sand'
+              ? 0.93
+              : 1
+      playOneShot(
+        surface,
+        (kneeling ? 0.35 : 1) * (brisk > 1 ? 1.15 : 1) * (0.85 + Math.random() * 0.3),
+        { rate: base * (0.9 + Math.random() * 0.2) },
+      )
+    }
+    lastStride.current = stride
     const want = Math.min(1, player.speed / WALK)
     bobWeight.current += (want - bobWeight.current) * approach(6, delta)
     const weight = bobWeight.current
     const rise = Math.sin(bob.current * 2) * 0.018 * weight
     const sway = Math.sin(bob.current) * 0.012 * weight
 
+    // Standing still, a barely-there breath — two millimetres at a slow swell.
+    // A camera frozen to the pixel is what reads as a paused simulation, and
+    // this is gone the moment you move.
+    breath.current += delta
+    const still = 1 - Math.min(1, player.speed / 0.1)
+    const breathe = Math.sin(breath.current * 0.9) * 0.002 * still
+
     place(
       player.x + Math.cos(player.yaw) * sway,
-      player.eye + rise,
+      player.eye + rise + breathe,
       player.z - Math.sin(player.yaw) * sway,
       delta,
     )

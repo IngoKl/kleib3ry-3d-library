@@ -1,8 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { pressKey, runFrame } from '../arcade/chip8'
+import { falloff } from './audioRig'
 import { arcadeMachine } from '../state/arcade'
+import { player } from '../state/player'
+import { useSettings } from '../state/settings'
 import { roomHasKeyboard, useAppStore } from '../state/store'
+import { useWorldStore } from '../state/world'
 
 /**
  * The machine behind the cabinet: the clock, the keypad and the beeper.
@@ -56,15 +60,22 @@ const KEYPAD: Record<string, number> = {
 let audio: { context: AudioContext; gain: GainNode } | null = null
 let audioRefused = false
 
+/** Full-tilt gain of the beeper; the volume and the room scale it down. */
+const BEEP_GAIN = 0.03
+/** How far up the cabinet the grille is. */
+const SPEAKER = 1.2
+
 /**
  * The beeper: one square-wave oscillator, running silent until the sound timer
- * says otherwise. Every failure — no AudioContext, a context that will not
- * start — falls back to silence rather than throwing, the rain's rule.
+ * says otherwise. `level` is 0 to 1 — the master volume by the distance to the
+ * cabinet, so the attract mode sits in the room instead of in your ear. Every
+ * failure — no AudioContext, a context that will not start — falls back to
+ * silence rather than throwing, the rain's rule.
  */
-function setBeep(on: boolean) {
+function setBeep(level: number) {
   try {
     if (!audio) {
-      if (audioRefused || on === false) return
+      if (audioRefused || level <= 0) return
       const Context = window.AudioContext
       if (!Context) {
         audioRefused = true
@@ -81,9 +92,9 @@ function setBeep(on: boolean) {
       oscillator.start()
       audio = { context, gain }
     }
-    if (on && audio.context.state === 'suspended') void audio.context.resume()
+    if (level > 0 && audio.context.state === 'suspended') void audio.context.resume()
     // A short ramp instead of a step, or every beep begins and ends on a click.
-    audio.gain.gain.setTargetAtTime(on ? 0.03 : 0, audio.context.currentTime, 0.005)
+    audio.gain.gain.setTargetAtTime(BEEP_GAIN * level, audio.context.currentTime, 0.005)
   } catch {
     audioRefused = true
     audio = null
@@ -92,7 +103,15 @@ function setBeep(on: boolean) {
 
 export function ArcadeSystem() {
   const mode = useAppStore((s) => s.mode)
+  const world = useWorldStore((s) => s.world)
   const behind = useRef(0)
+
+  // Where the beeper stands. Every cabinet shows the same game, so the sound
+  // comes from whichever one is nearest.
+  const cabinets = useMemo(
+    () => world?.furniture.filter((item) => item.kind === 'arcade') ?? [],
+    [world],
+  )
 
   // The keypad, taken and given back with the mode. Held keys are the point of
   // a game pad, so there is no `e.repeat` guard here — repeats are simply
@@ -135,7 +154,7 @@ export function ArcadeSystem() {
     const machine = arcadeMachine()
     if (!machine) {
       behind.current = 0
-      setBeep(false)
+      setBeep(0)
       return
     }
 
@@ -144,7 +163,22 @@ export function ArcadeSystem() {
       runFrame(machine, CYCLES_PER_TICK)
       behind.current -= TICK
     }
-    setBeep(machine.soundTimer > 0)
+
+    let level = 0
+    if (machine.soundTimer > 0) {
+      let away = Infinity
+      for (const cabinet of cabinets) {
+        away = Math.min(
+          away,
+          Math.hypot(cabinet.x - player.x, cabinet.y + SPEAKER - player.eye, cabinet.z - player.z),
+        )
+      }
+      // On the Small Sounds bus like every other synthesised noise, so the
+      // slider that quiets the room quiets the attract mode too.
+      const settings = useSettings.getState()
+      level = settings.volume * settings.ambientVolume * (away === Infinity ? 1 : falloff(away))
+    }
+    setBeep(level)
   })
 
   return null

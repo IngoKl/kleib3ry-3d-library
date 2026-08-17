@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { MATERIALS } from './materials'
+import { block, join } from './geometry'
+import { MATERIALS, woodGrainTexture } from './materials'
 import { sceneRefs, type ShelfGroup } from './refs'
 import { SHELF, rowMetrics } from '../world/shelf'
 import type { DerivedShelf } from '../world/derive'
@@ -16,11 +16,8 @@ import { useWorldStore } from '../state/world'
  */
 function buildCarcass(rows: number): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
-  const add = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const box = new THREE.BoxGeometry(w, h, d)
-    box.translate(x, y, z)
-    parts.push(box)
-  }
+  const add = (w: number, h: number, d: number, x: number, y: number, z: number) =>
+    parts.push(block(w, h, d, x, y, z))
 
   const { width, depth, height, panel, board, back, plinth } = SHELF
   const innerW = width - 2 * panel
@@ -41,9 +38,19 @@ function buildCarcass(rows: number): THREE.BufferGeometry {
     add(innerW, board, depth, 0, surfaceY(row) - board / 2, 0)
   }
 
-  const merged = mergeGeometries(parts, false)
-  parts.forEach((part) => part.dispose())
-  if (!merged) throw new Error('failed to merge bookshelf geometry')
+  // Face frame: stiles down the front corners, a rail under every board.
+  // Proud of the carcass so the front reads as joinery rather than plywood.
+  const stile = 0.03
+  const proud = 0.014
+  const frontZ = depth / 2 + proud / 2
+  add(stile, bodyH, proud, -(width - stile) / 2, bodyY, frontZ)
+  add(stile, bodyH, proud, (width - stile) / 2, bodyY, frontZ)
+  add(innerW, 0.03, proud, 0, height - board - 0.015, frontZ)
+  for (let row = 1; row < rows; row++) {
+    add(innerW, 0.03, proud, 0, surfaceY(row) - board - 0.015, frontZ)
+  }
+
+  const merged = join(parts)
   merged.computeBoundingSphere()
   return merged
 }
@@ -106,7 +113,13 @@ function Group({ group }: { group: Bucket }) {
       castShadow
       receiveShadow
     >
-      <meshStandardMaterial color={MATERIALS.carcass} roughness={0.74} metalness={0} />
+      {/* Grain multiplied under the colour, the furniture convention. */}
+      <meshStandardMaterial
+        color={MATERIALS.carcass}
+        roughness={0.74}
+        metalness={0}
+        map={woodGrainTexture()}
+      />
     </instancedMesh>
   )
 }

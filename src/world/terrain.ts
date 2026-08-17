@@ -114,6 +114,15 @@ export function lakePoint(angle: number, r: number): [number, number] {
 export const SHORE_EDGE = 1.078
 
 /**
+ * What the ground underfoot is made of, for anything that wants to sound or
+ * look like it — the beach ring is sand, everything else out of doors is
+ * grass. Owned here so the shore you hear is the shore you see.
+ */
+export function groundSurface(x: number, z: number): 'sand' | 'grass' {
+  return lakeRadius(x, z) < SHORE_EDGE ? 'sand' : 'grass'
+}
+
+/**
  * The path round the water: a ring of cleared ground just above the beach.
  *
  * It is defined in shoreline units rather than metres so that it follows the

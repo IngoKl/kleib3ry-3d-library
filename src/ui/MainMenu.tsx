@@ -12,6 +12,9 @@ import { warmCovers } from '../state/covers'
 import { teleport } from '../state/player'
 import { forgetLibrary, recentLibraries, rememberLibrary } from '../state/settings'
 
+/** A touch over the CSS fade, so the last frame painted is already transparent. */
+const LEAVE_MS = 340
+
 /**
  * The main menu: which library, and then in.
  *
@@ -48,7 +51,24 @@ export function MainMenu() {
     rememberLibrary(libraryRoot)
   }, [started, libraryRoot])
 
-  if (started) return null
+  // Going in fades the menu out rather than cutting it. A timeout does the
+  // unmounting, not `transitionend`: the tests wait for the menu to be *gone*,
+  // and a transition event never fires where nothing paints.
+  const [gone, setGone] = useState(false)
+  useEffect(() => {
+    if (!started) {
+      setGone(false)
+      return
+    }
+    // The button keeps DOM focus through the fade, and pointer-events: none
+    // does nothing for the keyboard — a tapped Space would fire it again while
+    // the room is already listening. Focus goes with the click.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    const timer = window.setTimeout(() => setGone(true), LEAVE_MS)
+    return () => window.clearTimeout(timer)
+  }, [started])
+
+  if (gone) return null
 
   const ready = rootLoaded && worldLoaded && libraryLoaded
 
@@ -96,7 +116,7 @@ export function MainMenu() {
   }
 
   return (
-    <div className="menu" data-testid="main-menu">
+    <div className={started ? 'menu menu-leaving' : 'menu'} data-testid="main-menu">
       <div className="menu-card">
         <h1 className="menu-title">kleib3ry</h1>
         <p className="menu-sub">A library you can walk into</p>

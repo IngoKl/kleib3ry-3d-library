@@ -220,6 +220,40 @@ function ridgeOf(roof: DerivedRoof): THREE.BufferGeometry[] {
 }
 
 /**
+ * A fascia across the rafter ends at each eave: both low edges of a gable,
+ * the one low edge of a shed. Plumb and centred on the eave line, tall enough
+ * to cover the slab's raw cut end — which is what the board is for on a real
+ * roof too. Timber, so it rides the ridge merge.
+ */
+function fasciaOf(roof: DerivedRoof): THREE.BufferGeometry[] {
+  if (roof.kind === 'flat') return []
+  const { covers, eaves } = roof
+  const low = roof.axis === 'z' ? covers.minZ : covers.minX
+  const high = roof.axis === 'z' ? covers.maxZ : covers.maxX
+  const edges =
+    roof.kind === 'gable'
+      ? [low, high]
+      : [roof.fall === 'south' || roof.fall === 'east' ? high : low]
+  const y = eaves - 0.06
+
+  return edges.map((edge) =>
+    roof.axis === 'z'
+      ? slab(
+          [covers.maxX - covers.minX, 0.14, 0.05],
+          [(covers.minX + covers.maxX) / 2, y, edge],
+          X_AXIS,
+          0,
+        )
+      : slab(
+          [0.05, 0.14, covers.maxZ - covers.minZ],
+          [edge, y, (covers.minZ + covers.maxZ) / 2],
+          Z_AXIS,
+          0,
+        ),
+  )
+}
+
+/**
  * One merged mesh per material for the whole building, not per room.
  *
  * Six roofs is a dozen slabs, a dozen gable ends and a handful of ridge boards.
@@ -241,7 +275,7 @@ export function Roofs() {
     return {
       slopes: collect(roofs.flatMap(slopesOf)),
       ends: collect(roofs.flatMap(endsOf)),
-      ridges: collect(roofs.flatMap(ridgeOf)),
+      ridges: collect(roofs.flatMap((roof) => [...ridgeOf(roof), ...fasciaOf(roof)])),
     }
   }, [roofs])
 

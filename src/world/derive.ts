@@ -278,7 +278,7 @@ export function wallPanels(room: RoomSpec, wall: Wall): Panel[] {
 }
 
 /** The hole each of a room's openings leaves, whether or not it is filled. */
-function openingPanels(room: RoomSpec): { panel: Panel; opening: Opening }[] {
+export function openingPanels(room: RoomSpec): { panel: Panel; opening: Opening }[] {
   const out: { panel: Panel; opening: Opening }[] = []
   for (const wall of wallsOf(room)) {
     for (const opening of openingsOn(room, wall)) {

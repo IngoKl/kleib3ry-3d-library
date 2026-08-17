@@ -22,26 +22,54 @@ export const ambienceBlend = {
   night: 0,
   /** 0 is dry, 1 is raining. */
   rain: 0,
+  /** 1 at a lightning strike, decaying to 0 in under a second. */
+  lightning: 0,
 }
 
-/** How many e-foldings a second: the fade settles in about two seconds. */
-const RATE = 2.2
+/**
+ * How many e-foldings a second. Weather still arrives briskly, but dusk takes
+ * its time — about seven seconds — because a two-second sunset reads as a
+ * light switch, and the golden hour below needs somewhere to happen.
+ */
+const NIGHT_RATE = 0.6
+const RAIN_RATE = 2.2
 
 /** Advance towards the store's booleans. Returns true while anything moved. */
 export function advanceAmbience(night: boolean, rain: boolean, delta: number): boolean {
-  const step = approach(RATE, delta)
   const wantNight = night ? 1 : 0
   const wantRain = rain ? 1 : 0
   const before = ambienceBlend.night + ambienceBlend.rain * 3
 
-  ambienceBlend.night += (wantNight - ambienceBlend.night) * step
-  ambienceBlend.rain += (wantRain - ambienceBlend.rain) * step
+  ambienceBlend.night += (wantNight - ambienceBlend.night) * approach(NIGHT_RATE, delta)
+  ambienceBlend.rain += (wantRain - ambienceBlend.rain) * approach(RAIN_RATE, delta)
   // Snap the last sliver, so "is it still moving" has an answer and repaints
   // (the sky's canvas, most expensively) stop when the fade has finished.
   if (Math.abs(wantNight - ambienceBlend.night) < 0.002) ambienceBlend.night = wantNight
   if (Math.abs(wantRain - ambienceBlend.rain) < 0.002) ambienceBlend.rain = wantRain
 
+  // The flash decays here but is deliberately no part of the return value:
+  // the ambient light carries it, and the sky canvas must not repaint twenty
+  // times per strike.
+  ambienceBlend.lightning *= Math.exp(-7 * delta)
+  if (ambienceBlend.lightning < 0.01) ambienceBlend.lightning = 0
+
   return before !== ambienceBlend.night + ambienceBlend.rain * 3
+}
+
+/** The thunder calls this — twice, for the classic double flash. */
+export function strikeLightning(strength = 1) {
+  ambienceBlend.lightning = Math.min(1.5, ambienceBlend.lightning + strength)
+}
+
+/**
+ * The amber the day passes through on its way down: zero at both settled
+ * poles — a settled day and a settled night are pixel-identical with or
+ * without this — peaking mid-transition, and rained off. A curve on the
+ * existing blend, not a fifth corner.
+ */
+export function goldenWarmth(): number {
+  const s = Math.sin(Math.PI * ambienceBlend.night)
+  return s * s * (1 - ambienceBlend.rain * 0.8)
 }
 
 /** The four corners a blended value is stretched between. */

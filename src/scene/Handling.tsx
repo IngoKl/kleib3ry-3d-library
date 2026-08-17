@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { FURNITURE_SIZE, supportAt } from '../world/derive'
+import { makeHand } from './hand'
 import { launchBody, throwFrom } from './drop'
+import { playOneShot } from './ambientSound'
 import { roomHasKeyboard, useAppStore } from '../state/store'
 import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
@@ -35,6 +37,9 @@ export function Handling() {
   const carried = useAppStore((s) => s.carriedBox)
   const world = useWorldStore((s) => s.world)
   const ghost = useRef<THREE.Group>(null)
+  /** The lagged yaw the ghost is drawn at — the set-down commits to the same
+      one, or the preview and the landing spot disagree mid-turn. */
+  const carryYaw = useRef(player.yaw)
 
   // A box off the stack has no furniture entry yet; it previews at the kind's
   // own size, which is the size it will be when it lands.
@@ -103,11 +108,12 @@ export function Handling() {
           return
         }
         // Drop it. Somewhere in front of you, and then wherever it rolls to —
-        // the one thing in the room that is not where you put it.
+        // the one thing in the room that is not where you put it. Kneeling, the
+        // same key is placing rather than throwing: down there, Q means "here".
         if (!app.held) return
         const size = shelf.dims.get(app.held)
         if (!size) return
-        const body = throwFrom(player, size, false)
+        const body = throwFrom(player, size, player.crouch > 0.5)
         // The placement is only where the book leaves your hand; the body —
         // with the velocity of the throw — is what actually falls.
         launchBody(app.held, body)
@@ -186,7 +192,10 @@ export function Handling() {
         }
         // Only with your hands free: a box needs both, and a book in one of
         // them is exactly the thing you would put down first.
-        if (app.held === null && app.focusedBox) app.setCarriedBox(app.focusedBox)
+        if (app.held === null && app.focusedBox) {
+          app.setCarriedBox(app.focusedBox)
+          playOneShot('cardboard', 0.8)
+        }
         return
       }
 
@@ -197,7 +206,8 @@ export function Handling() {
         // `deleteBox` refuses a box with books in it.
         if (app.held === null && app.carriedBox === null && app.focusedBox) {
           e.preventDefault()
-          shelf.deleteBox(app.focusedBox)
+          // Only a break-down that happened sounds: `deleteBox` refuses a boxful.
+          if (shelf.deleteBox(app.focusedBox)) playOneShot('cardboard', 0.9, { rate: 0.8 })
         }
       }
     }
@@ -214,13 +224,16 @@ export function Handling() {
       const app = useAppStore.getState()
       const live = useWorldStore.getState().world
       app.setCarriedBox(null)
+      playOneShot('cardboard', 0.9, { rate: 0.9 })
 
-      const x = player.x - Math.sin(player.yaw) * CARRY_AHEAD
-      const z = player.z - Math.cos(player.yaw) * CARRY_AHEAD
+      // The ghost's own yaw, not the player's: what you saw is what lands.
+      const yaw = carryYaw.current
+      const x = player.x - Math.sin(yaw) * CARRY_AHEAD
+      const z = player.z - Math.cos(yaw) * CARRY_AHEAD
       // Snapped to a quarter turn so a set-down box reads as *placed* rather
       // than dropped. (The collision AABBs now cover any facing, so this is a
       // look, not a constraint.)
-      const facing = Math.round((player.yaw * 180) / Math.PI / 90) * 90
+      const facing = Math.round((yaw * 180) / Math.PI / 90) * 90
 
       // A box fresh off the stack becomes real furniture here, where it first
       // touches the floor.
@@ -247,17 +260,31 @@ export function Handling() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // The carried box rides in front of you. Only a preview: the real one is
-  // still standing where it was until you set this one down.
-  useFrame(() => {
+  // The carried box rides in front of you on the hand's lagged yaw, like
+  // everything else held. Only a preview: the real one stands where it was
+  // until you set this one down — at this same yaw, so the preview is honest.
+  const camera = useThree((s) => s.camera)
+  // Remade per carry: the hand only advances while a box is held, so a fresh
+  // pickup needs a fresh prime or it swings in from the last carry's facing —
+  // the exact artefact `primed` exists to prevent.
+  const hand = useRef(makeHand())
+  const lastCarry = useRef<string | null>(null)
+  useFrame((_, delta) => {
     const node = ghost.current
     if (!node || !box) return
+    if (carried !== lastCarry.current) {
+      lastCarry.current = carried
+      hand.current = makeHand()
+    }
+    const { forward } = hand.current.follow(camera, delta)
+    const yaw = Math.atan2(-forward.x, -forward.z)
+    carryYaw.current = yaw
     node.position.set(
-      player.x - Math.sin(player.yaw) * CARRY_AHEAD,
+      player.x - Math.sin(yaw) * CARRY_AHEAD,
       player.eye - CARRY_DROP,
-      player.z - Math.cos(player.yaw) * CARRY_AHEAD,
+      player.z - Math.cos(yaw) * CARRY_AHEAD,
     )
-    node.rotation.y = player.yaw
+    node.rotation.y = yaw
   })
 
   if (!box) return null

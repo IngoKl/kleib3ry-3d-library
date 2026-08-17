@@ -7,7 +7,7 @@ import { useAnnotationsStore } from '../state/annotations'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useVideoStore } from '../state/video'
-import { useArcadeStore } from '../state/arcade'
+import { arcadeMachine, useArcadeStore } from '../state/arcade'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 import { LAMPS } from '../world/derive'
@@ -123,6 +123,7 @@ export function Hud() {
   const tapes = useVideoStore((s) => s.tapes)
   const watching = useVideoStore((s) => s.playing)
   const watchPaused = useVideoStore((s) => s.paused)
+  const crt = useVideoStore((s) => s.crt)
   const roms = useArcadeStore((s) => s.roms)
   const inserted = useArcadeStore((s) => s.inserted)
   const arcadeError = useArcadeStore((s) => s.error)
@@ -144,18 +145,36 @@ export function Hud() {
   const [readerSpread, setReaderSpread] = useState(0)
   /** Whether the pen is up, likewise. */
   const [readerPen, setReaderPen] = useState(false)
+  /** Whether a page has landed on the sheets yet — "Opening…" until it has. */
+  const [readerRendered, setReaderRendered] = useState(false)
+  /** Whether a jump is still rasterising, likewise. */
+  const [readerSeeking, setReaderSeeking] = useState(false)
   /** The cat's mood, likewise: it changes every frame and is read on a poll. */
   const [purring, setPurring] = useState(false)
+  const [asleep, setAsleep] = useState(false)
   /** Whether the coffee is still working, likewise — it lives outside React. */
   const [brisk, setBrisk] = useState(false)
+  /** Kneeling, likewise — it decides what Q means on the held card. */
+  const [kneeling, setKneeling] = useState(false)
+  /** Whether the game in the machine has crashed, likewise — so is the machine. */
+  const [crashed, setCrashed] = useState(false)
+  /** The transient notice, dropped on the same poll once its time is up. */
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     const id = setInterval(() => {
       setReaderFailure(readerStatus.failure)
       setReaderSpread(readerStatus.spread)
       setReaderPen(readerStatus.pen)
+      setReaderRendered(readerStatus.rendered)
+      setReaderSeeking(readerStatus.seeking)
       setPurring(cat.purr > 0.2)
+      setAsleep(cat.mood === 'sleep')
       setBrisk(performance.now() < player.boostUntil)
+      setKneeling(player.crouch > 0.5)
+      setCrashed(arcadeMachine()?.halted ?? false)
+      const said = useAppStore.getState().notice
+      setNotice(said && performance.now() < said.until ? said.text : null)
     }, 250)
     return () => clearInterval(id)
   }, [])
@@ -198,61 +217,73 @@ export function Hud() {
       .some((lamp) => lightsOn[lamp.id] ?? lamp.defaultOn)
   const fixtureName = (fixture && FIXTURE_NAMES[fixture.kind]) ?? 'Lamp'
 
-  /** What E would do to the thing under the crosshair, in the words of the room. */
+  /**
+   * What E would do to the thing under the crosshair, in the words of the room —
+   * or, when `actionable` is false, why `operate` in `Player.tsx` would refuse.
+   */
   const fixtureVerb = (() => {
-    if (!fixture) return ''
+    const does = (text: string) => ({ text, actionable: true })
+    const refuses = (text: string) => ({ text, actionable: false })
+    if (!fixture) return does('')
     // The campfire is a lamp to the machinery, but nobody "switches" a fire.
-    if (fixture.kind === 'campfire') return fixtureLit ? 'put it out' : 'light it'
-    if (LAMPS.has(fixture.kind)) return fixtureLit ? 'switch it off' : 'switch it on'
+    if (fixture.kind === 'campfire') return does(fixtureLit ? 'put it out' : 'light it')
+    if (LAMPS.has(fixture.kind)) return does(fixtureLit ? 'switch it off' : 'switch it on')
     switch (fixture.kind) {
       case 'door':
         // The same keyed bit as a lamp: `fixtureLit` here means "standing open".
-        return fixtureLit ? 'close the door' : 'open the door'
+        return does(fixtureLit ? 'close the door' : 'open the door')
       case 'lightswitch':
-        return anyLightOn ? 'switch every light off' : 'switch every light on'
+        return does(anyLightOn ? 'switch every light off' : 'switch every light on')
       // A deck with nothing on it says so, and there is one of each record: it
       // is on whichever deck you carried it to, and no other.
       case 'recordplayer':
-        if (nowPlaying === null || deck !== fixture.id) return 'no record on it'
-        return paused ? 'play' : 'pause'
-      // An empty set says so rather than taking a tape by itself.
+        if (nowPlaying === null || deck !== fixture.id) return refuses('No record on it')
+        return does(paused ? 'play' : 'pause')
+      // An empty set says so rather than taking a tape by itself — and only the
+      // set the tape is actually in answers, the deck's rule.
       case 'crt':
-        if (watching === null) return 'no tape in it'
-        return watchPaused ? 'play' : 'pause'
+        if (watching === null || crt !== fixture.id) return refuses('No tape in it')
+        return does(watchPaused ? 'play' : 'pause')
       // An empty machine follows the television's rule, and a game that would
       // not boot says why here rather than only in a console nobody has open.
       case 'arcade':
-        if (arcadeError) return arcadeError
-        if (inserted === null) return 'no cartridge in it'
-        return 'step up and play'
+        if (arcadeError) return refuses(arcadeError)
+        if (inserted === null) return refuses('No cartridge in it')
+        // A crash refuses the controls; the cartridge still comes out with F.
+        if (crashed) return refuses('It has crashed — take the cartridge out')
+        return does('step up and play')
       case 'rombox':
-        return roms.length > 0 ? 'take a cartridge' : 'nothing in it — put games in roms/'
+        return roms.length > 0
+          ? does('take a cartridge')
+          : refuses('Nothing in it — put games in roms/')
       case 'computer':
-        return 'look something up'
+        return does('look something up')
       case 'postits':
-        return 'take one and write on it'
+        return does('take one and write on it')
       case 'marker':
-        return 'pick it up'
+        return does('pick it up')
       case 'boxstack':
-        return 'make a box up'
+        return does('make a box up')
       case 'coffeemaker': {
-        if (brewing === fixture.id) return 'brewing…'
+        if (brewing === fixture.id) return refuses('Brewing…')
         if (readyPots[fixture.id]) {
           // The pot pours into the one cup, and only when the cup is home.
-          return 'cup' in placedProps ? 'the pot is full — your cup is out in the room' : 'take the coffee'
+          return 'cup' in placedProps
+            ? refuses('The pot is full — your cup is out in the room')
+            : does('take the coffee')
         }
-        return 'put the coffee on'
+        return does('put the coffee on')
       }
       case 'phone':
-        return ordering ? 'the food is on its way…' : 'order some food'
+        return ordering ? refuses('The food is on its way…') : does('order some food')
       case 'fridge':
-        return 'take a cold can'
+        return does('take a cold can')
       case 'bin':
-        return 'nothing in your hands to throw away'
+        return refuses('Nothing in your hands to throw away')
       case 'headlamp':
-        return 'put it on'
+        return does('put it on')
       default:
-        return ''
+        return does('')
     }
   })()
 
@@ -342,7 +373,7 @@ export function Hud() {
           {walking && focusedCat && (
             <div className="focus-card" data-testid="cat-card">
               <p className="focus-title">The Cat</p>
-              <p className="focus-author">{purring ? 'Purring' : 'Looking at you'}</p>
+              <p className="focus-author">{asleep ? 'Asleep' : purring ? 'Purring' : 'Looking at you'}</p>
               <p className="focus-key">
                 <kbd>E</kbd> Give it a fuss · <kbd>F</kbd> Ask it for a book
               </p>
@@ -514,7 +545,7 @@ export function Hud() {
                   </>
                 ) : tapeCrateTarget ? (
                   <>
-                    <kbd>E</kbd> Put it back
+                    <kbd>E</kbd> File it here
                   </>
                 ) : (
                   <span className="warn">Aim at the television, or at the crate</span>
@@ -650,7 +681,13 @@ export function Hud() {
             <div className="focus-card" data-testid="fixture-card">
               <p className="focus-title">{fixtureName}</p>
               <p className="focus-key">
-                <kbd>E</kbd> {fixtureVerb}
+                {fixtureVerb.actionable ? (
+                  <>
+                    <kbd>E</kbd> {fixtureVerb.text}
+                  </>
+                ) : (
+                  <span className="warn">{fixtureVerb.text}</span>
+                )}
                 {/* Whatever is loaded also comes back out. */}
                 {fixture?.kind === 'recordplayer' && deck === fixture.id && nowPlaying && (
                   <>
@@ -662,6 +699,12 @@ export function Hud() {
                   <>
                     {' · '}
                     <kbd>F</kbd> Take the tape out
+                  </>
+                )}
+                {fixture?.kind === 'arcade' && inserted && (
+                  <>
+                    {' · '}
+                    <kbd>F</kbd> Take the cartridge out
                   </>
                 )}
               </p>
@@ -734,9 +777,13 @@ export function Hud() {
               <p className="focus-author">{held.author ?? 'Unknown'}</p>
               <p className="focus-key">
                 {shelfTarget ? (
-                  <>
-                    <kbd>E</kbd> Shelve here
-                  </>
+                  shelfTarget.fits ? (
+                    <>
+                      <kbd>E</kbd> Shelve here
+                    </>
+                  ) : (
+                    <span className="warn">This row is full</span>
+                  )
                 ) : boxTarget ? (
                   <>
                     <kbd>E</kbd> Drop in the box
@@ -749,7 +796,8 @@ export function Hud() {
                   <span className="warn">Look at a shelf, a box or a table</span>
                 )}
                 {' · '}
-                <kbd>Q</kbd> Drop it · <kbd>O</kbd> Leave it open · <kbd>R</kbd> Read
+                <kbd>Q</kbd> {kneeling ? 'Lay it down' : 'Drop it'} · <kbd>O</kbd> Leave it open ·{' '}
+                <kbd>R</kbd> Read
               </p>
             </div>
           )}
@@ -761,6 +809,16 @@ export function Hud() {
               {readerFailure ? (
                 <p className="focus-key" data-testid="reader-failure">
                   This book will not open — {readerFailure} · <kbd>Esc</kbd> Close
+                </p>
+              ) : !readerRendered ? (
+                // A slow PDF still rasterising: the legend would promise keys
+                // that have no page yet to work on. Esc stays, whatever happens.
+                <p className="focus-key">
+                  Opening… · <kbd>Esc</kbd> Close
+                </p>
+              ) : readerSeeking ? (
+                <p className="focus-key">
+                  Finding the page… · <kbd>Esc</kbd> Close
                 </p>
               ) : readerPen ? (
                 <p className="focus-key">
@@ -829,6 +887,12 @@ export function Hud() {
             {scanning && progress && (
               <p className="note" data-testid="scan-progress">
                 Scanning {progress.done} / {progress.total} — {progress.current}
+              </p>
+            )}
+
+            {notice && (
+              <p className="note" data-testid="notice">
+                {notice}
               </p>
             )}
 

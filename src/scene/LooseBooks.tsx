@@ -2,7 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
+import { playOneShot } from './ambientSound'
+import { falloff } from './audioRig'
 import { shove, stepBody, supportFrom, takeLaunchedBody, type Body } from './drop'
+import { worldSolids } from './walk'
+import type { Solid } from '../world/derive'
+import { useAmbienceStore } from '../state/ambience'
 import { peekPage, pageTexture, releaseBook } from '../state/pages'
 import { coverImageFor, onCoverReady, peekCoverImage } from '../state/covers'
 import { useLibraryStore } from '../state/library'
@@ -177,6 +182,35 @@ export function LooseBooks() {
   const bodies = useRef(new Map<string, Body>())
   const support = useMemo(() => (world ? supportFrom(world) : null), [world])
 
+  // What a flying book can hit: the same solids the walker hits, bucketed into
+  // a coarse grid so a substep tests a handful of boxes rather than the whole
+  // forest. Rebuilt when a door swings, which is an edit.
+  const ambienceOn = useAmbienceStore((s) => s.on)
+  const blocked = useMemo(() => {
+    if (!world) return undefined
+    const CELL = 2
+    const key = (ix: number, iz: number) => (ix + 2048) * 4096 + (iz + 2048)
+    const cells = new Map<number, Solid[]>()
+    for (const solid of worldSolids(world, ambienceOn)) {
+      for (let ix = Math.floor(solid.minX / CELL); ix <= Math.floor(solid.maxX / CELL); ix++) {
+        for (let iz = Math.floor(solid.minZ / CELL); iz <= Math.floor(solid.maxZ / CELL); iz++) {
+          const at = key(ix, iz)
+          const cell = cells.get(at)
+          if (cell) cell.push(solid)
+          else cells.set(at, [solid])
+        }
+      }
+    }
+    return (x: number, y: number, z: number) => {
+      const cell = cells.get(key(Math.floor(x / CELL), Math.floor(z / CELL)))
+      if (!cell) return false
+      return cell.some(
+        (s) =>
+          x > s.minX && x < s.maxX && z > s.minZ && z < s.maxZ && y > s.bottom && y < s.top,
+      )
+    }
+  }, [world, ambienceOn])
+
   /**
    * Bring the simulation in line with the saved placements.
    *
@@ -341,7 +375,8 @@ export function LooseBooks() {
       }
 
       const wasResting = current.resting
-      current = stepBody(current, size.thickness, delta, support)
+      const fall = Math.max(0, -current.vy)
+      current = stepBody(current, size.thickness, delta, support, blocked)
       bodies.current.set(id, current)
 
       if (!wasResting || current !== body) {
@@ -350,6 +385,13 @@ export function LooseBooks() {
       }
       // Write down where it stopped, once, rather than every frame of the fall.
       if (!wasResting && current.resting) {
+        // Audible only when it actually fell: a shoved book settling under
+        // your feet re-crosses this transition every frame, and that is a
+        // shuffle, not a landing.
+        if (fall > 0.3) {
+          const away = Math.hypot(current.x - player.x, current.y - player.eye, current.z - player.z)
+          playOneShot('thud', Math.min(1, 0.15 + fall * 0.3) * falloff(away))
+        }
         nudge(id, { x: current.x, y: current.y, z: current.z, yaw: current.yaw, open: false, spread: 0 })
       }
     }

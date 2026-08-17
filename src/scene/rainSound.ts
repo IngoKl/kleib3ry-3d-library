@@ -83,7 +83,9 @@ function start(): Rig | null {
     rig = { context, source, shelter, gain }
     return rig
   } catch {
-    unavailable = true
+    // A refusal while an old rig is still fading out is the browser's context
+    // cap, not a missing device: the next placeRain retries once it has closed.
+    if (closing === 0) unavailable = true
     return null
   }
 }
@@ -93,10 +95,12 @@ function start(): Rig | null {
  * the open. Both are ramped: a step on an audio parameter clicks.
  */
 export function placeRain(volume: number, openness: number) {
+  const fresh = !rig
   const live = start()
   if (!live) return
   const { context, shelter, gain } = live
-  const at = context.currentTime + 0.12
+  // A shower arriving gets a longer swell than an adjustment to one already on.
+  const at = context.currentTime + (fresh ? 0.5 : 0.12)
   try {
     gain.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, volume)), at)
     // Exponential in frequency, because hearing is.
@@ -109,16 +113,41 @@ export function placeRain(volume: number, openness: number) {
   }
 }
 
-/** Stop the rain and close its context. */
+/** Seconds the shower takes to die away once told to stop. */
+const TAIL_SECONDS = 0.8
+
+/** Rigs still fading out — their contexts are spoken for, not gone. */
+let closing = 0
+
+/**
+ * Stop the rain: ramp the gain out, then stop the source and close the context
+ * once the tail has run — stopping in the same tick is exactly the click the
+ * ramps exist to avoid. `rig` is cleared first, so a second stop is a no-op
+ * and rain restarted during the tail opens a fresh rig of its own.
+ */
 export function stopRain() {
   if (!rig) return
   const { context, source, gain } = rig
   rig = null
   try {
-    gain.gain.value = 0
-    source.stop()
+    const now = context.currentTime
+    gain.gain.cancelScheduledValues(now)
+    gain.gain.setValueAtTime(gain.gain.value, now)
+    gain.gain.linearRampToValueAtTime(0, now + TAIL_SECONDS)
   } catch {
-    /* a source that never started is already stopped */
+    gain.gain.value = 0
   }
-  void context.close().catch(() => {})
+  closing += 1
+  setTimeout(
+    () => {
+      closing -= 1
+      try {
+        source.stop()
+      } catch {
+        /* a source that never started is already stopped */
+      }
+      void context.close().catch(() => {})
+    },
+    (TAIL_SECONDS + 0.1) * 1000,
+  )
 }
