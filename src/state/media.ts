@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { makeFader } from '../lib/mediaFade'
 import { library } from '../services'
 import type { IndexedArtwork, IndexedTrack } from '../services/types'
+import { useAppStore } from './store'
 
 /**
  * The two folders that are not books: `music/` and `artwork/`.
@@ -35,7 +36,7 @@ type MediaState = {
   /** Put a record on. Passing the one already on the deck toggles the pause. */
   play: (id: string, deck?: string) => void
   stop: () => void
-  /** Next record in shelf order, so a side plays through rather than stopping. */
+  /** The next record the room holds, so a side plays through rather than stopping. */
   next: () => void
   trackAt: (id: string) => IndexedTrack | undefined
   /** Volume, 0 to 1. The scene turns it down as you walk away from the deck. */
@@ -159,11 +160,21 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     // under the pause fade, and its ending must not start the next side.
     if (get().paused) return
     const { tracks, playing } = get()
-    if (tracks.length === 0) return
-    const at = tracks.findIndex((track) => track.id === playing)
-    const following = tracks[(at + 1) % tracks.length]
+    // In folder order, but only what the room can actually reach: the crates
+    // deal every record somewhere, so a record no crate holds — a library with
+    // nowhere to file one — is not a side that can come on next. The one on the
+    // deck counts, wherever it came from.
+    const crates = useAppStore.getState().recordCrates
+    const inRoom = tracks.filter(
+      (track) => crates[track.id] !== undefined || track.id === playing,
+    )
+    if (inRoom.length === 0) return
+    const at = inRoom.findIndex((track) => track.id === playing)
+    const following = inRoom[(at + 1) % inRoom.length]
     // No deck passed: a side playing on by itself stays on the deck it is on.
-    if (following) get().play(following.id)
+    // The lone record in the room does not restart itself either — `play` with
+    // what is already on would lift the needle rather than drop it again.
+    if (following && following.id !== playing) get().play(following.id)
   },
 
   setVolume: (volume) => {

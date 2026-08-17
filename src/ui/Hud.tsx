@@ -79,6 +79,8 @@ export function Hud() {
   const drawn = useAppStore((s) => s.drawn)
   const focusedFixture = useAppStore((s) => s.focusedFixture)
   const focusedRecord = useAppStore((s) => s.focusedRecord)
+  const focusedCrate = useAppStore((s) => s.focusedCrate)
+  const crateViews = useAppStore((s) => s.crateViews)
   const heldRecord = useAppStore((s) => s.heldRecord)
   const crateTarget = useAppStore((s) => s.crateTarget)
   const focusedTape = useAppStore((s) => s.focusedTape)
@@ -197,7 +199,15 @@ export function Hud() {
   const view = focusedBox ? boxViews[focusedBox] : undefined
   const browsing = Boolean(view && view.total > view.shown)
 
-  const record = focusedRecord ? tracks.find((track) => track.id === focusedRecord) : undefined
+  /**
+   * The record the crosshair is offering: the sleeve itself, or — aimed at the
+   * crate — the one you have riffled to, which is the one standing out in front
+   * of it and the one E takes. One card either way, the way a book in a box
+   * carries the box's keys rather than raising a second card.
+   */
+  const crateView = focusedCrate ? crateViews[focusedCrate] : undefined
+  const shownRecord = focusedRecord ?? crateView?.record ?? null
+  const record = shownRecord ? tracks.find((track) => track.id === shownRecord) : undefined
   const heldRecordTrack = heldRecord ? tracks.find((track) => track.id === heldRecord) : undefined
   const tape = focusedTape ? tapes.find((t) => t.id === focusedTape) : undefined
   const heldTapeItem = heldTape ? tapes.find((t) => t.id === heldTape) : undefined
@@ -314,7 +324,7 @@ export function Hud() {
                 focusedBox ||
                 boxTarget ||
                 focusedFixture ||
-                focusedRecord ||
+                shownRecord ||
                 crateTarget ||
                 focusedTape ||
                 tapeCrateTarget ||
@@ -387,7 +397,7 @@ export function Hud() {
             !focused &&
             !focusedBox &&
             !focusedSeat &&
-            !focusedRecord &&
+            !shownRecord &&
             !focusedFixture &&
             !focusedPin &&
             !focusedCat &&
@@ -410,12 +420,35 @@ export function Hud() {
             </div>
           )}
 
-          {walking && focusedRecord && !held && (
+          {walking && shownRecord && !held && (
             <div className="focus-card" data-testid="record-card">
               <p className="focus-title">{record?.album ?? record?.title ?? 'A Record'}</p>
-              <p className="focus-author">{record?.artist ?? 'Unknown'}</p>
+              <p className="focus-author">
+                {record?.artist ?? 'Unknown'}
+                {/* Where you have riffled to, in the boxes' idiom: a crate holds
+                    more records than it can stand up at once. Only for the sleeve
+                    that is actually out — the count is that record's place, not
+                    whichever neighbour the crosshair happens to be on. */}
+                {crateView?.record === shownRecord &&
+                  ` · ${(crateView.offset + 1).toLocaleString()} of ${crateView.total.toLocaleString()}`}
+              </p>
               <p className="focus-key">
-                <kbd>E</kbd> Pick it up
+                {/* Its place in the crate is still counted while it plays, but
+                    the sleeve is not in there to be taken. */}
+                {nowPlaying === shownRecord ? (
+                  <span className="dim">It is on the deck</span>
+                ) : (
+                  <>
+                    <kbd>E</kbd> Pick it up
+                  </>
+                )}
+                {crateView && crateView.total > 1 && (
+                  <>
+                    {' · '}
+                    <kbd>,</kbd>
+                    <kbd>.</kbd> or scroll to flick through
+                  </>
+                )}
               </p>
             </div>
           )}
@@ -721,7 +754,9 @@ export function Hud() {
             </div>
           )}
 
-          {walking && focusedBox && !focused && !held && !seat && (
+          {/* A crate standing in front of a box is what you are looking at, and
+              its card is the record's — one card at a time, like everywhere else. */}
+          {walking && focusedBox && !focused && !shownRecord && !held && !seat && (
             <div className="focus-card" data-testid="box-card">
               <p className="focus-title">Moving Box</p>
               <p className="focus-author">

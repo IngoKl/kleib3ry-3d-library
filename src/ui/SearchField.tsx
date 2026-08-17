@@ -29,8 +29,11 @@ type Hit = {
  * How many of each kind a search may show. Per kind rather than one pool: books
  * are scanned first and there are a thousand of them, so a shared limit buried
  * every record and tape.
+ *
+ * Records get a book's worth: an album is one file per side or per track, so
+ * three hits was often less than one record.
  */
-const LIMITS = { book: 9, record: 3, tape: 3, picture: 2 } as const
+const LIMITS = { book: 9, record: 9, tape: 3, picture: 2 } as const
 
 /**
  * Case-insensitive and blind to accents: NFKD splits an accented letter into a
@@ -63,8 +66,8 @@ export function SearchField() {
   const rows = useLibraryStore((s) => s.rows)
   const boxes = useLibraryStore((s) => s.boxes)
   const loose = useLibraryStore((s) => s.loose)
-  const filedRecords = useLibraryStore((s) => s.filedRecords)
   const looseRecords = useLibraryStore((s) => s.looseRecords)
+  const recordCrates = useAppStore((s) => s.recordCrates)
   const labelOf = useLibraryStore((s) => s.labelOf)
   const tracks = useMediaStore((s) => s.tracks)
   const artwork = useMediaStore((s) => s.artwork)
@@ -129,15 +132,20 @@ export function SearchField() {
     return room ? `Left out in the ${room.name.toLowerCase()}` : 'Left out somewhere'
   }
 
-  /** Where a record actually is: put down, filed by hand, or in the first crate. */
+  /**
+   * Where a record actually is: put down, or in the crate the deal put it in.
+   *
+   * The crate comes from the deal rather than from `filedRecords`, which only
+   * knows the handful you have filed by hand — naming the first crate in the
+   * document for everything else was a confident guess, and wrong as soon as a
+   * library had two crates or more records than one holds.
+   */
   const recordPlace = (trackId: string): string => {
     const at = looseRecords[trackId]
     if (at) return whereLeft(at)
-    const crateId = filedRecords[trackId]
-    const crate =
-      (crateId ? world?.furniture.find((item) => item.id === crateId) : undefined) ??
-      world?.furniture.find((item) => item.kind === 'recordshelf')
-    if (!crate || !world) return 'The record crate'
+    const crateId = recordCrates[trackId]
+    const crate = crateId ? world?.furniture.find((item) => item.id === crateId) : undefined
+    if (!crate || !world) return 'Nowhere yet — this library has no record crate'
     const room = world.rooms.find((candidate) => candidate.id === crate.roomId)
     return `The record crate — ${room?.name ?? crate.roomId}`
   }
@@ -207,7 +215,7 @@ export function SearchField() {
 
     return found
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, books, tracks, tapes, artwork, placeOf, tapeCrateIn, filedRecords, looseRecords])
+  }, [query, books, tracks, tapes, artwork, placeOf, tapeCrateIn, recordCrates, looseRecords])
 
   if (!searching) return null
 
@@ -215,8 +223,12 @@ export function SearchField() {
 
   return (
     <div className="terminal" data-testid="catalogue">
+      {/* Everything it can find, not only the books: it searches all four
+          folders, and calling that count "records" in a house with a crate of
+          them was asking for it. */}
       <p className="terminal-head">
-        kleib3ry Catalogue · {books.length.toLocaleString()} records
+        kleib3ry Catalogue ·{' '}
+        {(books.length + tracks.length + tapes.length + artwork.length).toLocaleString()} entries
       </p>
       <div className="terminal-prompt">
         <span aria-hidden="true">&gt;</span>

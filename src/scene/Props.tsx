@@ -101,15 +101,20 @@ function HeadlampAtRest() {
         <torusGeometry args={[0.05, 0.011, 6, 14]} />
         <meshStandardMaterial color="#5a4632" roughness={0.9} />
       </mesh>
-      <mesh position={[0, 0.028, -0.045]} rotation-x={-0.25} castShadow>
-        <boxGeometry args={[0.056, 0.04, 0.036]} />
-        <meshStandardMaterial color="#3c4043" roughness={0.55} />
-      </mesh>
-      {/* The lens, catching a little light even off. */}
-      <mesh position={[0, 0.032, -0.024]} rotation-x={Math.PI / 2 - 0.25}>
-        <cylinderGeometry args={[0.015, 0.015, 0.006, 12]} />
-        <meshStandardMaterial color="#efe6c8" roughness={0.25} />
-      </mesh>
+      {/* The lamp, turned to look out over the coil rather than across it: away
+          from the strap is away from the head, and a lamp set down at your own
+          yaw shines away from you, like a book laid flat. */}
+      <group position={[0, 0, -0.045]} rotation-y={Math.PI}>
+        <mesh position={[0, 0.028, 0]} rotation-x={-0.25} castShadow>
+          <boxGeometry args={[0.056, 0.04, 0.036]} />
+          <meshStandardMaterial color="#3c4043" roughness={0.55} />
+        </mesh>
+        {/* The lens, catching a little light even off. */}
+        <mesh position={[0, 0.032, 0.021]} rotation-x={Math.PI / 2 - 0.25}>
+          <cylinderGeometry args={[0.015, 0.015, 0.006, 12]} />
+          <meshStandardMaterial color="#efe6c8" roughness={0.25} />
+        </mesh>
+      </group>
     </group>
   )
 }

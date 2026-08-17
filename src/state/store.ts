@@ -31,6 +31,24 @@ export type ShelfTarget = {
   fits: boolean
 }
 
+/**
+ * What one record crate is showing of what it holds, and which sleeve is out.
+ *
+ * The boxes' `BoxView` with a record on the end of it: a crate stands up a
+ * crateful at a time, so the rest of what is filed in it is reached by riffling
+ * rather than by being drawn.
+ */
+export type CrateView = {
+  /** Index of the record currently drawn out. */
+  offset: number
+  /** How many sleeves are standing in the crate. */
+  shown: number
+  /** How many it holds altogether. */
+  total: number
+  /** The record at `offset`, i.e. the one E would take. */
+  record: string | null
+}
+
 type AppState = {
   mode: Mode
   libraryRoot: string | null
@@ -85,6 +103,32 @@ type AppState = {
   focusedFixture: string | null
   /** Record under the crosshair, by track id. */
   focusedRecord: string | null
+  /**
+   * Record crate under the crosshair, empty-handed — the crate a focused sleeve
+   * is filed in, or the crate itself when no sleeve is in the way. What `,` and
+   * `.` riffle through.
+   */
+  focusedCrate: string | null
+  /**
+   * How far into each crate you have riffled, as an index into its own records.
+   *
+   * A crate holds more records than it can stand up at once, and the one at this
+   * index is drawn out face-on. Session state for `boxOffsets`' reason: where
+   * you have flicked to is not part of the library.
+   */
+  crateOffsets: Record<string, number>
+  /** The offsets you flicked through to get here, per crate. */
+  crateTrail: Record<string, number[]>
+  /** What each crate holds and which of it is out, written by the renderer. */
+  crateViews: Record<string, CrateView>
+  /**
+   * Which crate each record actually ended up in, written by the same renderer.
+   *
+   * Not `filedRecords`: that is only the handful you have filed by hand, and
+   * everything else is *dealt* — so this is the one honest answer to the
+   * catalogue's "where is it".
+   */
+  recordCrates: Record<string, string>
   /** Record in hand, by track id. Separate from `held`: a sleeve is not a book. */
   heldRecord: string | null
   /** Record crate under the crosshair while holding a record — file it back. */
@@ -226,6 +270,11 @@ type AppState = {
   setPointerLocked: (locked: boolean) => void
   setFocusedFixture: (id: string | null) => void
   setFocusedRecord: (id: string | null) => void
+  setFocusedCrate: (id: string | null) => void
+  /** Publish the deal: what each crate is showing, and where every record went. */
+  setCrateDeal: (views: Record<string, CrateView>, crates: Record<string, string>) => void
+  /** Riffle through a crate: `+1` deeper into it, `-1` back towards the front. */
+  browseCrate: (crateId: string, direction: 1 | -1) => void
   setHeldRecord: (id: string | null) => void
   setCrateTarget: (id: string | null) => void
   setFocusedTape: (id: string | null) => void
@@ -376,6 +425,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   pointerLocked: false,
   focusedFixture: null,
   focusedRecord: null,
+  focusedCrate: null,
+  crateOffsets: {},
+  crateTrail: {},
+  crateViews: {},
+  recordCrates: {},
   heldRecord: null,
   crateTarget: null,
   focusedTape: null,
@@ -446,6 +500,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setFocusedRecord: (focusedRecord) => {
     if (get().focusedRecord !== focusedRecord) set({ focusedRecord })
+  },
+  setFocusedCrate: (focusedCrate) => {
+    if (get().focusedCrate !== focusedCrate) set({ focusedCrate })
   },
   setHeldRecord: (heldRecord) => set({ heldRecord }),
   setCrateTarget: (crateTarget) => {
@@ -593,6 +650,60 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       boxOffsets: { ...get().boxOffsets, [boxId]: next },
       boxTrail: { ...get().boxTrail, [boxId]: nextTrail },
+    })
+  },
+
+  setCrateDeal: (crateViews, recordCrates) => {
+    // Written every time the crates are dealt or riffled, so it guards against
+    // an identical publish for `setBoxViews`' reason. The deal is compared by
+    // identity: the renderer memoises it, and it only changes when a record
+    // does.
+    const current = get().crateViews
+    const keys = Object.keys(crateViews)
+    const same =
+      recordCrates === get().recordCrates &&
+      keys.length === Object.keys(current).length &&
+      keys.every((key) => {
+        const a = current[key]
+        const b = crateViews[key]!
+        return (
+          a &&
+          a.offset === b.offset &&
+          a.shown === b.shown &&
+          a.total === b.total &&
+          a.record === b.record
+        )
+      })
+    if (!same) set({ crateViews, recordCrates })
+  },
+
+  /**
+   * A crate stands up a crateful at a time; riffling moves the sleeve that is
+   * drawn out one record deeper, and the crate shows whichever crateful that
+   * record is in. Stops at the ends rather than wrapping, and keeps the way back
+   * it came, both for the reasons `browseBox` does.
+   */
+  browseCrate: (crateId, direction) => {
+    const view = get().crateViews[crateId]
+    if (!view || view.total === 0) return
+    const trail = get().crateTrail[crateId] ?? []
+
+    let next: number
+    let nextTrail: number[]
+    if (direction > 0) {
+      next = view.offset + 1
+      // Nothing behind the last sleeve: stay on it.
+      if (next >= view.total) return
+      nextTrail = [...trail, view.offset]
+    } else {
+      next = trail.length ? trail[trail.length - 1]! : 0
+      if (next === view.offset) return
+      nextTrail = trail.slice(0, -1)
+    }
+
+    set({
+      crateOffsets: { ...get().crateOffsets, [crateId]: next },
+      crateTrail: { ...get().crateTrail, [crateId]: nextTrail },
     })
   },
 

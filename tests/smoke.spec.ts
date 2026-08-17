@@ -90,11 +90,16 @@ declare global {
       savedBoxContents: (boxId: string) => string[]
       emptyBoxForTest: (boxId: string) => number
       boxView: (boxId: string) => { offset: number; shown: number; total: number } | null
+      crateView: (
+        crateId: string,
+      ) => { offset: number; shown: number; total: number; record: string | null } | null
+      browseCrateForTest: (crateId: string, direction: 1 | -1) => void
       visibleInBoxes: () => string[]
       boxIds: () => string[]
       places: () => {
         shelves: { id: string; x: number; z: number; rotationY: number; rows: number }[]
         boxes: { id: string; x: number; z: number; height: number }[]
+        crates: { id: string; x: number; z: number }[]
       }
       room: () => string | null
       worldText: () => string | null
@@ -1022,6 +1027,49 @@ test('a box can be browsed, so a buried book can be brought to the top', async (
   await page.keyboard.press('BracketLeft')
   await page.waitForTimeout(400)
   expect((await page.evaluate((id) => window.__app.boxView(id as string), boxId!))!.offset).toBe(0)
+})
+
+test('a crate can be riffled, so a record behind the front one can be reached', async ({
+  page,
+}) => {
+  await boot(page)
+
+  const crates = (await page.evaluate(() => window.__app.places())).crates
+  expect(crates.length, 'this world has no record crate').toBeGreaterThan(0)
+
+  // The crate the deal actually filled: with a small collection the second one
+  // stands empty, and an empty crate has nothing to flick through.
+  let crateId: string | null = null
+  for (const crate of crates) {
+    const view = await page.evaluate((id) => window.__app.crateView(id as string), crate.id)
+    if (view && view.total > 1) {
+      crateId = crate.id
+      break
+    }
+  }
+  expect(crateId, 'no crate was dealt more than one record').not.toBeNull()
+
+  const first = await page.evaluate((id) => window.__app.crateView(id as string), crateId!)
+  expect(first!.offset).toBe(0)
+  expect(first!.record, 'the crate names no record at the cursor').not.toBeNull()
+
+  // Forward: the cursor moves on and a different sleeve is the one E would take.
+  await page.evaluate((id) => window.__app.browseCrateForTest(id as string, 1), crateId!)
+  const next = await page.evaluate((id) => window.__app.crateView(id as string), crateId!)
+  expect(next!.offset).toBe(1)
+  expect(next!.record).not.toBe(first!.record)
+
+  // And back to where it started, which is what the back-trail is for.
+  await page.evaluate((id) => window.__app.browseCrateForTest(id as string, -1), crateId!)
+  const back = await page.evaluate((id) => window.__app.crateView(id as string), crateId!)
+  expect(back!.offset).toBe(0)
+  expect(back!.record).toBe(first!.record)
+
+  // The front of the crate does not run off its own end.
+  await page.evaluate((id) => window.__app.browseCrateForTest(id as string, -1), crateId!)
+  expect(
+    (await page.evaluate((id) => window.__app.crateView(id as string), crateId!))!.offset,
+  ).toBe(0)
 })
 
 test('a book goes back into the box you drop it into, and stays there', async ({ page }) => {

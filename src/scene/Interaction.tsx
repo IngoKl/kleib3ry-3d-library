@@ -103,6 +103,7 @@ export function Interaction() {
       store.setBoxTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setCrateTarget(null)
       store.setFocusedTape(null)
       store.setTapeCrateTarget(null)
@@ -126,6 +127,7 @@ export function Interaction() {
       store.setBoxTarget(null)
       store.setFocusedFixture(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setCrateTarget(null)
       store.setFocusedTape(null)
       store.setTapeCrateTarget(null)
@@ -162,6 +164,7 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setFocusedTape(null)
       store.setTapeCrateTarget(null)
       store.setFocusedShelf(null)
@@ -232,6 +235,7 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setFocusedTape(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
@@ -261,6 +265,7 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setFocusedTape(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
@@ -313,6 +318,7 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setFocusedTape(null)
       store.setFocusedShelf(null)
       store.setSurfaceTarget(null)
@@ -342,6 +348,7 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setFocusedTape(null)
       store.setFocusedShelf(null)
       store.setFocusedPin(null)
@@ -420,6 +427,7 @@ export function Interaction() {
       store.setFocusedBox(null)
       store.setBoxTarget(null)
       store.setFocusedRecord(null)
+      store.setFocusedCrate(null)
       store.setCrateTarget(null)
       store.setFocusedTape(null)
       store.setTapeCrateTarget(null)
@@ -561,11 +569,16 @@ export function Interaction() {
         }
       }
 
+      /** The crate a sleeve under the crosshair is filed in, for riffling it. */
+      let filedIn: string | null = null
       const crate = sceneRefs.records
       if (crate) {
         const hit = raycaster.intersectObject(crate, false)[0]
         const id = hit?.instanceId === undefined ? undefined : sceneRefs.recordIds[hit.instanceId]
-        if (hit && id) record = { distance: hit.distance, id }
+        if (hit && id && hit.instanceId !== undefined) {
+          record = { distance: hit.distance, id }
+          filedIn = sceneRefs.recordCrates[hit.instanceId] ?? null
+        }
       }
 
       const box_ = sceneRefs.tapes
@@ -591,15 +604,20 @@ export function Interaction() {
         if (hit && id) prop = { distance: hit.distance, id }
       }
 
-      // Wearing the headlamp, a bare tabletop offers to take it off your head
-      // — the one empty-handed use the crosshair has for a surface.
+      // One hit on the tops answers two questions: whether this is a record
+      // crate — which riffles, sleeves in the way or not — and, wearing the
+      // headlamp, whether a bare tabletop offers to take it off your head. That
+      // is the one empty-handed use the crosshair has for a surface.
+      const tops = sceneRefs.surfaces
+      const topHit = tops ? raycaster.intersectObject(tops, true)[0] : undefined
+      const topId = furnitureIdOf(topHit)
+      let cabinet: { distance: number; id: string } | null = null
       let rest: { distance: number; hit: THREE.Intersection; id: string } | null = null
-      if (store.wornLamp !== null) {
-        const tops = sceneRefs.surfaces
-        const hit = tops ? raycaster.intersectObject(tops, true)[0] : undefined
-        const id = furnitureIdOf(hit)
-        if (hit && id && hit.normal !== undefined && hit.normal.y > 0.5) {
-          rest = { distance: hit.distance, hit, id }
+      if (topHit && topId) {
+        const kind = world.furniture.find((piece) => piece.id === topId)?.kind
+        if (kind === 'recordshelf') cabinet = { distance: topHit.distance, id: topId }
+        if (store.wornLamp !== null && topHit.normal !== undefined && topHit.normal.y > 0.5) {
+          rest = { distance: topHit.distance, hit: topHit, id: topId }
         }
       }
 
@@ -619,6 +637,7 @@ export function Interaction() {
         store.setFocusedBox(null)
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
+        store.setFocusedCrate(null)
         store.setFocusedTape(null)
         store.setFocusedPin(null)
         store.setFocusedProp(null)
@@ -634,6 +653,7 @@ export function Interaction() {
         store.setFocusedBox(null)
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
+        store.setFocusedCrate(null)
         store.setFocusedTape(null)
         store.setFocusedProp(null)
         return
@@ -648,6 +668,7 @@ export function Interaction() {
         store.setFocusedBox(null)
         store.setFocusedFixture(null)
         store.setFocusedRecord(null)
+        store.setFocusedCrate(null)
         store.setFocusedTape(null)
         store.setFocusedProp(null)
       } else {
@@ -668,10 +689,19 @@ export function Interaction() {
           nearer(candidate) &&
           others.every((other) => other === null || candidate!.distance < other.distance)
 
-        store.setFocusedRecord(closest(record, [fixture, tape, prop]) ? record!.id : null)
+        const sleeve = closest(record, [fixture, tape, prop])
+        store.setFocusedRecord(sleeve ? record!.id : null)
         store.setFocusedTape(closest(tape, [fixture, record, prop]) ? tape!.id : null)
         store.setFocusedFixture(closest(fixture, [record, tape, prop]) ? fixture!.id : null)
         store.setFocusedProp(closest(prop, [fixture, record, tape]) ? prop!.id : null)
+
+        // The crate the sleeve is filed in, or — with no sleeve in the way — the
+        // crate itself, so `,` and `.` riffle through it either way. Held to the
+        // same "nothing else is nearer" test as everything else here, because it
+        // puts a card up: the deck standing on a crate must not raise two.
+        store.setFocusedCrate(
+          sleeve ? filedIn : closest(cabinet, [fixture, tape, prop, seat, box]) ? cabinet!.id : null,
+        )
 
         // The tabletop takes the headlamp only when nothing else is nearer —
         // everything on the table beats the table.
@@ -698,6 +728,7 @@ export function Interaction() {
     store.setFocusedBox(null)
     store.setFocusedFixture(null)
     store.setFocusedRecord(null)
+    store.setFocusedCrate(null)
     store.setFocusedTape(null)
     store.setFocusedPin(null)
     store.setFocusedProp(null)

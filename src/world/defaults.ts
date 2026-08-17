@@ -260,7 +260,7 @@ export const DEFAULT_WORLD_TEXT = `{
         // Strung along the inside of the balustrade. Visible from the whole
         // great room, so it is also the hearth end's night-light: the railing
         // top is at 1.0 over the loft floor and the line hangs just above it.
-        { "id": "loft-lights", "kind": "fairylights", "at": [0, 2.55], "facing": 0, "y": 1.15, "size": [8.0, 0.16] }
+        { "id": "loft-lights", "kind": "fairylights", "at": [0, 2.55], "facing": 0, "y": 1.15, "size": [9.6, 0.16] }
       ]
     },
 

@@ -9,9 +9,10 @@ import { hashId } from '../data/dimensions'
  * the album and artist printed on the front. Arbitrary but stable, exactly like
  * a book's cloth colour — the same record always wears the same sleeve.
  *
- * A crate holds a few dozen sleeves, not a few thousand books, so there is no
- * cell recycling: every filed record simply owns a cell, and a collection too
- * big for the grid falls back to plain coloured card past the last cell.
+ * The grid holds 143 sleeves and a room can stand up more than that, so cells go
+ * to the faces that can actually be read — see `Records.tsx`. A sleeve with no
+ * cell points at the blank one and shows its own card colour through it, the way
+ * a book too far away to read goes back to plain cloth.
  */
 
 /** Sleeve proportions. A 12" record is square and about 4 mm in its sleeve. */
@@ -23,6 +24,10 @@ const COLUMNS = 12
 const ROWS = 12
 
 export const SLOT_COUNT = COLUMNS * ROWS
+/**
+ * Never drawn into: it stays plain white, so an unprinted sleeve pointing at it
+ * shows its own instance colour and reads as blank card rather than as nothing.
+ */
 const BLANK_SLOT = 0
 export const FIRST_ASSIGNABLE = 1
 export const ASSIGNABLE_SLOTS = SLOT_COUNT - 1

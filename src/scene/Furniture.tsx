@@ -13,7 +13,16 @@ import { useWorldStore } from '../state/world'
 import { useAmbienceStore } from '../state/ambience'
 import { useMediaStore } from '../state/media'
 import { useAppStore } from '../state/store'
-import { APPLIANCES, LAMPS, SITTABLE, WALL_MOUNTED, type DerivedFurniture } from '../world/derive'
+import {
+  APPLIANCES,
+  FLOOR_SLAB,
+  LAMPS,
+  SITTABLE,
+  WALL_MOUNTED,
+  openingPanels,
+  type DerivedFurniture,
+  type DerivedWorld,
+} from '../world/derive'
 import { makeSleeveTexture, sleeveArtFor } from './recordAtlas'
 import { useVideoStore, videoElement } from '../state/video'
 import { arcadeMachine, useArcadeStore } from '../state/arcade'
@@ -433,15 +442,20 @@ function FloorLamp({ lit }: { lit: boolean }) {
   )
 }
 
-/** A pendant on a flex. Its `y` is the fitting, so it hangs from there down. */
-function Pendant({ lit }: { lit: boolean }) {
+/**
+ * A pendant on a flex. Its `y` is the fitting, so it hangs from there down —
+ * and `drop` is how far it is back up to the ceiling, because a fixed length of
+ * flex ends in mid-air under a cathedral ceiling and comes up through the
+ * floorboards of the room above a low one. See `ceilingDrop`.
+ */
+function Pendant({ lit, drop }: { lit: boolean; drop: number }) {
   // The shade stays its own mesh: `lit` drives its colour and emissive.
   const parts = useMerged(
     useMemo(() => {
-      const flex = new THREE.CylinderGeometry(0.008, 0.008, 0.64, 6)
-      flex.translate(0, 0.32, 0)
+      const flex = new THREE.CylinderGeometry(0.008, 0.008, drop, 6)
+      flex.translate(0, drop / 2, 0)
       return { flex: [flex] }
-    }, []),
+    }, [drop]),
   )
   return (
     <group>
@@ -1094,6 +1108,10 @@ function Bin({ width, height }: { width: number; height: number }) {
  * `ambience.json` with the lamps, because which doors stand open is a fact
  * about the room, not about this machine. A closed one blocks the doorway:
  * the walk controller adds that collider itself, off the same bit.
+ *
+ * `width` and `height` are the *doorway* — see `doorwayOf`. Post and leaf are
+ * cut to fill it, because a leaf sized on its own leaves daylight down its
+ * leading edge and over its head.
  */
 function DoorLeaf({ width, height, open }: { width: number; height: number; open: boolean }) {
   const swing = useRef<THREE.Group>(null)
@@ -1108,33 +1126,38 @@ function DoorLeaf({ width, height, open }: { width: number; height: number; open
     if (swing.current) swing.current.rotation.y = angle.current
   })
 
+  // The leaf hangs from the post's centre line and reaches the far jamb, less
+  // the reveal a door actually swings in.
+  const leafW = width - DOOR_POST / 2 - DOOR_REVEAL
+  const leafH = height - DOOR_REVEAL
+
   // Leaf, panels and knobs merged per material inside the swing group; only
   // the group turns, so the merged geometry swings whole.
   const parts = useMerged(
     useMemo(
       () => ({
-        oak: [chamferBlock(width, height, 0.045, 0.01, width / 2, height / 2, 0)],
+        oak: [chamferBlock(leafW, leafH, 0.045, 0.01, leafW / 2, leafH / 2, 0)],
         // Two sunken panels, one each side, so it reads as joinery.
         panel: [-1, 1].flatMap((face) =>
           [0.3, 0.71].map((at) =>
-            block(width * 0.68, height * 0.28, 0.008, width / 2, height * at, face * 0.024),
+            block(leafW * 0.68, leafH * 0.28, 0.008, leafW / 2, leafH * at, face * 0.024),
           ),
         ),
         brass: [-1, 1].map((face) => {
           const knob = new THREE.SphereGeometry(0.028, 8, 8)
-          knob.translate(width * 0.86, height * 0.48, face * 0.045)
+          knob.translate(leafW * 0.86, leafH * 0.48, face * 0.045)
           return knob
         }),
       }),
-      [width, height],
+      [leafW, leafH],
     ),
   )
 
   return (
-    <group position={[-width / 2, 0, 0]}>
-      {/* The post the hinges hang on. */}
+    <group position={[-width / 2 + DOOR_POST / 2, 0, 0]}>
+      {/* The post the hinges hang on, standing in the jamb the full height. */}
       <mesh position={[0, height / 2, 0]} castShadow>
-        <boxGeometry args={[0.05, height, 0.07]} />
+        <boxGeometry args={[DOOR_POST, height, 0.07]} />
         <meshStandardMaterial color={OAK} roughness={0.7} />
       </mesh>
       <group ref={swing}>
@@ -1154,6 +1177,9 @@ function DoorLeaf({ width, height, open }: { width: number; height: number; open
 
 /** Radians a door stands open at: flat-ish back, clear of the walkway. */
 const DOOR_OPEN = -1.92
+/** The hinge post's share of the doorway, and the leaf's clearance in it. */
+const DOOR_POST = 0.05
+const DOOR_REVEAL = 0.004
 
 /** An A-frame tent: two canvas slopes on a ridge pole, open at both ends. */
 function Tent({ width, depth, height }: { width: number; depth: number; height: number }) {
@@ -2276,6 +2302,46 @@ function useAnyLightOn(wanted: boolean): boolean {
   return lamps.some((lamp) => on[lamp.id] ?? lamp.defaultOn)
 }
 
+/**
+ * The doorway a leaf is standing in, as [width, height].
+ *
+ * The document sizes a leaf by hand and gets it a few centimetres small, which
+ * is daylight round two of its edges; the hole is the only honest source for
+ * how big a door is. Matched by position, because a doorway is where the piece
+ * was put. Its own `size` stays what the collider is cut from — see `walk.ts`.
+ */
+function doorwayOf(world: DerivedWorld, item: DerivedFurniture): [number, number] | null {
+  const room = world.rooms.find((spec) => spec.id === item.roomId)
+  if (!room) return null
+  for (const { panel, opening } of openingPanels(room)) {
+    if (opening.kind !== 'door') continue
+    if (Math.hypot(panel.position[0] - item.x, panel.position[2] - item.z) > 0.3) continue
+    return [Math.max(panel.size[0], panel.size[2]), panel.size[1]]
+  }
+  return null
+}
+
+/**
+ * How far it is from a fitting up to whatever is over it.
+ *
+ * Usually the room's own ceiling — but a room can be under another room, and
+ * the great room's is 4.8 m up while the hearth pendant hangs under the loft
+ * floor at 2.28. So the nearest slab overhead wins, or a flex either stops in
+ * mid-air or comes up through the boards of the room above.
+ */
+function ceilingDrop(world: DerivedWorld, item: DerivedFurniture): number {
+  const room = world.rooms.find((spec) => spec.id === item.roomId)
+  let top = room ? room.elevation + room.height : item.y
+  for (const slab of world.slabs) {
+    const under = slab.y - FLOOR_SLAB
+    if (under >= top || under <= item.y + 0.05) continue
+    if (item.x < slab.minX || item.x > slab.maxX) continue
+    if (item.z < slab.minZ || item.z > slab.maxZ) continue
+    top = under
+  }
+  return Math.max(0.06, top - item.y)
+}
+
 function Piece({ item, source }: { item: DerivedFurniture; source: string | null }) {
   const lit = useAmbienceStore((s) => (LAMPS.has(item.kind) ? s.isOn(item.id, item.on ?? true) : false))
   // A record is on one deck at a time, so only that deck shows it. Reading
@@ -2310,6 +2376,18 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
   )
   const ink = useAppStore((s) => (item.kind === 'marker' ? s.markerInk : 0))
   const allOn = useAnyLightOn(item.kind === 'lightswitch')
+  // How big the doorway is and how far it is up to the ceiling are facts about
+  // the *room*, not about the piece, so they are looked up here rather than
+  // inside bodies that know nothing but their own dimensions.
+  const world = useWorldStore((s) => s.world)
+  const doorway = useMemo(
+    () => (item.kind === 'door' && world ? doorwayOf(world, item) : null),
+    [item, world],
+  )
+  const drop = useMemo(
+    () => (item.kind === 'pendant' && world ? ceilingDrop(world, item) : 0.64),
+    [item, world],
+  )
   // The terminal's screen lights when its search is open, so the thing you are
   // typing into is visibly the thing in front of you.
   const searching = useAppStore((s) => (item.kind === 'computer' ? s.searching : false))
@@ -2339,7 +2417,7 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
       case 'floorlamp':
         return <FloorLamp lit={lit} />
       case 'pendant':
-        return <Pendant lit={lit} />
+        return <Pendant lit={lit} drop={drop} />
       case 'fairylights':
         return <FairyLights width={item.width} sag={item.size?.[1] ?? 0.18} lit={lit} />
       case 'lightswitch':
@@ -2372,7 +2450,13 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
       case 'headlamp':
         return lampAway || lampOut ? null : <PropModel kind="headlamp" full={false} />
       case 'door':
-        return <DoorLeaf width={item.width} height={item.height} open={doorOpen} />
+        return (
+          <DoorLeaf
+            width={doorway?.[0] ?? item.width}
+            height={doorway?.[1] ?? item.height}
+            open={doorOpen}
+          />
+        )
       case 'tent':
         return <Tent width={item.width} depth={item.depth} height={item.height} />
       case 'campfire':

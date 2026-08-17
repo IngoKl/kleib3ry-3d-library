@@ -199,6 +199,13 @@ function timberOf(room: RoomSpec): Panel[] {
  */
 const TRIM = 0.045
 const ARCHITRAVE = 0.07
+/**
+ * How far the door trim laps over its opening, and under its own head. Flush,
+ * an architrave's faces land exactly on the reveal `wallPanels` leaves and on
+ * its own head's ends — coplanar, co-facing, and flickering the height of the
+ * doorway. `paneOf`'s nudge, at a door, and far too small to narrow anything.
+ */
+const LAP = 0.01
 
 function trimOf(room: RoomSpec): Panel[] {
   const panels: Panel[] = []
@@ -228,11 +235,11 @@ function trimOf(room: RoomSpec): Panel[] {
     } else if (opening.kind === 'door') {
       const a = ARCHITRAVE
       const t = WALL + 0.024
-      // Legs outside the opening, not in it: trim must never narrow a doorway
-      // the walk controller thinks is clear.
-      panels.push(box(-(w + a) / 2, a / 2, a, h + a, t))
-      panels.push(box((w + a) / 2, a / 2, a, h + a, t))
-      panels.push(box(0, (h + a) / 2, w + 2 * a, a, t))
+      // Two legs stopped under a head that crosses the whole width. Each laps
+      // its neighbour rather than butting it flush — see `LAP`.
+      panels.push(box(-(w + a - LAP) / 2, -LAP / 2, a + LAP, h - LAP, t))
+      panels.push(box((w + a - LAP) / 2, -LAP / 2, a + LAP, h - LAP, t))
+      panels.push(box(0, (h + a - LAP) / 2, w + 2 * a, a + LAP, t))
     }
   }
   return panels

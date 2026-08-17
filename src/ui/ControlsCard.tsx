@@ -36,6 +36,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     title: 'Records and Tapes',
     rows: [
       [['E'], 'Take one out of a crate; then put it on a deck or in the set, file it in any crate, or set a record down on a table'],
+      [[',', '.'], 'Flick through the crate you are looking at, a sleeve at a time (the wheel works too)'],
       [['F'], 'Take the record back off the deck, or the tape back out of the set'],
       [['Q'], 'Send it back to the crate the folder deals it into'],
     ],

@@ -28,6 +28,14 @@ const ZOOM_RATE = 5.5
 
 const WALK = 1.6
 const RUN = 3.0
+/**
+ * How much ground a stride covers, which is what sets the footstep cadence.
+ * Generous because the whole room is about a quarter over life size (see
+ * `data/dimensions.ts`), and longer at a run: a sprint is fewer, bigger paces,
+ * not the same paces faster.
+ */
+const WALK_STRIDE = 0.92
+const RUN_STRIDE = 1.35
 /** Kneeling is a shuffle, not a walk. */
 const KNEEL_SPEED = 0.7
 /** What the coffee does: a quarter quicker, until `player.boostUntil` passes. */
@@ -87,8 +95,8 @@ export function Player() {
   const bobWeight = useRef(0)
   /** Its own clock: breathing is by time, unlike the bob, which is by distance. */
   const breath = useRef(0)
-  /** The last stride the bob completed, so each footfall sounds exactly once. */
-  const lastStride = useRef(0)
+  /** Metres walked since the last footfall: a step is a distance, not a phase. */
+  const sinceStep = useRef(0)
   /** `performance.now()` before which no mouse delta is believed. See MAX_STEP_PX. */
   const settleUntil = useRef(0)
   /** Running average of how far the hand actually moves per event, in pixels. */
@@ -335,8 +343,17 @@ export function Player() {
         }
         // Taking a record out of the crate is the same gesture as taking a book
         // down, and it is offered only when no book is nearer — see `Interaction`.
-        if (focusedRecord) {
-          setHeldRecord(focusedRecord)
+        // Aimed at the crate itself, E takes the one you have riffled to — the
+        // sleeve standing out in front, which is what the card names — so
+        // browsing and picking one up compose. Never the record on the deck: the
+        // riffle still counts its place, but its sleeve is not in the crate.
+        const riffled = state.focusedCrate
+          ? (state.crateViews[state.focusedCrate]?.record ?? null)
+          : null
+        const takeable =
+          focusedRecord ?? (riffled !== useMediaStore.getState().playing ? riffled : null)
+        if (takeable) {
+          setHeldRecord(takeable)
           return
         }
         if (focusedTape) {
@@ -551,8 +568,16 @@ export function Player() {
 
       // Auto-repeat moves you; it does not act for you. Every verb below is
       // one-shot. The movement keys are exempt: they are read from the *set*,
-      // which a repeat cannot change.
-      if (e.repeat) return
+      // which a repeat cannot change — and so is riffling a crate, which is
+      // precisely the key you hold down: a sleeve at a time is how you flick
+      // through one. A box is not exempt, because its step is a whole pileful.
+      const riffling =
+        (e.code === 'Comma' ||
+          e.code === 'Period' ||
+          e.code === 'BracketLeft' ||
+          e.code === 'BracketRight') &&
+        useAppStore.getState().focusedBox === null
+      if (e.repeat && !riffling) return
 
       if (e.code === 'KeyE') {
         e.preventDefault()
@@ -636,16 +661,27 @@ export function Player() {
         e.code === 'BracketLeft' ||
         e.code === 'BracketRight'
       ) {
-        // Riffle through the box you are looking at. A box shows the top of the
-        // pile; this is how you get at the rest of it without unpacking.
+        // Riffle through the box, or the crate, you are looking at. A box shows
+        // the top of the pile and a crate stands up a crateful of sleeves; this
+        // is how you get at the rest of either without unpacking it. The box
+        // wins where both could apply: a box in front of a crate is the thing
+        // you are looking down into.
         // Comma and period are the advertised pair — the brackets still work,
         // but on many layouts (QWERTZ among them) they need AltGr, which is a
         // lot to ask of "look at the next few books".
-        const { focusedBox, browseBox } = useAppStore.getState()
+        const { focusedBox, focusedCrate, browseBox, browseCrate } = useAppStore.getState()
+        const deeper = e.code === 'Period' || e.code === 'BracketRight' ? 1 : -1
         if (focusedBox) {
           e.preventDefault()
-          browseBox(focusedBox, e.code === 'Period' || e.code === 'BracketRight' ? 1 : -1)
+          browseBox(focusedBox, deeper)
           playOneShot('cardboard', 0.35, { rate: 1.1 + Math.random() * 0.2 })
+        } else if (focusedCrate) {
+          e.preventDefault()
+          browseCrate(focusedCrate, deeper)
+          // A sleeve dragged past its neighbours: paper, not cardboard. One
+          // flick, one sound — held down, the same sample thirty times a second
+          // is a smear rather than a riffle.
+          if (!e.repeat) playOneShot('rustle', 0.3, { rate: 1.2 + Math.random() * 0.25 })
         }
       } else if (e.code === 'KeyG') {
         e.preventDefault()
@@ -769,13 +805,20 @@ export function Player() {
       )
     }
 
-    // The wheel is what a hand does to a box of books, so it browses the one
-    // you are looking at and does nothing at all anywhere else.
+    // The wheel is what a hand does to a box of books or a crate of records, so
+    // it browses whichever you are looking at and does nothing at all anywhere
+    // else. The box wins for the same reason it does on the keys.
     const onWheel = (e: WheelEvent) => {
-      const { mode, focusedBox, browseBox } = useAppStore.getState()
-      if (mode !== 'walk' || !focusedBox || e.deltaY === 0) return
-      e.preventDefault()
-      browseBox(focusedBox, e.deltaY > 0 ? 1 : -1)
+      const { mode, focusedBox, focusedCrate, browseBox, browseCrate } = useAppStore.getState()
+      if (mode !== 'walk' || e.deltaY === 0) return
+      const deeper = e.deltaY > 0 ? 1 : -1
+      if (focusedBox) {
+        e.preventDefault()
+        browseBox(focusedBox, deeper)
+      } else if (focusedCrate) {
+        e.preventDefault()
+        browseCrate(focusedCrate, deeper)
+      }
     }
 
     // Right button held is the other way to zoom. `contextmenu` has to be
@@ -1063,36 +1106,46 @@ export function Player() {
     // runs on while you stand still. Two components: vertical at twice the
     // stride (one dip per foot), sideways at the stride (a sway onto each leg).
     bob.current += delta * player.speed * 7.5
-    // A footstep at each wrap of the per-foot phase — the dip is the foot
-    // landing. Surface by where you stand: the room's own floor finish, or
-    // terrain's word for the ground outside.
-    const stride = Math.floor(bob.current / Math.PI)
-    if (stride !== lastStride.current && player.speed > 0.2) {
-      const room = world ? roomAt(world, player.x, player.z, player.floor) : null
-      const surface = room
-        ? room.floor === 'stone'
-          ? 'step-stone'
-          : 'step-wood'
-        : groundSurface(player.x, player.z) === 'sand'
-          ? 'step-sand'
-          : 'step-grass'
-      // No two footfalls alike: pitch and weight jittered around a base the
-      // surface sets — stone a touch harder, sand softer and looser.
-      const base =
-        surface === 'step-stone'
-          ? 1.05
-          : surface === 'step-grass'
-            ? 0.97
-            : surface === 'step-sand'
-              ? 0.93
-              : 1
-      playOneShot(
-        surface,
-        (kneeling ? 0.35 : 1) * (brisk > 1 ? 1.15 : 1) * (0.85 + Math.random() * 0.3),
-        { rate: base * (0.9 + Math.random() * 0.2) },
-      )
+    // A footfall every stride's worth of ground covered, *not* every wrap of
+    // the bob: the bob's rate is tuned for how walking looks, and at 7.5 it
+    // put a step every 42 cm, which reads as a typewriter — especially at a
+    // run. A stride lengthens when you run, the way a real one does. Surface
+    // by where you stand: the room's own floor finish, or terrain's word for
+    // the ground outside.
+    const stride = kneeling ? WALK_STRIDE * 0.6 : running ? RUN_STRIDE : WALK_STRIDE
+    if (player.speed > 0.2) {
+      sinceStep.current += player.speed * delta
+      if (sinceStep.current >= stride) {
+        sinceStep.current = 0
+        const room = world ? roomAt(world, player.x, player.z, player.floor) : null
+        const surface = room
+          ? room.floor === 'stone'
+            ? 'step-stone'
+            : 'step-wood'
+          : groundSurface(player.x, player.z) === 'sand'
+            ? 'step-sand'
+            : 'step-grass'
+        // No two footfalls alike: weight jittered, and pitch only slightly —
+        // a wide rate swing on a resonant tap is what turns wood into tin.
+        const base =
+          surface === 'step-stone'
+            ? 1.04
+            : surface === 'step-grass'
+              ? 0.97
+              : surface === 'step-sand'
+                ? 0.93
+                : 1
+        playOneShot(
+          surface,
+          (kneeling ? 0.35 : 1) * (brisk > 1 ? 1.1 : 1) * (0.8 + Math.random() * 0.3),
+          { rate: base * (0.97 + Math.random() * 0.06) },
+        )
+      }
+    } else {
+      // Primed, so setting off again lands a step in the first pace rather
+      // than a stride later.
+      sinceStep.current = stride * 0.7
     }
-    lastStride.current = stride
     const want = Math.min(1, player.speed / WALK)
     bobWeight.current += (want - bobWeight.current) * approach(6, delta)
     const weight = bobWeight.current

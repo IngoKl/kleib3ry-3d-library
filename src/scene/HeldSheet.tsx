@@ -2,7 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { makeHand } from './hand'
-import { NOTE, NOTE_COLOURS, SHEET, noteTexture, pageTextureFor, peekPage } from './pinArt'
+import {
+  NOTE,
+  NOTE_COLOURS,
+  SHEET,
+  noteTexture,
+  onPageReady,
+  pageKey,
+  pageTextureFor,
+  peekPage,
+} from './pinArt'
 import { useAppStore } from '../state/store'
 
 /**
@@ -31,13 +40,22 @@ export function HeldSheet() {
       setPage(null)
       return
     }
-    setPage(peekPage(heldPin.bookId, heldPin.page) ?? null)
+    const { bookId, page } = heldPin
+    setPage(peekPage(bookId, page) ?? null)
     let cancelled = false
-    void pageTextureFor(heldPin.bookId, heldPin.page).then((loaded) => {
+    void pageTextureFor(bookId, page).then((loaded) => {
       if (!cancelled) setPage(loaded)
     })
+    // Drawing on the page you are holding a copy of re-rasterises it, and the
+    // sheet in your hand is not re-mounted by that — so it listens, like a
+    // pinned one does.
+    const listener = (key: string) => {
+      if (key === pageKey(bookId, page)) setPage(peekPage(bookId, page) ?? null)
+    }
+    onPageReady.add(listener)
     return () => {
       cancelled = true
+      onPageReady.delete(listener)
     }
   }, [heldPin])
 

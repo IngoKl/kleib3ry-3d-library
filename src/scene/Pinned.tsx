@@ -1,7 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { sceneRefs } from './refs'
-import { NOTE, NOTE_COLOURS, SHEET, noteTexture, onPageReady, pageTextureFor, peekPage } from './pinArt'
+import {
+  NOTE,
+  NOTE_COLOURS,
+  SHEET,
+  noteTexture,
+  onPageReady,
+  pageKey,
+  pageTextureFor,
+  peekPage,
+} from './pinArt'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import type { PinnedSheet } from '../services/types'
@@ -53,9 +62,11 @@ function Sheet({ sheet, focused }: { sheet: PinnedSheet; focused: boolean }) {
       if (!cancelled) setTexture(loaded)
     })
     // A page that arrives while several sheets show the same one has to reach
-    // all of them, and only one of them started the render.
+    // all of them, and only one of them started the render — and the same for a
+    // page rasterised again because it was drawn on since.
+    const bookId = sheet.bookId
     const listener = (key: string) => {
-      if (key === `${sheet.bookId}:${page}`) setTexture(peekPage(sheet.bookId!, page) ?? null)
+      if (key === pageKey(bookId, page)) setTexture(peekPage(bookId, page) ?? null)
     }
     onPageReady.add(listener)
     return () => {

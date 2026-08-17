@@ -187,14 +187,16 @@ function makeWind(ctx: AudioContext): AudioBuffer {
     let low = 0
     for (let i = 0; i < length; i++) {
       const white = Math.random() * 2 - 1
-      low = low * 0.982 + white * 0.018
+      low = low * 0.988 + white * 0.012
       const t = i / ctx.sampleRate
       const gust =
         0.5 +
         0.34 * Math.sin((2 * Math.PI * t) / seconds + slow) +
         0.16 * Math.sin((2 * Math.PI * 3 * t) / seconds + quick)
-      // A floor under the gusts: the wind never quite dies between them.
-      data[i] = (low * 2.6 + white * 0.04) * (0.42 + 0.58 * clamp(gust, 0, 1))
+      // A floor under the gusts: the wind never quite dies between them. Kept
+      // dark, with only a trace of white on top — audible hiss out here reads
+      // as tape noise rather than as air in trees.
+      data[i] = (low * 2.4 + white * 0.015) * (0.42 + 0.58 * clamp(gust, 0, 1))
     }
     deSeam(data, ctx.sampleRate)
   }
@@ -326,14 +328,52 @@ const SHOTS: Record<Exclude<ShotName, 'thunder'>, ShotRecipe> = {
   thud: { seconds: 0.12, keep: 0.965, cut: 0.998, attack: 0.003, tail: 0.035, gain: 6 },
   /** A page of paper: mid-band hiss that swells and settles. */
   swish: { seconds: 0.25, keep: 0.82, cut: 0.97, attack: 0.09, tail: 0.09, gain: 2.4 },
-  /** A boot on boards: a short dry tap, a little bright. */
-  'step-wood': { seconds: 0.06, keep: 0.9, cut: 0.985, attack: 0.002, tail: 0.016, gain: 3 },
+  /**
+   * A boot on boards. Deliberately dark and soft-edged with a couple of grains
+   * of grit in it: a bright band under a 16 ms decay is a struck tin can, which
+   * is exactly what the first version of this sounded like. The weight is in
+   * the low end (`cut` near 1 keeps it) and the tail is long enough to be a
+   * board flexing rather than a tick.
+   */
+  'step-wood': {
+    seconds: 0.11,
+    keep: 0.945,
+    cut: 0.997,
+    attack: 0.004,
+    tail: 0.034,
+    gain: 2.3,
+    crackle: 2,
+  },
   /** On grass: the same step with the tap softened into a scuff. */
-  'step-grass': { seconds: 0.15, keep: 0.94, cut: 0.995, attack: 0.03, tail: 0.05, gain: 3 },
+  'step-grass': {
+    seconds: 0.16,
+    keep: 0.95,
+    cut: 0.9965,
+    attack: 0.03,
+    tail: 0.055,
+    gain: 2.3,
+    crackle: 4,
+  },
   /** On sand: softer again, and grittier — more of the hiss kept. */
-  'step-sand': { seconds: 0.17, keep: 0.7, cut: 0.98, attack: 0.035, tail: 0.055, gain: 1.4 },
-  /** On stone: the wood tap with a harder edge and a touch of ring. */
-  'step-stone': { seconds: 0.07, keep: 0.84, cut: 0.98, attack: 0.001, tail: 0.022, gain: 3.2 },
+  'step-sand': {
+    seconds: 0.18,
+    keep: 0.78,
+    cut: 0.985,
+    attack: 0.04,
+    tail: 0.06,
+    gain: 1.3,
+    crackle: 3,
+  },
+  /** On stone: the wood step with a harder edge, and no more ring than that. */
+  'step-stone': {
+    seconds: 0.1,
+    keep: 0.905,
+    cut: 0.9965,
+    attack: 0.002,
+    tail: 0.03,
+    gain: 2.5,
+    crackle: 2,
+  },
   /** A switch: one dry tick, over before it began. */
   click: { seconds: 0.03, keep: 0.6, cut: 0.9, attack: 0.001, tail: 0.006, gain: 2.2 },
   /** Paper handled: the page's swish with crinkle baked over it. */
@@ -371,10 +411,14 @@ function makeShot(ctx: AudioContext, recipe: ShotRecipe): AudioBuffer {
     data[i] = (kept - cut) * env * recipe.gain
   }
   // The crackle: the fire's pops in miniature — what turns smooth noise into
-  // paper crinkling or a latch snapping home.
+  // paper crinkling, a latch snapping home, or the grit under a sole. Each
+  // grain is scaled by the envelope where it lands, or a grain landing in the
+  // tail of a short sound is a detached tick after the sound has finished.
   for (let c = 0; c < (recipe.crackle ?? 0); c++) {
     const at = Math.floor(Math.random() * Math.max(1, length - 40))
-    const loudness = (0.25 + Math.random() * 0.4) * recipe.gain * 0.12
+    const t = at / ctx.sampleRate
+    const env = Math.min(1, t / recipe.attack) * Math.exp(-t / recipe.tail)
+    const loudness = (0.25 + Math.random() * 0.4) * recipe.gain * 0.12 * env
     const tail = 8 + Math.floor(Math.random() * 22)
     const sign = Math.random() > 0.5 ? 1 : -1
     for (let i = 0; i < tail && at + i < length; i++) {

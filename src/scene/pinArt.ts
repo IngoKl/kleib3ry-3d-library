@@ -1,6 +1,9 @@
 import * as THREE from 'three'
 import { renderOnePage } from '../reader/source'
+import { paintPageStrokes } from '../reader/pageInk'
 import { useLibraryStore } from '../state/library'
+import { useAnnotationsStore } from '../state/annotations'
+import type { BoardStroke } from '../services/types'
 
 /**
  * Artwork for the sheets pinned up round the house: a page copied out of a book,
@@ -29,13 +32,30 @@ const PAGE_PX = 900
 /** The pads a note can come off. Ordinary highlighter colours, deliberately. */
 export const NOTE_COLOURS = ['#f2e06a', '#f2a8a0', '#a8dcf0', '#bfe6a0', '#e3c3ef']
 
-const pages = new Map<string, THREE.Texture | null>()
+type PageArt = {
+  bookId: string
+  page: number
+  texture: THREE.Texture | null
+  /**
+   * The stroke list painted into it, by identity — the store keeps the same
+   * array until the ink changes. Compared rather than counted: a wipe followed
+   * by a redraw is one stroke again, and a different one.
+   */
+  ink: readonly BoardStroke[] | undefined
+}
+
+const pages = new Map<string, PageArt>()
 const inflight = new Map<string, Promise<THREE.Texture | null>>()
 
-const keyOf = (bookId: string, page: number) => `${bookId}:${page}`
+/** Also the key `onPageReady` publishes, so a listener can compare against it. */
+export const pageKey = (bookId: string, page: number) => `${bookId}:${page}`
+
+/** The ink on a page, as the store holds it — `undefined`, not `[]`, for none. */
+const inkOf = (bookId: string, page: number): readonly BoardStroke[] | undefined =>
+  useAnnotationsStore.getState().drawings[bookId]?.[page]
 
 export function peekPage(bookId: string, page: number): THREE.Texture | null | undefined {
-  return pages.get(keyOf(bookId, page))
+  return pages.get(pageKey(bookId, page))?.texture
 }
 
 /**
@@ -47,13 +67,14 @@ export function peekPage(bookId: string, page: number): THREE.Texture | null | u
  * natural bound on how many you make, because you make each one by hand.
  */
 export function pageTextureFor(bookId: string, page: number): Promise<THREE.Texture | null> {
-  const key = keyOf(bookId, page)
+  const key = pageKey(bookId, page)
   const known = pages.get(key)
-  if (known !== undefined) return Promise.resolve(known)
+  if (known && known.ink === inkOf(bookId, page)) return Promise.resolve(known.texture)
   const running = inflight.get(key)
   if (running) return running
 
-  const job = (async (): Promise<THREE.Texture | null> => {
+  const job = (async (): Promise<PageArt> => {
+    const blank = { bookId, page, texture: null, ink: inkOf(bookId, page) }
     try {
       // Through the source rather than through pdf.js: a page torn out of an
       // EPUB has to be set in type before it can be drawn, and going straight
@@ -62,33 +83,74 @@ export function pageTextureFor(bookId: string, page: number): Promise<THREE.Text
       // PDF pins its whole file in the pdf.js worker, and a wall of pages from
       // a wall of books would otherwise pin all of them.
       const book = useLibraryStore.getState().byId.get(bookId)
-      if (!book) return null
+      if (!book) return blank
       const canvas = await renderOnePage(book, page, PAGE_PX)
-      if (!canvas) return null
+      if (!canvas) return blank
+      // The reader's own painter, on the reader's own kind of canvas: a torn-out
+      // page is a copy of the page, marginalia and all, and two stroke renderers
+      // would be two answers to where the ink goes.
+      const ink = inkOf(bookId, page)
+      paintPageStrokes(canvas, ink ?? [])
       const texture = new THREE.CanvasTexture(canvas)
       texture.colorSpace = THREE.SRGBColorSpace
       texture.minFilter = THREE.LinearMipmapLinearFilter
       texture.magFilter = THREE.LinearFilter
       texture.needsUpdate = true
-      return texture
+      return { bookId, page, texture, ink }
     } catch {
-      return null
+      return blank
     }
   })()
 
-  inflight.set(key, job)
-  void job.then((texture) => {
-    pages.set(key, texture)
+  const result = job.then((art) => art.texture)
+  inflight.set(key, result)
+  void job.then((art) => {
+    const previous = pages.get(key)
+    pages.set(key, art)
     inflight.delete(key)
+    // Safe while a material still holds it: three re-uploads a disposed texture
+    // from its canvas. Not disposing leaks a page-sized texture per re-ink.
+    previous?.texture?.dispose()
+    notifyPageReady(bookId, page)
+    // Ink that landed while the page was rasterising is not in the raster.
+    if (art.ink !== inkOf(bookId, page)) scheduleInkSweep()
   })
-  return job
+  return result
 }
+
+/**
+ * How long the ink has to be quiet before a sheet re-rasterises.
+ *
+ * A page here comes off its document rather than off a cache, so redrawing per
+ * stroke would be a document parse per stroke — and the sheet is on a wall
+ * behind you while you draw anyway.
+ */
+const INK_SETTLE_MS = 600
+
+let sweepTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleInkSweep() {
+  clearTimeout(sweepTimer)
+  sweepTimer = setTimeout(() => {
+    sweepTimer = undefined
+    for (const art of [...pages.values()]) {
+      if (art.ink !== inkOf(art.bookId, art.page)) void pageTextureFor(art.bookId, art.page)
+    }
+  }, INK_SETTLE_MS)
+}
+
+// The cache outlives every component that reads it, so keeping it honest about
+// the marginalia does too: a page drawn on after its sheet went up would
+// otherwise show the ink it had at the moment you tore it out, forever.
+useAnnotationsStore.subscribe((state, previous) => {
+  if (state.drawings !== previous.drawings) scheduleInkSweep()
+})
 
 /** Called when a page finishes rasterising, so the sheet showing it redraws. */
 export const onPageReady = new Set<(key: string) => void>()
 
-export function notifyPageReady(bookId: string, page: number) {
-  for (const listener of onPageReady) listener(keyOf(bookId, page))
+function notifyPageReady(bookId: string, page: number) {
+  for (const listener of onPageReady) listener(pageKey(bookId, page))
 }
 
 /**

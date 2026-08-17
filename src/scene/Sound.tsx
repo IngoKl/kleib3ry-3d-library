@@ -201,10 +201,12 @@ export function Sound() {
       // The rest of the outdoors: wind always, up a little in weather; birds
       // by day and crickets by night, crossfaded on the same eased blend the
       // sky dims by, both hushed by rain and all let in by the same openings.
+      // All three sit well under the room's own noises on purpose — outdoors
+      // you should notice the quiet, not the soundtrack.
       const night = ambienceBlend.night
-      placeLoop('wind', small * (0.26 + 0.2 * wet) * open)
-      placeChorus('birds', small * 0.5 * open * (1 - night) * (1 - 0.75 * wet))
-      placeChorus('crickets', small * 0.5 * open * night * (1 - 0.5 * wet))
+      placeLoop('wind', small * (0.13 + 0.1 * wet) * open)
+      placeChorus('birds', small * 0.3 * open * (1 - night) * (1 - 0.75 * wet))
+      placeChorus('crickets', small * 0.26 * open * night * (1 - 0.5 * wet))
 
       // A distant rumble now and then while it pours: the first one lets the
       // shower establish itself, and a shower that dries and returns gets its

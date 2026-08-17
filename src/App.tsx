@@ -204,6 +204,11 @@ export default function App() {
       boxTarget: () => useAppStore.getState().boxTarget,
       /** What a box is showing of what it holds: `{ offset, shown, total }`. */
       boxView: (boxId: string) => useAppStore.getState().boxViews[boxId] ?? null,
+      /** The same for a record crate, plus the id of the sleeve drawn out. */
+      crateView: (crateId: string) => useAppStore.getState().crateViews[crateId] ?? null,
+      /** Riffle a crate without a crosshair: pointer lock is unavailable here. */
+      browseCrateForTest: (crateId: string, direction: 1 | -1) =>
+        useAppStore.getState().browseCrate(crateId, direction),
       /** The book ids currently visible on top of the piles. */
       visibleInBoxes: () => [...sceneRefs.boxedIds],
       seat: () => useAppStore.getState().seat,
@@ -238,6 +243,9 @@ export default function App() {
             z: box.z,
             height: box.height,
           })),
+          crates: (world?.furniture ?? [])
+            .filter((item) => item.kind === 'recordshelf')
+            .map((crate) => ({ id: crate.id, x: crate.x, z: crate.z })),
         }
       },
       boxContents: (boxId: string) => [...(useLibraryStore.getState().boxes[boxId] ?? [])],

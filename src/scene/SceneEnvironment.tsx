@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { ambienceBlend, colorCorners, goldenWarmth, mixColor, mixNumber } from './ambienceBlend'
+import { shaderWarm } from './shaderWarm'
 import { useAppStore } from '../state/store'
 import { useSettings } from '../state/settings'
 
@@ -114,7 +115,13 @@ function Prefiltered() {
     // software rasteriser is seconds, mid-page-turn.
     warmed.current += 1
     const reading = useAppStore.getState().mode === 'read'
-    const want = warmed.current <= 1 || reading ? null : (rig.target?.texture ?? null)
+    // Unhooked for the first couple of the headlamp's warm frames too, so the
+    // beam's programs get compiled without the map as well as with it: that
+    // pair is what opening a book while wearing the lamp would otherwise
+    // compile on the spot. See `shaderWarm`.
+    const warmingBeam = shaderWarm.spotlight > 0 && shaderWarm.spotlight <= 2
+    const want =
+      warmed.current <= 1 || reading || warmingBeam ? null : (rig.target?.texture ?? null)
     if (scene.environment !== want) scene.environment = want
     scene.environmentIntensity = mixNumber(INTENSITY)
     const { night, rain } = ambienceBlend
