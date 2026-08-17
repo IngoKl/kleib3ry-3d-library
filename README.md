@@ -91,7 +91,7 @@ Everything is in **[docs/](docs/README.md)**. The ones people want first:
 ## Built With
 
 React Three Fiber and three.js in a Tauri 2 shell, with a Rust core doing
-indexing, SQLite persistence and format probing — and the same core behind a small
+indexing, a JSON index and format probing — and the same core behind a small
 HTTP server for the container. pdf.js reads the PDFs; EPUBs are unzipped and set
 in type by the app itself. Nothing above `src/services/` imports `@tauri-apps/*`,
 which is why the hosted mode could be added without touching the app.

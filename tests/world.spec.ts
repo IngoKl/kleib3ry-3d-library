@@ -52,7 +52,6 @@ function book(id: string, over: Partial<IndexedBook> = {}): IndexedBook {
     cover: null,
     pageCount: 300,
     sizeBytes: 2_000_000,
-    indexedAt: 0,
     ...over,
   }
 }

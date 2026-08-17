@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What This Is
 
 kleib3ry — a 3D personal library: React Three Fiber front end inside a Tauri 2
-shell, with a Rust core doing indexing, SQLite persistence and format probing.
+shell, with a Rust core doing indexing, a JSON index and format probing.
 
 **There are exactly two shipped modes**, and a change that adds a way to run this
 is a change to that list: the **desktop app** (Tauri, `tauriDriver`) and
@@ -90,7 +90,7 @@ without a single change above `src/services/`, which is what this rule is for.
 
 ## Three Rust Crates
 
-`core/` is indexing, SQLite, the format probes and the media folders, with no GUI
+`core/` is indexing, the JSON index, the format probes and the media folders, with no GUI
 at all. `src-tauri/` is the desktop shell — IPC commands, settings, the asset
 scope, the picker. `server/` is the same core over HTTP, with no HTTP framework
 (a dozen routes and byte ranges is a few hundred lines of `TcpListener`).
@@ -159,7 +159,7 @@ removed boxes are layout state (`books.json`, schema 7), never `library.json`.
 folder when it exists — `music/`, `artwork/`, `video/` and `roms/` are the
 reserved names — and falls back to the whole folder minus those four when it does
 not. The other four are read by [core/src/media.rs](core/src/media.rs), _not_
-through SQLite: a music folder is hundreds of files, so walking it on demand
+through the index: a music folder is hundreds of files, so walking it on demand
 beats a second cache to keep in sync. Tags are read without a crate — ID3v2 and
 FLAC Vorbis comments only, in [core/src/probe/audio.rs](core/src/probe/audio.rs).
 A tape is not probed at all: its filename is its title and its folder is its

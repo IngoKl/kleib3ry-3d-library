@@ -15,7 +15,7 @@ two shape everything else.
                          │    library.json   the rooms   │
                          │    books.json     the layout  │ ◄──── the app writes
                          │    ambience.json  lamps, sky  │
-                         │    index.sqlite   the scan    │
+                         │    index.json     the scan    │
                          │    covers/        artwork     │
                          └───────────────────────────────┘
                                         ▲
@@ -67,7 +67,7 @@ src/                front end
                     deliberately outside React
   data/             placeholder catalogue + book proportions
   ui/               DOM overlay: crosshair, focus cards, panels, typed fields
-core/               Rust: indexing, SQLite, format + tag probes, media folders.
+core/               Rust: indexing, the JSON index, format + tag probes, media folders.
                     No GUI — which is what lets the container skip Tauri entirely
 src-tauri/          Rust: the desktop shell. IPC commands, settings, asset scope
 server/             Rust: the same core over HTTP, for the container
@@ -127,7 +127,7 @@ probe would mean a slow server coming up as an empty stand-in library.
 ## The Three Rust Crates
 
 ```text
-core/        indexing, SQLite, format probes, the media folders.  No GUI.
+core/        indexing, the JSON index, format probes, the media folders.  No GUI.
 src-tauri/   the desktop shell: IPC commands, settings, asset scope, picker.
 server/      HTTP: the same core, one route per LibraryService method.
 ```
@@ -411,7 +411,7 @@ never widens the scope.
 dependency-free file, stepped per frame by `scene/Arcade.tsx` and painted onto a
 64×32 `CanvasTexture` — an eight-kilobyte upload, the one dynamic texture cheap
 enough to repaint every frame. Games come from the library's `roms/` folder,
-listed like media (walked on demand, no SQLite) and read like a book (by listing
+listed like media (walked on demand, not indexed) and read like a book (by listing
 id). The bundled Pong is assembled from scratch by
 [scripts/lib/make-chip8.mjs](../scripts/lib/make-chip8.mjs), and the tests run
 that exact ROM on the interpreter, so the assembler, the ROM and the CPU are

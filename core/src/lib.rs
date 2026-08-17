@@ -1,9 +1,9 @@
 //! The part of kleib3ry that has nothing to do with a window.
 //!
-//! Indexing a folder of books, keeping the index in SQLite, probing PDFs and
-//! EPUBs for their metadata and cover art, and walking the `music/`, `artwork/`,
-//! `video/` and `roms/` folders. No Tauri, no WebView, no GUI toolkit — which is
-//! the whole point of it being its own crate.
+//! Indexing a folder of books, keeping the index in a JSON file beside them,
+//! probing PDFs and EPUBs for their metadata and cover art, and walking the
+//! `music/`, `artwork/`, `video/` and `roms/` folders. No Tauri, no WebView, no
+//! GUI toolkit — which is the whole point of it being its own crate.
 //!
 //! It was carved out of the desktop app when the container arrived. The desktop
 //! shell and the HTTP server both want exactly these four modules and nothing
@@ -12,7 +12,7 @@
 //! moved *logically*: `src-tauri/src/lib.rs` was already only commands, paths
 //! and settings, and these modules never mentioned Tauri once.
 
-pub mod db;
+pub mod catalog;
 pub mod index;
 pub mod media;
 pub mod probe;
@@ -29,8 +29,6 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
-    #[error("database: {0}")]
-    Db(#[from] rusqlite::Error),
     #[error("not a directory: {0}")]
     NotADirectory(String),
     #[error("no library folder has been chosen")]
@@ -69,7 +67,7 @@ pub struct SaveFiles {
     /// file, so your marginalia are yours without the app.
     pub annotations: std::path::PathBuf,
     /// The book index. Derived: delete it and rescan.
-    pub database: std::path::PathBuf,
+    pub index: std::path::PathBuf,
     /// Rendered and extracted cover art, so copying a library copies its artwork.
     pub covers: std::path::PathBuf,
 }
@@ -81,7 +79,7 @@ pub fn save_files(root: &std::path::Path) -> SaveFiles {
         layout: base.join("books.json"),
         ambience: base.join("ambience.json"),
         annotations: base.join("annotations.json"),
-        database: base.join("index.sqlite"),
+        index: base.join("index.json"),
         covers: base.join("covers"),
     }
 }

@@ -44,8 +44,8 @@ Three build stages and one small runtime:
 
 Nothing to do with Tauri is built here. That is why `core/` is a separate crate:
 a container that linked GTK and WebKit in order to read a directory would be an
-order of magnitude larger. SQLite is compiled into the binary, so the runtime
-needs nothing but libc.
+order of magnitude larger. The binary is pure Rust — no native library is linked
+and no C toolchain is involved — so the runtime needs nothing but libc.
 
 ## The Folder It Expects
 

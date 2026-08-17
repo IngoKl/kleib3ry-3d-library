@@ -257,9 +257,10 @@ pub fn list_roms(root: &Path) -> Vec<Rom> {
 
 /// The path of one ROM, by the id `list_roms` handed out.
 ///
-/// There is no SQLite row to look this up in, so the folder is walked again —
+/// There is no index entry to look this up in, so the folder is walked again —
 /// it is a few dozen files, and it means a caller can only ever name a ROM the
-/// listing already told it about, the same property `db::path_of` gives books.
+/// listing already told it about, the same property `Catalog::path_of` gives
+/// books.
 pub fn rom_path(root: &Path, id: &str) -> Option<PathBuf> {
     list_roms(root).into_iter().find(|rom| rom.id == id).map(|rom| PathBuf::from(rom.path))
 }

@@ -9,7 +9,7 @@
 //! for them by their old names, and because "the core is over there" is worth
 //! being able to see from here.
 
-pub use kleib3ry_core::{db, index, media, probe};
+pub use kleib3ry_core::{catalog, index, media, probe};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,13 +18,13 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use db::Book;
+use catalog::{Book, Catalog};
 
 /// What can go wrong in the shell: whatever the core can, plus Tauri itself.
 ///
 /// The core's errors are flattened rather than nested — `Core(#[from] ...)` with
 /// a transparent message — so a failure reads the same in the HUD whether it
-/// came from SQLite or from the window manager. A user does not care which
+/// came from the indexer or from the window manager. A user does not care which
 /// crate could not find their book.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -98,7 +98,6 @@ impl Settings {
 /// `kleib3ry_core::save_files`, which both this and the server read.
 struct Paths {
     settings: PathBuf,
-    database: PathBuf,
     covers: PathBuf,
     /// Used for the save files only until a library folder has been chosen.
     fallback: PathBuf,
@@ -112,7 +111,6 @@ impl Paths {
         fs::create_dir_all(&data)?;
         Ok(Self {
             settings: config.join("settings.json"),
-            database: data.join("library.sqlite"),
             covers: data.join("covers"),
             fallback: config.clone(),
         })
@@ -173,12 +171,12 @@ fn covers_dir(app: &AppHandle) -> Result<PathBuf> {
 /// In the library folder so that `npm run scan` and the app are looking at the
 /// same index — a command that scans a folder the app then ignores would be a
 /// trap. It is still a derived file: delete it and rescan.
-fn database(app: &AppHandle) -> Result<PathBuf> {
-    match root_of(app) {
-        Ok(root) => Ok(kleib3ry_core::save_files(&root).database),
-        Err(e) if is_no_root(&e) => Ok(paths(app)?.database),
-        Err(e) => Err(e),
-    }
+///
+/// No fallback for "no folder chosen yet": an index describes a library, and
+/// without one there is nothing to describe. Callers answer with an empty
+/// catalogue instead.
+fn index_file(app: &AppHandle) -> Result<PathBuf> {
+    Ok(kleib3ry_core::save_files(&root_of(app)?).index)
 }
 
 /// Let the WebView load images out of the cover cache.
@@ -241,8 +239,8 @@ fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
 
 use kleib3ry_core::{stamp_of, write_atomic};
 
-/// One scan at a time: two scans over one SQLite file race each other into a
-/// corrupt index, which is why the server refuses this too.
+/// One scan at a time: two scans of one folder only race each other's work,
+/// each overwriting the other's index, which is why the server refuses it too.
 #[derive(Default)]
 struct ScanGuard(std::sync::atomic::AtomicBool);
 
@@ -301,8 +299,15 @@ fn absolutise(mut books: Vec<Book>, covers: &Path) -> Vec<Book> {
 
 #[tauri::command]
 fn list_books(app: AppHandle) -> Result<Vec<Book>> {
-    let conn = db::open(&database(&app)?)?;
-    Ok(absolutise(db::list_books(&conn)?, &allow_covers(&app)?))
+    let root = match root_of(&app) {
+        Ok(root) => root,
+        // Nothing chosen yet is an empty library, not a failure.
+        Err(e) if is_no_root(&e) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let covers = allow_covers(&app)?;
+    let catalog = Catalog::load(&index_file(&app)?)?;
+    Ok(absolutise(catalog.list_books(&root, &covers), &covers))
 }
 
 /// Walk the library folder and reconcile the index with it.
@@ -328,7 +333,7 @@ fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<in
     let _release = Release(&guard);
 
     let root = root_of(&app)?;
-    let database = database(&app)?;
+    let index_path = index_file(&app)?;
     let covers = allow_covers(&app)?;
     let emitter = app.clone();
 
@@ -337,7 +342,7 @@ fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<in
     // the whole scan, plus the last one so the bar always finishes.
     let mut last = 0u32;
     // The core reports its own error type; the shell's wraps it.
-    Ok(index::scan(&root, &database, &covers, move |progress| {
+    Ok(index::scan(&root, &index_path, &covers, move |progress| {
         let step = (progress.total / 100).max(1);
         let final_item = progress.done >= progress.total;
         // The very first event always goes through so the bar appears at the
@@ -357,6 +362,9 @@ fn scan_library(app: AppHandle, guard: tauri::State<'_, ScanGuard>) -> Result<in
 /// several megabytes of native library, the front end rasterises page one with
 /// pdf.js — which it already loads for reading — and posts the result here to
 /// be cached like any other cover.
+///
+/// The file *is* the record: listing derives a book's cover from what is in the
+/// cache, so nothing has to write the index and the scan stays its only writer.
 #[tauri::command]
 fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<String> {
     // The id becomes a file name inside the covers directory. It is normally a
@@ -381,8 +389,6 @@ fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<S
     fs::create_dir_all(&covers)?;
     fs::write(covers.join(&name), &bytes)?;
 
-    let conn = db::open(&database(&app)?)?;
-    db::set_cover(&conn, &id, &name)?;
     Ok(covers.join(&name).to_string_lossy().to_string())
 }
 
@@ -393,8 +399,9 @@ fn save_rendered_cover(app: AppHandle, id: String, data_url: String) -> Result<S
 /// WebView far more of the disk than reading one indexed book requires.
 #[tauri::command]
 fn read_book_file(app: AppHandle, id: String) -> Result<tauri::ipc::Response> {
-    let conn = db::open(&database(&app)?)?;
-    let path = db::path_of(&conn, &id)?
+    let root = root_of(&app)?;
+    let path = Catalog::load(&index_file(&app)?)?
+        .path_of(&root, &id)
         .ok_or_else(|| Error::Core(kleib3ry_core::Error::UnknownBook(id)))?;
     Ok(tauri::ipc::Response::new(fs::read(path)?))
 }
@@ -664,24 +671,22 @@ mod tests {
             Book {
                 id: "a".into(),
                 path: "x.epub".into(),
-                format: db::Format::Epub,
+                format: catalog::Format::Epub,
                 title: "One".into(),
                 author: None,
                 cover: Some("a.jpg".into()),
                 page_count: None,
                 size_bytes: 1,
-                indexed_at: 0,
             },
             Book {
                 id: "b".into(),
                 path: "y.pdf".into(),
-                format: db::Format::Pdf,
+                format: catalog::Format::Pdf,
                 title: "Two".into(),
                 author: None,
                 cover: None,
                 page_count: None,
                 size_bytes: 1,
-                indexed_at: 0,
             },
         ];
 

@@ -19,7 +19,6 @@ export type IndexedBook = {
   cover: string | null
   pageCount: number | null
   sizeBytes: number
-  indexedAt: number
 }
 
 export type ScanProgress = { done: number; total: number; current: string }

@@ -7,7 +7,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
-use crate::db::{self, Book, Format};
+use crate::catalog::{relative_path, Book, Catalog, Format, COVER_EXTENSIONS};
 use crate::probe;
 use crate::Error;
 
@@ -91,21 +91,12 @@ fn hex16(bytes: &[u8]) -> String {
 }
 
 /// Milliseconds, matching `stamp_of`: whole seconds missed a same-length
-/// rewrite landing within one clock second. Rows stamped in seconds by older
-/// builds compare unequal and simply re-probe once — pre-launch, that is the
-/// entire migration.
+/// rewrite landing within one clock second.
 fn modified_millis(meta: &fs::Metadata) -> i64 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
-fn now_seconds() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
 
@@ -197,37 +188,43 @@ pub fn index_one(path: &Path, format: Format, covers_dir: &Path) -> Result<Book>
         cover,
         page_count: probed.page_count,
         size_bytes: meta.len(),
-        indexed_at: now_seconds(),
     })
 }
 
 /// Walk the library folder's `books/` — or the whole folder, if it has none —
-/// and bring the database in line with it.
+/// and bring the index in line with it.
 ///
 /// `on_progress` is called as each file is handled so the UI can show something
 /// during what may be a multi-minute scan of a large collection.
+///
+/// Two scans of one folder at once is refused a level up, in each shell. Across
+/// *processes* — the `scan` binary run while the app is open — the loser's work
+/// is simply overwritten, which costs a rescan and nothing else: the index is
+/// derived, and an atomic write leaves no half-file behind either way.
 pub fn scan(
     root: &Path,
-    db_path: &Path,
+    index_path: &Path,
     covers_dir: &Path,
     mut on_progress: impl FnMut(ScanProgress),
 ) -> Result<ScanSummary> {
-    let conn = db::open(db_path)?;
+    let mut catalog = Catalog::load(index_path)?;
     let files = discover(root);
 
     let mut summary = ScanSummary { found: files.len() as u32, ..Default::default() };
     let mut seen = Vec::with_capacity(files.len());
     // Files the walk found but could not open — a sync client's lock, not a
-    // deletion. Remembered so the prune below leaves their rows (and reading
-    // progress) alone.
+    // deletion. Remembered so the prune below leaves their entries alone, and
+    // with them the shelf position keyed by that id.
     let mut unreadable = Vec::new();
 
-    // Autocommit would fsync once per book — thousands of commits on a first
-    // scan. Batched commits keep the scan fast while still letting a cover
-    // save from the WebView get a turn between chunks.
-    const COMMIT_EVERY: u32 = 64;
-    let mut writes = 0u32;
-    conn.execute_batch("BEGIN")?;
+    // Saving rewrites the whole file, so a flush per book would be quadratic on
+    // a first scan of a large collection. Flushing on a count *and* an interval
+    // bounds that while still keeping a crash to a few seconds of lost probing
+    // rather than the whole walk.
+    const FLUSH_EVERY: u32 = 64;
+    const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut since_flush = 0u32;
+    let mut last_flush = std::time::Instant::now();
 
     for (i, (path, format)) in files.iter().enumerate() {
         on_progress(ScanProgress {
@@ -249,21 +246,24 @@ pub fn scan(
         seen.push(id.clone());
 
         let mtime = modified_millis(&meta);
-        if db::is_current(&conn, &id, meta.len(), mtime)? {
+        let rel = relative_path(root, path);
+        if catalog.is_current(&id, meta.len(), mtime) {
             // Unchanged content can still have moved; the stored path must
             // follow it or the book can never be opened again.
-            db::refresh_path(&conn, &id, &path.to_string_lossy())?;
+            catalog.refresh_path(&id, &rel);
             summary.unchanged += 1;
             continue;
         }
 
         match guard(|| index_one(path, *format, covers_dir)) {
             Some(Ok(book)) => {
-                db::upsert_book(&conn, &book, mtime)?;
+                catalog.upsert(&book, &rel, mtime);
                 summary.added += 1;
-                writes += 1;
-                if writes % COMMIT_EVERY == 0 {
-                    conn.execute_batch("COMMIT; BEGIN")?;
+                since_flush += 1;
+                if since_flush >= FLUSH_EVERY && last_flush.elapsed() >= FLUSH_INTERVAL {
+                    catalog.save(index_path)?;
+                    since_flush = 0;
+                    last_flush = std::time::Instant::now();
                 }
             }
             // Either the probe returned an error or it panicked outright.
@@ -271,11 +271,11 @@ pub fn scan(
         }
     }
 
-    let removed = db::prune_missing(&conn, &seen, &unreadable)?;
-    conn.execute_batch("COMMIT")?;
+    let removed = catalog.prune_missing(&seen, &unreadable);
+    catalog.save(index_path)?;
     for id in &removed {
         // Best effort: a leftover cover is harmless, a failed scan is not.
-        for ext in ["jpg", "png", "gif", "webp", "svg"] {
+        for ext in COVER_EXTENSIONS {
             fs::remove_file(covers_dir.join(format!("{id}.{ext}"))).ok();
         }
     }
@@ -419,15 +419,19 @@ mod tests {
     fn scanning_twice_reports_everything_unchanged() {
         let dir = temp_dir("rescan");
         let covers = dir.join("covers");
-        let db_path = dir.join("library.sqlite");
+        let index_path = dir.join("index.json");
         fs::write(dir.join("one.pdf"), b"pretend pdf").unwrap();
         fs::write(dir.join("two.epub"), b"pretend epub").unwrap();
 
-        let first = scan(&dir, &db_path, &covers, |_| {}).unwrap();
+        let first = scan(&dir, &index_path, &covers, |_| {}).unwrap();
         assert_eq!((first.found, first.added, first.unchanged), (2, 2, 0));
+        let written = fs::read(&index_path).unwrap();
 
-        let second = scan(&dir, &db_path, &covers, |_| {}).unwrap();
+        let second = scan(&dir, &index_path, &covers, |_| {}).unwrap();
         assert_eq!((second.found, second.added, second.unchanged), (2, 0, 2));
+        // Nothing changed, so the save file must not have either — which is
+        // what makes a library folder worth keeping in version control.
+        assert_eq!(fs::read(&index_path).unwrap(), written);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -436,21 +440,17 @@ mod tests {
     fn a_deleted_file_is_pruned_on_the_next_scan() {
         let dir = temp_dir("prune");
         let covers = dir.join("covers");
-        let db_path = dir.join("library.sqlite");
+        let index_path = dir.join("index.json");
         fs::write(dir.join("keep.pdf"), b"keep me").unwrap();
         fs::write(dir.join("drop.pdf"), b"drop me").unwrap();
 
-        scan(&dir, &db_path, &covers, |_| {}).unwrap();
+        scan(&dir, &index_path, &covers, |_| {}).unwrap();
         fs::remove_file(dir.join("drop.pdf")).unwrap();
 
-        let after = scan(&dir, &db_path, &covers, |_| {}).unwrap();
+        let after = scan(&dir, &index_path, &covers, |_| {}).unwrap();
         assert_eq!(after.removed, 1);
+        assert_eq!(Catalog::load(&index_path).unwrap().len(), 1);
 
-        let conn = db::open(&db_path).unwrap();
-        assert_eq!(db::count_books(&conn).unwrap(), 1);
-
-        // Windows will not delete a directory while the database is still open.
-        drop(conn);
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -487,10 +487,10 @@ mod tests {
         };
 
         let before = snapshot(&library);
-        scan(&library, &appdata.join("library.sqlite"), &appdata.join("covers"), |_| {}).unwrap();
+        scan(&library, &appdata.join("index.json"), &appdata.join("covers"), |_| {}).unwrap();
         // A second pass also exercises the prune path, which is the only place
         // the indexer deletes anything at all.
-        scan(&library, &appdata.join("library.sqlite"), &appdata.join("covers"), |_| {}).unwrap();
+        scan(&library, &appdata.join("index.json"), &appdata.join("covers"), |_| {}).unwrap();
         let after = snapshot(&library);
 
         assert_eq!(before, after, "the scan changed files in the library folder");
@@ -519,7 +519,7 @@ mod tests {
         fs::write(dir.join("b.pdf"), b"b").unwrap();
 
         let mut seen = Vec::new();
-        scan(&dir, &dir.join("db.sqlite"), &dir.join("covers"), |p| {
+        scan(&dir, &dir.join("index.json"), &dir.join("covers"), |p| {
             seen.push((p.done, p.total))
         })
         .unwrap();
@@ -554,9 +554,9 @@ mod tests {
         // directory. Everything the app writes must stay under `.library/`.
         let save = library.join(".library");
         let covers = save.join("covers");
-        let db = save.join("index.sqlite");
-        scan(&library, &db, &covers, |_| {}).unwrap();
-        scan(&library, &db, &covers, |_| {}).unwrap();
+        let index_path = save.join("index.json");
+        scan(&library, &index_path, &covers, |_| {}).unwrap();
+        scan(&library, &index_path, &covers, |_| {}).unwrap();
 
         assert_eq!(books(&library), before, "the scan touched the user's own files");
         assert!(library.join(".library").exists(), "expected the save folder to be created");

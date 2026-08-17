@@ -43,8 +43,7 @@ WORKDIR /build
 # accidentally start depending on the desktop shell.
 COPY core ./core
 COPY server ./server
-# rusqlite is built with its bundled SQLite, so this needs a C compiler — which
-# the rust image already has — and nothing else.
+# Pure Rust the whole way down: no C toolchain, no native library to link.
 RUN cargo build --release --manifest-path server/Cargo.toml
 
 # ---- what actually runs -----------------------------------------------------

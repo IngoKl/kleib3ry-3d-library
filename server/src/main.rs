@@ -27,7 +27,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use kleib3ry_core::{db, index, media, save_files, stamp_of, write_atomic};
+use kleib3ry_core::{catalog::Catalog, index, media, save_files, stamp_of, write_atomic};
 use serde_json::json;
 
 use http::{Request, Response};
@@ -57,7 +57,7 @@ struct State {
     config: Config,
     progress: Mutex<Progress>,
     /// Non-zero while a scan is running, so a second one is refused rather than
-    /// racing the first over the same SQLite file.
+    /// duplicating the first one's work and overwriting its index.
     scanning: AtomicU32,
 }
 
@@ -135,7 +135,7 @@ fn main() -> std::process::ExitCode {
 
     println!("kleib3ry");
     println!("  library  {}", root.display());
-    println!("  index    {}", files.database.display());
+    println!("  index    {}", files.index.display());
     println!("  front end {}", dist.display());
     println!("  listening on http://{bind}:{port}");
     if !dist.is_dir() {
@@ -219,8 +219,8 @@ fn route(request: &Request, state: &State) -> Handler {
 
         // ---- books -----------------------------------------------------------
         ("GET", "/api/books") => {
-            let conn = db::open(&files.database).map_err(oops)?;
-            let books = db::list_books(&conn).map_err(oops)?;
+            let catalog = Catalog::load(&files.index).map_err(oops)?;
+            let books = catalog.list_books(&state.config.root, &files.covers);
             // Covers come back as absolute paths, exactly as the desktop app's
             // do, and the driver turns them into `/media/...` URLs.
             let with_covers: Vec<_> = books
@@ -236,8 +236,8 @@ fn route(request: &Request, state: &State) -> Handler {
         }
 
         ("POST", "/api/scan") => {
-            // One at a time. Two scans over one SQLite file is a race with a
-            // corrupt index at the end of it.
+            // One at a time. Two scans of one folder only duplicate each
+            // other's work and overwrite each other's index.
             if state.scanning.swap(1, Ordering::SeqCst) == 1 {
                 return Ok(Response::text(409, "a scan is already running"));
             }
@@ -256,7 +256,7 @@ fn route(request: &Request, state: &State) -> Handler {
 
             let outcome = index::scan(
                 &state.config.root,
-                &files.database,
+                &files.index,
                 &files.covers,
                 |update| {
                     let mut progress = progress_of(state);
@@ -372,8 +372,8 @@ fn route_by_prefix(request: &Request, state: &State) -> Handler {
     // go, so there is nothing for a range to save.
     if method == "GET" {
         if let Some(id) = path.strip_prefix("/api/book/") {
-            let conn = db::open(&files.database).map_err(oops)?;
-            let Some(book) = db::path_of(&conn, id).map_err(oops)? else {
+            let catalog = Catalog::load(&files.index).map_err(oops)?;
+            let Some(book) = catalog.path_of(&state.config.root, id) else {
                 return Ok(Response::text(404, "no such book"))
             };
             let bytes = fs::read(&book).map_err(oops)?;
@@ -441,8 +441,7 @@ fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handle
     }
     // Only a book the index knows may have a cover cached — anything else is a
     // way to fill the disk with orphan PNGs, one POST at a time.
-    let conn = db::open(&files.database).map_err(oops)?;
-    if db::path_of(&conn, id).map_err(oops)?.is_none() {
+    if !Catalog::load(&files.index).map_err(oops)?.contains(id) {
         return Ok(Response::text(404, "no such book"));
     }
     let text = std::str::from_utf8(body).map_err(oops)?;
@@ -452,11 +451,12 @@ fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handle
         .ok_or("expected a base64 data URL")?;
     let bytes = decode_base64(payload).ok_or("not valid base64")?;
 
+    // The file is the record: listing derives a book's cover from the cache, so
+    // nothing writes the index here and the scan stays its only writer.
     let name = format!("{id}.png");
     fs::create_dir_all(&files.covers).map_err(oops)?;
     fs::write(files.covers.join(&name), &bytes).map_err(oops)?;
 
-    db::set_cover(&conn, id, &name).map_err(oops)?;
     Ok(Response::json(&json!({
         "path": files.covers.join(&name).to_string_lossy(),
     })))

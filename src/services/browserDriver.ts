@@ -57,7 +57,6 @@ const SAMPLE: IndexedBook = {
   cover: null,
   pageCount: 12,
   sizeBytes: 24_000,
-  indexedAt: 0,
 }
 
 const SAMPLE_EPUB: IndexedBook = {
@@ -71,7 +70,6 @@ const SAMPLE_EPUB: IndexedBook = {
   // which is why the index has always left this null for them.
   pageCount: null,
   sizeBytes: 11_000,
-  indexedAt: 0,
 }
 
 const PLACEHOLDERS: IndexedBook[] = buildCatalogue(PLACEHOLDER_COUNT).map((book, i) => ({
@@ -83,7 +81,6 @@ const PLACEHOLDERS: IndexedBook[] = buildCatalogue(PLACEHOLDER_COUNT).map((book,
   cover: null,
   pageCount: 80 + ((i * 37) % 400),
   sizeBytes: 1024 * (200 + ((i * 13) % 4000)),
-  indexedAt: 0,
 }))
 
 /**

@@ -30,7 +30,7 @@ My Library/                   ← the folder you choose in the app
                                  shelves. The app writes this.
     ambience.json              ← lamps, night, weather. Delete it for a bright dry day.
     annotations.json           ← your bookmarks and notes, by page. Readable as it is.
-    index.sqlite               ← what was found in the folder. Rebuildable.
+    index.json                 ← what was found in the folder. Rebuildable — and readable.
     covers/                    ← extracted and rendered cover art, cached
 ```
 
@@ -65,7 +65,18 @@ another machine and it does not have to be done again. Delete the folder and it
 is rebuilt on demand.
 
 **The index is in there too**, so that `npm run scan` and the app read the same
-one. It is still derived: delete `.library/index.sqlite` and rescan.
+one. It is still derived: delete `.library/index.json` and rescan.
+
+Every file in `.library/` is plain JSON, which means the whole folder can go into
+version control as it is — a rescan that finds nothing new writes nothing at
+all, and a diff is exactly the books that changed. The paths inside the index are
+relative to the library folder, so copying it to another machine, or into a
+container, does not strand a single book.
+
+One consequence worth knowing: a scan skips any file whose size and modified time
+are unchanged, so if you correct a `title` or an `author` in `index.json` by hand,
+the correction survives every later scan. A typo that breaks the JSON is reported
+rather than overwritten — deleting the file is how you start the index over.
 
 ## Scanning from the Command Line
 

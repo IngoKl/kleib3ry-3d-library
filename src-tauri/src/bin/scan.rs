@@ -50,11 +50,13 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let save = root.join(".library");
-    let covers = save.join("covers");
-    let database = save.join("index.sqlite");
+    // Through `save_files` rather than by hand, so this and the app cannot
+    // disagree about where a library keeps its index.
+    let files = kleib3ry_core::save_files(&root);
+    let covers = files.covers;
+    let index_path = files.index;
     if let Err(e) = std::fs::create_dir_all(&covers) {
-        eprintln!("cannot write to {}: {e}", save.display());
+        eprintln!("cannot write to {}: {e}", root.join(".library").display());
         return ExitCode::FAILURE;
     }
 
@@ -68,7 +70,7 @@ fn main() -> ExitCode {
             root.display()
         ),
     }
-    println!("index    {}", database.display());
+    println!("index    {}", index_path.display());
     println!("covers   {}", covers.display());
 
     // The file being read is printed *before* it is parsed, so if a book takes
@@ -82,7 +84,7 @@ fn main() -> ExitCode {
         }
     };
 
-    match index::scan(&root, &database, &covers, report) {
+    match index::scan(&root, &index_path, &covers, report) {
         Ok(summary) => {
             println!(
                 "\n{} found · {} new · {} unchanged · {} gone · {} unreadable",
