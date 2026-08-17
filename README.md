@@ -1,37 +1,44 @@
 # kleib3ry — 3D Virtual Personal Library
 
-Your own PDFs and EPUBs, on shelves you place, in a building you design, read as
-physical books — with a record player wired to your music folder and a television
-wired to your videos.
+![kleib3ry](.repo-media/Header.jpg)
 
-- **Read them.** Take a book off the shelf, turn pages on a curved mesh — PDF or
-  EPUB.
-- **Furnish it.** Records, tapes, framed artwork, lamps, tables to leave a book
-  on.
-- **Leave things.** Tear out a page, pin it to a wall, write on the whiteboard.
-- **Live in it.** Weather, a searchable terminal on the office desk, and a cat.
-- **Design it.** The building is a file — `.library/library.json` — and editing it
-  reloads the room while you stand in it.
+Imagine going into a game-like 3D environment, picking up a book from your ebook collection and browsing through it. Imagine sitting in a virtual lakeside cabin reading PDFs and ePubs and annotating them. Imagine browsing your ebook collection in virtual bookshelfs rather than folders on your computer. Imagine having a virtual cat bringing you randoms books to read.
 
-The default map is a cabin in the woods with twenty bookcases, a loft, a lake, a
-forest you can walk into, and a second building on the far shore. A freshly
-indexed library arrives in moving boxes; unpacking it is yours to do.
+This, at its core, is what this project is all about. I started building it after a conversation on the fact that there's a stark difference between a collection of physical books and of digital books – we rarely browse through the digital ones.
 
-## Two Ways to Run It
+Please be aware that this is a fun little side project – a (tech) demo for something I would like to have; something I would love someone else to build in a fully-fledged, more beautiful way.
 
-Both are the same program over the same library folder — see
-[docs/modes.md](docs/modes.md).
+## Some Noteworthy Features
 
-**Desktop app** — a Tauri 2 window, with a native folder picker:
+- Libraries (or savegames) are purely text-based and can be put under version control.
+- Maps can be defined and hence designed by changing the `library.json` in the `.library` folder within a library. The default map is a lakeside cabin in the woods, and the room reloads while you are standing in it.
+- Nothing shelves itself. A scan stacks your books in moving boxes on the floor; unpacking and sorting is something for you to do.
+- There is a cat and a delivery person; they can deliver food (not real), random books as well as arXiv papers freshly downloaded from the internet.
+- It is not only about books: Records (audio files) for the record player, pictures for the frames, tapes (video files) for the television, and an arcade machine that is a real CHIP-8 interpreter.
+
+## Getting Your Own Library
+
+### There are Two Ways to Run It
+
+Both are the same program over the same library folder — see [docs/modes.md](docs/modes.md).
+
+#### Desktop Application
+
+The easiest way to get started is to simply download a current release (`kleib3ry.exe`) and point it towards the demo library.
+
+If you want to go the "developer route", start like this:
 
 ```bash
 npm install
-npm run assets         # pdf.js fonts + cmaps — needed after a fresh clone
+npm run assets
 npm run tauri:dev
 ```
 
-Then **Choose Folder…**, then **Scan**. `npm run tauri:build` makes a Windows
-installer and a standalone `.exe`.
+Then **Choose Folder…**, then **Scan**.
+
+`npm run tauri:build` makes a Windows installer and a standalone `.exe`.
+
+#### Hosted Web-Application
 
 **Hosted, in a container** — the same library served to a browser:
 
@@ -43,7 +50,7 @@ docker run --rm -p 8080:8080 -v /path/to/your/library:/library kleib3ry
 Open <http://localhost:8080> and press **Scan** once. One library, one household,
 a network you trust — no accounts, no TLS ([docs/docker.md](docs/docker.md)).
 
-## Demo Library
+### There is a Demo Library
 
 [`demo-data/demo-library/`](demo-data/demo-library/) is a complete, freely-licensed
 library folder: ten [Standard Ebooks](https://standardebooks.org/) titles, two
@@ -56,7 +63,9 @@ docker run --rm -p 8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
 
 Credits in [its own README](demo-data/demo-library/README.md).
 
-## Your Library Folder
+### Your Library Folder
+
+The application runs on top of a library folder. This library contains, for example, books, music, videos etc. It also contains the current state of the virtual library, the "savegame."
 
 ```text
 My Library/
@@ -70,34 +79,3 @@ My Library/
 
 Only `books/` is needed. The app never writes among your books and never rewrites
 `library.json`. See [docs/library-folder.md](docs/library-folder.md).
-
-## Controls
-
-`F1` in the room shows every key; [docs/controls.md](docs/controls.md) is the
-same list on a page. The short version: click to look, `WASD` to walk, `E` to
-take a book off the shelf, `R` to read it, drag a page to turn it.
-
-## Documentation
-
-Everything is in **[docs/](docs/README.md)**. The ones people want first:
-
-|                                               |                                                              |
-| --------------------------------------------- | ------------------------------------------------------------ |
-| [modes.md](docs/modes.md)                     | the desktop app and the container, side by side              |
-| [getting-started.md](docs/getting-started.md) | point it at your books, find your way round                  |
-| [custom-maps.md](docs/custom-maps.md)         | build your own building — rooms, lofts, stairs, roofs, light |
-| [architecture.md](docs/architecture.md)       | how it is put together, and why                              |
-| [development.md](docs/development.md)         | commands, tests, the frame budget                            |
-
-## Built With
-
-React Three Fiber and three.js in a Tauri 2 shell, with a Rust core doing
-indexing, a JSON index and format probing — and the same core behind a small
-HTTP server for the container. pdf.js reads the PDFs; EPUBs are unzipped and set
-in type by the app itself. Nothing above `src/services/` imports `@tauri-apps/*`,
-which is why the hosted mode could be added without touching the app.
-
-## Licence
-
-MIT — see [LICENSE](LICENSE). © 2026 Ingo Kleiber. The demo library has its own
-credits in [its README](demo-data/demo-library/README.md).

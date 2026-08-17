@@ -1,9 +1,8 @@
 /**
- * The shared geometry vocabulary. Every assembled thing here — the cat, the
- * body, a carcass, a room shell, a staircase — is boxes merged into one
- * geometry per material, and each of those files had grown its own copy of
- * the same two helpers. They live here now, together with the two builders
- * the furniture upgrade added: a chamfered box, and a turned profile.
+ * The shared geometry vocabulary. Everything assembled out of boxes — the cat,
+ * the body, a shelf carcass, a room shell, a staircase — is merged into one
+ * geometry per material through these helpers, plus a chamfered box and a
+ * turned profile.
  */
 
 import * as THREE from 'three'

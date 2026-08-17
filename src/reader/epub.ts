@@ -1,28 +1,20 @@
 import { openZip, readEntry, readText, ZipError, type ZipEntry } from './zip'
 
 /**
- * An EPUB, reduced to the only thing a reader with no browser engine in it can
- * use: an ordered list of paragraphs.
+ * An EPUB reduced to an ordered list of headings and paragraphs — the most a
+ * reader with no browser engine can use.
  *
- * This is the honest version of "EPUB support". An EPUB is a website in a zip
- * file, and rendering one *properly* means a CSS engine — which is a thing this
- * app is running inside of and cannot point at a page mesh. What it can do is
- * take the thing an e-book actually is, which is a sequence of headings and
- * paragraphs in reading order, and set it in type on a page. Everything an
- * author's stylesheet was doing is lost, and what is kept is the book.
+ * These are the limits of "EPUB support" here. Rendering one properly would
+ * mean a CSS engine that cannot be pointed at a page mesh, so the author's
+ * stylesheet is lost and the reading order is kept. Deliberately dropped:
  *
- * The parts deliberately dropped, and why:
+ *   - **CSS**, per above;
+ *   - **images** — flowing one round text needs a layout engine; alt text is
+ *     kept;
+ *   - **footnote links, indexes, page lists** — navigation, and the only
+ *     navigation here is a page number, which `J` already does.
  *
- *   - **CSS.** See above. A book that arrives with 40 px of letter-spacing and
- *     a background image is a book you cannot read on a shelf either.
- *   - **Images.** A picture in the middle of a text page needs a layout engine
- *     to flow round; their alt text is kept, which is what the author wrote for
- *     exactly this situation.
- *   - **Footnote links, indexes, page lists.** They are navigation, and there is
- *     nothing here to navigate with but a page number — which `J` already does.
- *
- * The spine order is honoured, and each document in it starts a new page,
- * because that is what a chapter break is.
+ * Spine order is honoured, and each document in it starts a new page.
  */
 
 export type BlockKind = 'title' | 'heading' | 'subheading' | 'paragraph' | 'quote' | 'break'

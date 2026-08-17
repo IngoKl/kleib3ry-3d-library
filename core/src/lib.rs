@@ -1,16 +1,9 @@
-//! The part of kleib3ry that has nothing to do with a window.
+//! Indexing, the JSON index, format and tag probes, and the media folders.
 //!
-//! Indexing a folder of books, keeping the index in a JSON file beside them,
-//! probing PDFs and EPUBs for their metadata and cover art, and walking the
-//! `music/`, `artwork/`, `video/` and `roms/` folders. No Tauri, no WebView, no
-//! GUI toolkit — which is the whole point of it being its own crate.
-//!
-//! It was carved out of the desktop app when the container arrived. The desktop
-//! shell and the HTTP server both want exactly these four modules and nothing
-//! else, and building them through a crate that links GTK and WebKit meant a
-//! Linux image carrying a browser engine in order to read a directory. Nothing
-//! moved *logically*: `src-tauri/src/lib.rs` was already only commands, paths
-//! and settings, and these modules never mentioned Tauri once.
+//! No Tauri, no WebView, no GUI toolkit: both the desktop shell and the HTTP
+//! server want exactly these modules, and keeping them free of a GUI is what
+//! lets the container be a binary rather than a Linux image carrying a browser
+//! engine in order to read a directory.
 
 pub mod catalog;
 pub mod index;
@@ -18,12 +11,9 @@ pub mod media;
 pub mod paper;
 pub mod probe;
 
-/// What can go wrong below the shell.
-///
-/// Deliberately without the shell's own failures in it: there is no `Tauri`
-/// variant, because nothing in this crate can fail that way. The desktop app
-/// wraps this in an error of its own that has one, and the server wraps it in a
-/// status code — see each of them for the mapping.
+/// What can go wrong below the shell. No `Tauri` variant — nothing here can
+/// fail that way. The desktop app wraps this in an error that has one; the
+/// server maps it to a status code.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -38,8 +28,7 @@ pub enum Error {
     UnknownBook(String),
     #[error("bad image data: {0}")]
     BadImage(String),
-    /// The only failures in this crate that are somebody else's fault: arXiv is
-    /// the one thing kleib3ry talks to that it does not own — see `paper`.
+    /// arXiv is the only network kleib3ry talks to — see `paper`.
     #[error("{0}")]
     Network(String),
     #[error("no paper on arXiv with id {0}")]
@@ -50,30 +39,22 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// The folder inside a library folder that holds everything the app owns.
-///
-/// Keeping the save files together in one named folder means the library folder
-/// stays *your books* — one extra directory rather than app files scattered
-/// among them — and the scanner skips it by name (see `index::SKIP_DIRS`) so
-/// nothing in here is ever mistaken for a book.
+/// The folder inside a library folder that holds everything the app owns, so
+/// the rest of the folder stays the user's. Skipped by name when scanning (see
+/// `index::SKIP_DIRS`).
 pub const CONFIG_DIR: &str = ".library";
 
-/// Where a library folder keeps the things the app writes.
-///
-/// One place for the whole layout, so the desktop shell and the server cannot
-/// disagree about where a library is saved — which they did once, and the
-/// symptom was a container that could not see the shelves you had arranged on
-/// the desktop.
+/// Where a library folder keeps the things the app writes. One definition, so
+/// the desktop shell and the server cannot disagree about where a library is
+/// saved.
 pub struct SaveFiles {
     /// The room, hand-edited, comments and all.
     pub world: std::path::PathBuf,
-    /// Which book sits on which shelf. Machine-written, far too long to read.
+    /// Which book sits on which shelf. Machine-written.
     pub layout: std::path::PathBuf,
-    /// Which lamps are on, whether it is night, whether it is raining. Its own
-    /// file so deleting it brings back every light and the dry daylight.
+    /// Lamps, night and weather. Its own file so deleting it resets them.
     pub ambience: std::path::PathBuf,
-    /// Bookmarks and notes, by page number. Deliberately its own readable
-    /// file, so your marginalia are yours without the app.
+    /// Bookmarks and notes, by page number. Its own file, readable without the app.
     pub annotations: std::path::PathBuf,
     /// The book index. Derived: delete it and rescan.
     pub index: std::path::PathBuf,
@@ -105,9 +86,8 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
     std::fs::write(&tmp, bytes)?;
     match std::fs::rename(&tmp, path) {
         Ok(()) => Ok(()),
-        // Windows can refuse to rename over a file another process holds open;
-        // remove-then-rename is not atomic but still narrower than writing in
-        // place ever was.
+        // Windows refuses to rename over a file another process holds open.
+        // Remove-then-rename is not atomic, but narrower than writing in place.
         Err(_) if path.exists() => {
             std::fs::remove_file(path)?;
             std::fs::rename(&tmp, path)
@@ -116,12 +96,9 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
     }
 }
 
-/// Changed-ness of a file, cheaply: modified time and length.
-///
-/// The front end polls this so that editing `library.json` in any editor reloads
-/// the room. A stamp rather than the contents keeps the poll to a stat call, and
-/// comparing both fields catches an edit that happens to preserve the length
-/// within the same clock tick.
+/// Changed-ness of a file, cheaply: modified time and length. Polled by the
+/// front end for live reload — a stamp keeps that to a stat call, and both
+/// fields together catch a same-length edit inside one clock tick.
 pub fn stamp_of(path: &std::path::Path) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta
@@ -143,7 +120,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("save.json");
 
-        // Creates missing parents, like the in-place writes it replaces did.
+        // Missing parents are created.
         write_atomic(&path, b"{\"a\":1}").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"{\"a\":1}");
 

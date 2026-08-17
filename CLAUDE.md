@@ -107,23 +107,28 @@ against them, and books are served by index id rather than by name.
 ## How the Pieces Fit
 
 **Layout is ids, positions are derived.** The persisted layout document is mostly
-`{ schemaVersion, rows: { "shelfId:row": [bookId, ...] }, boxes: { boxId: [bookId, ...] } }`.
+`{ rows: { "shelfId:row": [bookId, ...] }, boxes: { boxId: [bookId, ...] } }`.
 Physical placement is recomputed by packing each row left to right in
 [src/scene/shelving.ts](src/scene/shelving.ts) and each box bottom-up in
 [src/world/boxes.ts](src/world/boxes.ts), so a book whose dimensions change pushes
 neighbours along instead of overlapping. Rust stores this document verbatim
 (`get_layout`/`save_layout`) — the schema is owned entirely by the front end.
 
-The exceptions store real positions, because "there, where I put it" cannot be
-derived from an ordering: `loose` (a book on a table or the floor), `pins` (sheets
-on walls), `records.loose` and `props` (the coffee cup — there is exactly one, id
-`cup` — the fridge's cans, the takeaway boxes, and the `headlamp`, which is
-written down only while it is off your head; `F` drinks or eats, the coffee
-writes `player.boostUntil`, the kitchen `bin` destroys empties, and the `phone`'s
-delivery is walked in by the courier in `state/courier.ts` and lands at
-`deliverySpot` in `world/derive.ts` — a takeaway, or an **arXiv paper**, which
-is downloaded and indexed by [core/src/paper.rs](core/src/paper.rs) and then
-carried in as an ordinary book). Keep the list short.
+Four things store real positions, because "there, where I put it" cannot be
+derived from an ordering — keep the list short:
+
+- `loose` — a book on a table or the floor
+- `pins` — sheets on walls
+- `records.loose` — a record set down
+- `props` — the coffee cup (exactly one, id `cup`), the fridge's cans, the
+  takeaway boxes, and the `headlamp` (written down only while it is off your
+  head)
+
+`F` drinks or eats; the coffee writes `player.boostUntil`; the kitchen `bin`
+destroys empties. The `phone` orders a delivery, which the courier in
+`state/courier.ts` walks to `deliverySpot` in `world/derive.ts` — a takeaway, or
+an **arXiv paper**, downloaded and indexed by
+[core/src/paper.rs](core/src/paper.rs) and carried in as an ordinary book.
 
 **Records are dealt, not arranged.** Every `recordshelf` takes a slice of `music/`
 in folder order, so nothing has to be written down for a few hundred sleeves to
@@ -156,7 +161,7 @@ a box runs `emptyBoxOntoShelves`, which fills empty rows nearest case first;
 `E` takes one book out or puts one back into the box you are looking at. The
 boxes are furniture you manage: `X` carries one, `Backspace` breaks an empty one
 down, and `E` on the kitchen's `boxstack` makes a new one up — spawned and
-removed boxes are layout state (`books.json`, currently schema 9), never
+removed boxes are layout state (`books.json`), never
 `library.json`.
 
 **Some furniture you carry off.** `PORTABLE` in `world/derive.ts` is the list —
@@ -164,7 +169,7 @@ the folding chair and the folding table, which live on the porch — and `X` pic
 one up and sets it down exactly the way it does a box, writing a
 `FurnitureOverride` into `books.json`. They are ordinary furniture in every other
 respect: you sit on the one and put a book on the other, so the crosshair offers
-both verbs at once. The document says where a piece *lives*; the override says
+both verbs at once. The document says where a piece _lives_; the override says
 where you left it.
 
 **Books live in `<library>/books/`.** `index::discover` confines the scan to that
@@ -278,6 +283,18 @@ faded by `ambienceBlend` rather than mounted and unmounted, and thinned or
 dropped in Low Performance Mode — except `ContactShadows.tsx` and `LampGlow.tsx`,
 which are deliberately kept, because with the shadow map off they are the only
 things grounding furniture and making a lit lamp read as lit.
+
+**A lamp is not a light.** Three.js forward rendering has no per-object light
+culling, so every point light in the scene is a term in every lit fragment's
+shader — the default map's forty lamps and window reveals were all being paid for
+by every pixel, everywhere. [src/scene/lightPool.ts](src/scene/lightPool.ts)
+holds a fixed pool (eight, `lightBudget`) and re-points it at the nearest lit
+candidates as you walk. The count must never change with position: it is what
+every lit material is compiled against. An unlit lamp is not a candidate, so off
+is cheaper and not merely darker. The sun's shadow box follows the camera at 18 m
+rather than spanning the document. Anything that wants to light the room is a
+`PoolLight`; the television's glow and the campfire are the two deliberate
+exceptions, mounted only while running.
 
 **The HUD is what is under the crosshair and what is going wrong; everything else
 is behind a key.** The main menu (`src/ui/MainMenu.tsx`) chooses a library while

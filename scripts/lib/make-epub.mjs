@@ -1,19 +1,14 @@
 /**
- * A minimal, genuinely parseable EPUB writer — raw zip syntax, no dependencies
- * and no binary fixtures in the repo.
+ * A minimal, genuinely parseable EPUB writer — raw zip syntax, no dependencies,
+ * no binary fixtures in the repo. Counterpart to `make-pdf.mjs`: the browser
+ * driver has no filesystem, so without one real file of each format the reader
+ * can only be exercised by `test:desktop`.
  *
- * The counterpart to `make-pdf.mjs`, and it exists for the same reason: the
- * browser driver has no filesystem, so without one real file of each format the
- * reader can only be exercised by `test:desktop`, which needs a built installer
- * and a library folder of somebody's actual books.
- *
- * Both compression methods appear in the file, on purpose. `mimetype` and
- * `META-INF/container.xml` are *stored* — the first because the EPUB
- * specification says so, the second so that `zip.ts`'s method-0 branch is
- * exercised by opening the sample at all — and everything else is deflated,
- * which is what a real book is and what sends the reader through
- * `DecompressionStream`. A fixture that only used one of the two would leave
- * half of the unzipping untested by the one file that tests any of it.
+ * Both compression methods appear on purpose. `mimetype` and
+ * `META-INF/container.xml` are *stored* (the first because the spec says so,
+ * the second so `zip.ts`'s method-0 branch is exercised by opening the sample
+ * at all); everything else is deflated, which sends the reader through
+ * `DecompressionStream`.
  */
 import { deflateRawSync } from 'node:zlib'
 

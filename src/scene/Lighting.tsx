@@ -1,18 +1,13 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import {
-  ambienceBlend,
-  colorCorners,
-  goldenWarmth,
-  mixColor,
-  mixNumber,
-  type Corners,
-} from './ambienceBlend'
+import { ambienceBlend, colorCorners, goldenWarmth, mixColor, mixNumber } from './ambienceBlend'
 import { FurnitureLights } from './Furniture'
+import { assign, emptySlot, lampCandidates, poolBindings, type PoolLight } from './lightPool'
+import { approach } from '../lib/ease'
 import { roomBounds } from '../world/derive'
-import type { RoomSpec } from '../world/schema'
-import { useSettings } from '../state/settings'
+import { useAmbienceStore } from '../state/ambience'
+import { effectiveQuality, SHADOW_MAP_SIZE, useSettings } from '../state/settings'
 import { useWorldStore } from '../state/world'
 
 /**
@@ -24,39 +19,16 @@ import { useWorldStore } from '../state/world'
  * across the library reads as one building rather than several. At night the
  * same light is the moon, low and cold, so the shadow path never changes shape.
  *
- * The lamps themselves are no longer invented per room — they are furniture in
- * `library.json`, and switching one off is a thing you can do. What is left
- * here is the light that has no fitting: the sun, the sky, and the wash coming
- * back off a window reveal. A room that declares no lamps at all still gets one
- * soft fixture, so that a map somebody is halfway through writing is not pitch
- * dark while they write it.
+ * Everything with a *position* — the lamps in the furniture, the wash coming
+ * back off a window reveal, the fallback fixture a room with no lamp of its own
+ * gets — is a candidate for the light pool rather than a mounted light. See
+ * [lightPool.ts](./lightPool.ts) for why the count is fixed and the bindings
+ * move. What is left mounted here is the light with no position at all: the
+ * sun, the sky, and the ambient floor.
  *
  * Intensities are kept low: hot pools under the pendants and sun stripes you can
  * read by are a stage set rather than an afternoon.
  */
-
-/** A point light whose colour, intensity and reach fade with the ambience. */
-function FadeLight({
-  position,
-  colour,
-  intensity,
-  distance,
-}: {
-  position: [number, number, number]
-  colour: Corners<THREE.Color>
-  intensity: Corners<number>
-  distance: Corners<number>
-}) {
-  const light = useRef<THREE.PointLight>(null)
-  useFrame(() => {
-    const node = light.current
-    if (!node) return
-    mixColor(node.color, colour)
-    node.intensity = mixNumber(intensity)
-    node.distance = mixNumber(distance)
-  })
-  return <pointLight ref={light} position={position} intensity={0} />
-}
 
 const REVEAL_COLOUR = colorCorners({
   day: '#dceaf6',
@@ -66,61 +38,9 @@ const REVEAL_COLOUR = colorCorners({
 })
 const REVEAL_INTENSITY = { day: 2.8, dayRain: 1.7, night: 1.0, nightRain: 1.0 }
 const REVEAL_DISTANCE = { day: 9, dayRain: 9, night: 7, nightRain: 7 }
-
-function RoomFill({
-  room,
-  unlit,
-  reveals,
-}: {
-  room: RoomSpec
-  unlit: boolean
-  /** False in low performance mode: see `Lighting` for what that is buying. */
-  reveals: boolean
-}) {
-  const [cx, cz] = room.origin
-  const bounds = roomBounds(room)
-
-  return (
-    <>
-      {unlit && !room.outdoor && (
-        <pointLight
-          position={[cx, room.elevation + room.height - 0.5, cz]}
-          intensity={3.6}
-          distance={Math.hypot(room.size[0], room.size[1]) + 2}
-          color="#ffd9a8"
-        />
-      )}
-
-      {/* Soft bounce off the reveal of each window, back into the room. An
-          unglazed opening — a balustrade, a porch railing — is not a window and
-          does not light anything. At night the same wash goes cold and faint:
-          moonlight on the reveal rather than sky. */}
-      {(reveals ? room.openings : [])
-        .filter((opening) => opening.kind === 'window' && opening.glazed)
-        .map((opening, i) => {
-          const y = room.elevation + opening.sill + opening.height / 2
-          const inset = 0.8
-          const position: [number, number, number] =
-            opening.wall === 'north'
-              ? [cx + opening.at, y, bounds.minZ + inset]
-              : opening.wall === 'south'
-                ? [cx + opening.at, y, bounds.maxZ - inset]
-                : opening.wall === 'west'
-                  ? [bounds.minX + inset, y, cz + opening.at]
-                  : [bounds.maxX - inset, y, cz + opening.at]
-          return (
-            <FadeLight
-              key={`win-${i}`}
-              position={position}
-              colour={REVEAL_COLOUR}
-              intensity={REVEAL_INTENSITY}
-              distance={REVEAL_DISTANCE}
-            />
-          )
-        })}
-    </>
-  )
-}
+/** Metres of handicap a window reveal carries when the pool ranks it. */
+const REVEAL_BIAS = 2
+const FALLBACK_COLOUR = new THREE.Color('#ffd9a8')
 
 const AMBIENT_COLOUR = colorCorners({
   day: '#fdf2e0',
@@ -156,20 +76,104 @@ const GOLDEN_SKY = new THREE.Color('#d9a06a')
 /** The blue-white everything pales to for a lightning frame. */
 const LIGHTNING_COLD = new THREE.Color('#dfe6ff')
 
+/**
+ * How much ground the shadow map covers, in metres either side of you. A small
+ * box following the camera, rather than one covering the whole document: at
+ * this size 512 gives the quality a document-wide box needed 2048 for.
+ */
+const SHADOW_RADIUS = 18
+/** How far back up the sun's own direction the light sits. Covers the box above. */
+const SHADOW_THROW = 42
+
+/**
+ * The pool itself: a fixed count of point lights, re-pointed at whatever is
+ * nearest. Fixed, because the count is what every lit material is compiled
+ * against — see [lightPool.ts](./lightPool.ts).
+ */
+function LightPool({ candidates, slots }: { candidates: PoolLight[]; slots: number }) {
+  const lights = useRef<(THREE.PointLight | null)[]>([])
+  const state = useMemo(() => {
+    poolBindings.length = slots
+    poolBindings.fill(null)
+    return Array.from({ length: slots }, emptySlot)
+  }, [slots])
+  const byId = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates])
+  const frame = useRef(0)
+  const primed = useRef(false)
+
+  useFrame((three, delta) => {
+    // Re-ranking every frame is wasted work and invites churn; a few times a
+    // second sits well inside the crossfade below.
+    frame.current += 1
+    if (frame.current % 8 === 1) assign(state, candidates, three.camera.position)
+
+    const rise = approach(6, delta)
+    for (let i = 0; i < state.length; i++) {
+      const slot = state[i]!
+      const light = lights.current[i]
+      if (!light) continue
+
+      if (!primed.current && slot.wantedId) {
+        // The room must not visibly warm up on load: the first binding lands on
+        // its target rather than fading in from dark.
+        slot.currentId = slot.wantedId
+        slot.level = 1
+      } else if (slot.wantedId !== slot.currentId) {
+        // Hand over dark. A slot never jumps from one lamp to another while lit,
+        // which is what keeps a re-binding from reading as a flash.
+        slot.level += (0 - slot.level) * rise
+        if (slot.level < 0.02) {
+          slot.level = 0
+          slot.currentId = slot.wantedId
+        }
+      } else if (slot.currentId) {
+        slot.level += (1 - slot.level) * rise
+      }
+
+      const candidate = slot.currentId ? byId.get(slot.currentId) : undefined
+      poolBindings[i] = candidate ? slot.currentId : null
+      if (!candidate) {
+        // Its lamp was switched off, so it stopped being a candidate mid-fade.
+        // Free the slot outright rather than crossfading away from something
+        // already dark, or the lamp that replaces it waits for a fade nobody
+        // can see.
+        light.intensity = 0
+        slot.level = 0
+        continue
+      }
+      const [x, y, z] = candidate.position
+      light.position.set(x, y, z)
+      light.intensity = candidate.apply(light) * slot.level
+    }
+    if (frame.current > 1) primed.current = true
+  })
+
+  return (
+    <>
+      {Array.from({ length: slots }, (_, i) => (
+        <pointLight
+          key={i}
+          ref={(node) => {
+            lights.current[i] = node
+          }}
+          intensity={0}
+        />
+      ))}
+    </>
+  )
+}
+
 export function Lighting() {
   const world = useWorldStore((s) => s.world)
-  /**
-   * Low performance mode drops the window reveals and the shadow map.
-   *
-   * The reveals are the expensive half and the surprising one: they are a point
-   * light per glazed opening, and the default cabin has fourteen of them, all
-   * of which every lit fragment in the building has to be shaded against. The
-   * ambient floor is raised to make up for them, so a room is dimmer and
-   * flatter rather than dark.
-   */
-  const low = useSettings((s) => s.lowPerformance)
+  const on = useAmbienceStore((s) => s.on)
+  const settings = useSettings()
+  const quality = effectiveQuality(settings)
 
-  /** One shadow camera wide enough to cover every room in the document. */
+  /**
+   * The bounding box of every room in the document. Only the sun's *direction*
+   * is derived from it — the shadow camera itself is `SHADOW_RADIUS` and
+   * follows the player.
+   */
   const extent = useMemo(() => {
     if (!world || world.rooms.length === 0) {
       return { minX: -5, maxX: 5, minZ: -5, maxZ: 5, height: 3.2 }
@@ -190,12 +194,82 @@ export function Lighting() {
     return { minX, maxX, minZ, maxZ, height }
   }, [world])
 
-  /** Rooms with no lamp of their own, which get a fallback fixture. */
-  const unlit = useMemo(() => {
-    if (!world) return new Set<string>()
+  /**
+   * Every positioned light in the building, as pool candidates: the lamps that
+   * are alight, the wash off each glazed reveal, and a fallback fixture for a
+   * room that declares no lamp at all — so a map somebody is halfway through
+   * writing is not pitch dark while they write it.
+   */
+  const candidates = useMemo(() => {
+    if (!world) return []
     const lit = new Set(world.lights.map((lamp) => lamp.roomId))
-    return new Set(world.rooms.map((room) => room.id).filter((id) => !lit.has(id)))
+    const out: PoolLight[] = lampCandidates(world.lights, on)
+
+    for (const room of world.rooms) {
+      const [cx, cz] = room.origin
+      const bounds = roomBounds(room)
+
+      if (!lit.has(room.id) && !room.outdoor) {
+        const range = Math.hypot(room.size[0], room.size[1]) + 2
+        out.push({
+          id: `fill-${room.id}`,
+          position: [cx, room.elevation + room.height - 0.5, cz],
+          reach: range,
+          apply: (light) => {
+            light.color.copy(FALLBACK_COLOUR)
+            light.distance = range
+            return 3.6
+          },
+        })
+      }
+
+      // Soft bounce off the reveal of each window, back into the room. An
+      // unglazed opening — a balustrade, a porch railing — is not a window and
+      // does not light anything. At night the same wash goes cold and faint.
+      for (const [i, opening] of room.openings.entries()) {
+        if (opening.kind !== 'window' || !opening.glazed) continue
+        const y = room.elevation + opening.sill + opening.height / 2
+        const inset = 0.8
+        const position: [number, number, number] =
+          opening.wall === 'north'
+            ? [cx + opening.at, y, bounds.minZ + inset]
+            : opening.wall === 'south'
+              ? [cx + opening.at, y, bounds.maxZ - inset]
+              : opening.wall === 'west'
+                ? [bounds.minX + inset, y, cz + opening.at]
+                : [bounds.maxX - inset, y, cz + opening.at]
+        out.push({
+          id: `win-${room.id}-${i}`,
+          position,
+          // Ranked a little shorter than it reaches, so a wall of windows does
+          // not crowd the room's own lamps out of the pool. A reveal is a wash;
+          // a lamp is the light the room is actually for.
+          reach: REVEAL_DISTANCE.day - REVEAL_BIAS,
+          apply: (light) => {
+            mixColor(light.color, REVEAL_COLOUR)
+            light.distance = mixNumber(REVEAL_DISTANCE)
+            return mixNumber(REVEAL_INTENSITY)
+          },
+        })
+      }
+    }
+    return out
+  }, [world, on])
+
+  /**
+   * Never more slots than the building could ever fill, so a one-room map does
+   * not carry eight lights it has no use for. Stable for a given document:
+   * switching a lamp off changes which candidates exist, never how many slots.
+   */
+  const ceiling = useMemo(() => {
+    if (!world) return 0
+    const reveals = world.rooms.reduce(
+      (n, room) => n + room.openings.filter((o) => o.kind === 'window' && o.glazed).length,
+      0,
+    )
+    return world.lights.length + reveals + world.rooms.length
   }, [world])
+  const slots = Math.max(1, Math.min(quality.lightBudget, ceiling))
 
   const spanX = extent.maxX - extent.minX
   const spanZ = extent.maxZ - extent.minZ
@@ -208,15 +282,33 @@ export function Lighting() {
   // world origin no matter where the building is.
   const sunTarget = useMemo(() => new THREE.Object3D(), [])
 
+  /**
+   * Which way the light comes from: low and to the north-west, over the lake.
+   * Derived from the document once and then held — the sun travels with the
+   * player so the shadow map stays overhead, so only its direction is a fact
+   * about the building.
+   */
+  const sunDirection = useMemo(() => {
+    const from = new THREE.Vector3(
+      midX - spanX * 0.5,
+      extent.height + radius * 0.55,
+      extent.minZ - radius * 0.7,
+    )
+    return from.sub(new THREE.Vector3(midX, 0, midZ)).normalize()
+  }, [midX, midZ, spanX, extent.height, extent.minZ, radius])
+
   const ambient = useRef<THREE.AmbientLight>(null)
   const hemisphere = useRef<THREE.HemisphereLight>(null)
   const sun = useRef<THREE.DirectionalLight>(null)
 
+  const shadowSize = quality.shadowQuality === 'off' ? 0 : SHADOW_MAP_SIZE[quality.shadowQuality]
+
   // The sky-wide lights, faded along the ambience blend rather than switched:
   // dusk is the sun cooling into the moon while the ambient floor warms — and
   // passing, mid-fade, through the golden hour.
-  useFrame(() => {
+  useFrame((three) => {
     const warmth = goldenWarmth()
+    const low = settings.lowPerformance
     if (ambient.current) {
       mixColor(ambient.current.color, AMBIENT_COLOUR)
       // The flash rides the ambient: everything pales at once, then the dark
@@ -237,6 +329,22 @@ export function Lighting() {
       // The sun softens as it reddens: a setting sun is most of the colour
       // and less of the push.
       sun.current.intensity = mixNumber(SUN_INTENSITY) * (1 - 0.3 * warmth)
+
+      // Walk the shadow box along with the camera, snapped to whole texels.
+      // Without the snap the map slides under the geometry by fractions of a
+      // texel and every shadow edge crawls as you move.
+      if (shadowSize > 0) {
+        const step = (SHADOW_RADIUS * 2) / shadowSize
+        const eye = three.camera.position
+        const x = Math.round(eye.x / step) * step
+        const z = Math.round(eye.z / step) * step
+        sunTarget.position.set(x, 0, z)
+        sun.current.position.set(
+          x + sunDirection.x * SHADOW_THROW,
+          sunDirection.y * SHADOW_THROW,
+          z + sunDirection.z * SHADOW_THROW,
+        )
+      }
     }
   })
 
@@ -250,12 +358,13 @@ export function Lighting() {
           black corners with hot pools between them. */}
       {/* The daytime fill is warm and low — even white light at office levels
           reads as a meeting room. The sun below carries more of the day. */}
-      <ambientLight ref={ambient} intensity={0.38 + (low ? 0.16 : 0)} color="#fdf2e0" />
+      <ambientLight
+        ref={ambient}
+        intensity={0.38 + (settings.lowPerformance ? 0.16 : 0)}
+        color="#fdf2e0"
+      />
       <hemisphereLight ref={hemisphere} args={['#cfdff0', '#8a6f4c', 0.5]} />
 
-      {/* Low and to the north-west, which is where the lake is: afternoon
-          light coming in through the big window rather than noon overhead. At
-          night the same light is the moon over the same lake. */}
       <primitive object={sunTarget} position={[midX, 0, midZ]} />
       <directionalLight
         ref={sun}
@@ -266,25 +375,22 @@ export function Lighting() {
         // is why the direct light drops much further than the room does.
         intensity={1.9}
         color="#ffe6c2"
-        castShadow={!low}
-        shadow-mapSize={[2048, 2048]}
-        // Square and generous. The frustum is in the *light's* view space, so a
-        // box sized to the building's plan does not cover the building once the
-        // sun is off-axis — and the edge of the shadow map is a hard vertical
-        // seam of brightness straight up the middle of the room.
-        shadow-camera-left={-radius}
-        shadow-camera-right={radius}
-        shadow-camera-top={radius}
-        shadow-camera-bottom={-radius}
+        castShadow={shadowSize > 0}
+        shadow-mapSize={[shadowSize || 1, shadowSize || 1]}
+        // Square, and now sized to where you are standing rather than to the
+        // document — see SHADOW_RADIUS. The frustum is in the *light's* view
+        // space, so it stays square as the sun goes off-axis.
+        shadow-camera-left={-SHADOW_RADIUS}
+        shadow-camera-right={SHADOW_RADIUS}
+        shadow-camera-top={SHADOW_RADIUS}
+        shadow-camera-bottom={-SHADOW_RADIUS}
         shadow-camera-near={0.5}
-        shadow-camera-far={radius * 3 + 20}
+        shadow-camera-far={SHADOW_THROW * 2}
         shadow-bias={-0.0006}
         shadow-normalBias={0.02}
       />
 
-      {world?.rooms.map((room) => (
-        <RoomFill key={room.id} room={room} unlit={unlit.has(room.id)} reveals={!low} />
-      ))}
+      <LightPool candidates={candidates} slots={slots} />
       <FurnitureLights />
     </>
   )

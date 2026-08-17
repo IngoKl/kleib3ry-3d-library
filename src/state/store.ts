@@ -10,19 +10,13 @@ import { useWorldStore } from './world'
 import { arcadeMachine } from './arcade'
 import { player } from './player'
 
-/**
- * Where you are: on your feet in the room, docked to an open book, or stood at
- * the arcade machine with your hands on its controls. Not a setting — you walk,
- * and opening a book or stepping up to the game puts you in it until you leave.
- */
+/** On your feet, docked to an open book, or at the arcade machine's controls. */
 export type Mode = 'walk' | 'read' | 'play'
 
 /**
- * Where a held book would go if you placed it now.
- *
- * Carries both the index into `world.shelves` (for the renderer) and the shelf's
- * id (for the layout), because the index is only meaningful for as long as the
- * current world document is the live one.
+ * Where a held book would go if placed now. Carries both the index into
+ * `world.shelves` (for the renderer) and the shelf id (for the layout) — the
+ * index is only valid while the current world document is live.
  */
 export type ShelfTarget = {
   shelf: number
@@ -35,11 +29,8 @@ export type ShelfTarget = {
 }
 
 /**
- * What one record crate is showing of what it holds, and which sleeve is out.
- *
- * The boxes' `BoxView` with a record on the end of it: a crate stands up a
- * crateful at a time, so the rest of what is filed in it is reached by riffling
- * rather than by being drawn.
+ * What one record crate is showing, and which sleeve is drawn out. A crate
+ * stands up a crateful at a time; the rest is reached by riffling.
  */
 export type CrateView = {
   /** Index of the record currently drawn out. */
@@ -67,29 +58,20 @@ type AppState = {
   /** Box under the crosshair while empty-handed — one you could unpack or browse. */
   focusedBox: string | null
   /**
-   * Folding furniture under the crosshair, which `X` picks up.
-   *
-   * Its own field rather than a reading of `focusedSeat`: a folding chair is a
-   * seat *and* something you carry, and the two verbs are offered at once —
-   * `E` sits down, `X` takes it with you.
+   * Folding furniture under the crosshair, which `X` picks up. Its own field,
+   * not a reading of `focusedSeat`: a folding chair offers both verbs at once.
    */
   focusedPortable: string | null
   /** Box under the crosshair while holding a book — one you could drop it into. */
   boxTarget: string | null
   /**
-   * How far into each box you have browsed.
-   *
-   * A box holds far more than it can show, so the pile on top is a slice of it
-   * and this is where that slice starts. Deliberately session state rather than
-   * something saved: where you have riffled to is not part of the library.
+   * Where each box's visible slice starts. Session state, not saved: how far
+   * you have riffled is not part of the library.
    */
   boxOffsets: Record<string, number>
   /**
-   * The offsets you browsed through to get here, per box.
-   *
-   * Going back cannot simply subtract a pileful: how many books fit on top of a
-   * box depends on how thick they happen to be, so the way back to the pile you
-   * were just looking at is to remember where it started.
+   * The offsets browsed through to get here, per box. Going back cannot just
+   * subtract a pileful — how many books fit on top depends on their thickness.
    */
   boxTrail: Record<string, number[]>
   /** What each box is currently showing, written by the renderer that packs it. */
@@ -101,11 +83,9 @@ type AppState = {
   /** Furniture id currently sat in, or null when standing. */
   seat: string | null
   /**
-   * Book id currently drawn out of the shelf to show its cover.
-   *
-   * Deliberately a deliberate act. Turning a book automatically whenever the
-   * crosshair crossed it meant books swinging out constantly, and a thin one
-   * would clip its neighbours on the way.
+   * Book id drawn out of the shelf to show its cover. Requires a key press
+   * rather than tracking the crosshair, or books swing out constantly and thin
+   * ones clip their neighbours on the way.
    */
   drawn: string | null
   pointerLocked: boolean
@@ -121,11 +101,8 @@ type AppState = {
    */
   focusedCrate: string | null
   /**
-   * How far into each crate you have riffled, as an index into its own records.
-   *
-   * A crate holds more records than it can stand up at once, and the one at this
-   * index is drawn out face-on. Session state for `boxOffsets`' reason: where
-   * you have flicked to is not part of the library.
+   * How far into each crate you have riffled. The record at this index is drawn
+   * out face-on. Session state, like `boxOffsets`.
    */
   crateOffsets: Record<string, number>
   /** The offsets you flicked through to get here, per crate. */
@@ -133,11 +110,9 @@ type AppState = {
   /** What each crate holds and which of it is out, written by the renderer. */
   crateViews: Record<string, CrateView>
   /**
-   * Which crate each record actually ended up in, written by the same renderer.
-   *
-   * Not `filedRecords`: that is only the handful you have filed by hand, and
-   * everything else is *dealt* — so this is the one honest answer to the
-   * catalogue's "where is it".
+   * Which crate each record ended up in, written by the same renderer. Unlike
+   * `filedRecords` (hand-filed only) this covers dealt records too, so it is
+   * what the catalogue search answers "where is it" from.
    */
   recordCrates: Record<string, string>
   /** Record in hand, by track id. Separate from `held`: a sleeve is not a book. */
@@ -167,13 +142,9 @@ type AppState = {
   /** Shelf id whose label you are typing, or null. */
   labelling: string | null
   /**
-   * A page or note in your hand.
-   *
-   * Deliberately *not* mutually exclusive with `held`: a sheet of paper is not a
-   * book, and tearing a copy of a page out of the book you are reading would be
-   * absurd if it meant putting the book down first. E prefers the sheet only
-   * when you are aiming at somewhere a sheet can go, which is a wall — and a
-   * wall is not somewhere a book can go, so the two never compete.
+   * A page or note in your hand. Not mutually exclusive with `held` — `E`
+   * prefers the sheet only when aimed at a wall, and a wall is not somewhere a
+   * book can go, so the two never compete.
    */
   heldPin: HeldSheet | null
   /** Where the sheet in your hand would land. Null when not aiming at a wall. */
@@ -181,12 +152,9 @@ type AppState = {
   /** Id of a pinned sheet under the crosshair, one you could take down. */
   focusedPin: string | null
   /**
-   * The whiteboard marker in your hand, by furniture id.
-   *
-   * Its own slot rather than a kind of `held`, for the same reason a record has
-   * one: a marker is not a book, and the crosshair offers a different set of
-   * things while you are carrying it. It never moves — a marker in your hand is
-   * the marker on the tray, hidden — so there is nothing to write down.
+   * The whiteboard marker in your hand, by furniture id. Its own slot, like a
+   * record: the crosshair offers different verbs while carrying one. Never
+   * persisted — a held marker is the tray's marker, hidden.
    */
   heldMarker: string | null
   /** Which pen the marker is drawing in, as an index into the marker inks. */
@@ -196,12 +164,9 @@ type AppState = {
   /** True while the note field is open, so movement keys stay typed. */
   noting: boolean
   /**
-   * True while the catalogue terminal's search is open.
-   *
-   * Session state, and deliberately not a mode: you are still standing in the
-   * office with the room behind the panel, exactly as you are while typing a
-   * label. It takes the keyboard for the same reason and gives it back the same
-   * way.
+   * True while the catalogue terminal's search is open. Not a mode — you are
+   * still standing in the room, as when typing a label — but it takes the
+   * keyboard the same way.
    */
   searching: boolean
   /** True while the cat is under the crosshair, near enough to reach. */
@@ -211,20 +176,14 @@ type AppState = {
   /** Coffee makers whose pot is full and waiting. Drained a cup at a time. */
   readyPots: Record<string, boolean>
   /**
-   * The small thing in your hand: the cup, a can, a takeaway box.
-   *
-   * Its own slot for the record's reason — a can is not a book, and the
-   * crosshair offers a different set of places while you carry one. Which one
-   * it is and whether it is full is all there is to know; where it came from
-   * has already been taken out of the placed props.
+   * The small thing in your hand: the cup, a can, a takeaway box. Kind and
+   * fullness are all there is to know — it has already been removed from the
+   * placed props.
    */
   heldProp: { kind: PropKind; full: boolean } | null
   /** Placed prop under the crosshair while empty-handed, by prop id. */
   focusedProp: string | null
-  /**
-   * The headlamp on your head, by furniture id. Worn, not held: the whole
-   * point is walking out into the dark with both hands free for books.
-   */
+  /** The headlamp on your head, by furniture id. Worn, not held: hands stay free. */
   wornLamp: string | null
   /**
    * What the telephone is asking you, or null when it is on the hook.
@@ -245,12 +204,9 @@ type AppState = {
   /** True while the courier is somewhere on the grass. Mounts his meshes. */
   courierAbout: boolean
   /**
-   * A page the reader has been asked to jump to, as a spread index.
-   *
-   * A request rather than a value: the HUD is where you type a page number and
-   * the reader is what knows how to get there, and passing it through the store
-   * keeps the two from having to hold a reference to each other. The reader
-   * clears it once it has gone.
+   * A page the reader has been asked to jump to, as a spread index. A request,
+   * not a value: the HUD types the number, the reader knows how to get there,
+   * and neither needs a reference to the other. Cleared by the reader.
    */
   jumpTo: number | null
   /** True while the "go to page" field is open, so movement keys stay typed. */
@@ -261,10 +217,8 @@ type AppState = {
    */
   annotating: boolean
   /**
-   * Whether the overlay is drawn at all. The room is the point; the HUD is
-   * scaffolding, and being able to strike it is what makes screenshots worth
-   * taking. The label and page fields ignore this — they are conversations you
-   * started, not chrome.
+   * Whether the overlay is drawn at all, for screenshots. The label and page
+   * fields ignore it: they are open conversations, not chrome.
    */
   hudHidden: boolean
   /** True while the controls card is open. */
@@ -362,23 +316,16 @@ type AppState = {
 }
 
 /**
- * A sheet in your hand, before it is stuck to anything.
- *
- * It has no position yet, which is the whole difference between this and a
- * `PinnedSheet` — and the reason it is session state rather than part of the
- * layout. A page in your hand when the app closes is a page you had not decided
- * about, and losing it costs one keystroke.
+ * A sheet in your hand, before it is stuck to anything. No position yet, which
+ * is the difference from `PinnedSheet` and why this is session state.
  */
 export type HeldSheet =
   | { kind: 'page'; bookId: string; page: number }
   | { kind: 'note'; text: string; colour: number }
 
 /**
- * Where a sheet would go if you pinned it now: a point on a wall or a board, and
- * the way that surface faces.
- *
- * Carries no wall id. A wall is not a thing you can put something *into* the way
- * a shelf is — there are no slots, so there is nothing to identify.
+ * Where a sheet would go if pinned now: a point on a wall or board and the way
+ * it faces. No wall id — a wall has no slots, so there is nothing to identify.
  */
 export type PinTarget = {
   x: number
@@ -389,11 +336,9 @@ export type PinTarget = {
 }
 
 /**
- * Where a held book would come to rest on a table, counter or bench.
- *
- * Unlike a shelf, a surface has no slots: you put a book down *there*, and the
- * position is what gets remembered. So the target carries a world point rather
- * than an index, and the placement written into the layout is the same point.
+ * Where a held book would come to rest on a table, counter or bench. A surface
+ * has no slots, so this is a world point rather than an index, and the layout
+ * stores that same point.
  */
 export type SurfaceTarget = {
   furnitureId: string
@@ -624,15 +569,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   order: () => {
     if (get().ordering) return
     set({ ordering: true, phoning: null, orderError: null })
-    // The kitchen takes its time; then somebody walks it over. The box lands
-    // when the courier reaches the steps — see `Courier.tsx` — not on a timer,
-    // so `ordering` stays true until he has actually put it down.
+    // The box lands when the courier reaches the steps (see `Courier.tsx`), not
+    // on a timer, so `ordering` stays true until it has been put down.
     setTimeout(() => {
       if (!get().ordering) return
       const world = useWorldStore.getState().world
       if (!world) {
-        // Nowhere to walk through: the order quietly fails rather than
-        // conjuring a box into a world that is not there.
+        // No world to walk through, so the order fails rather than placing a
+        // box nowhere.
         set({ ordering: false })
         return
       }
@@ -645,13 +589,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().ordering || get().fetching) return
     set({ fetching: true, orderError: null })
     try {
-      // The download happens now, before the courier sets off, so a paper that
-      // is not there is a message on the telephone rather than a man walking
-      // half a mile to hand you nothing.
+      // Downloaded before the courier sets off, so a missing paper is an error
+      // on the telephone rather than a delivery of nothing.
       const book = await library.fetchPaper(id)
-      // Straight into the library the ordinary way: a new book reconciles into
-      // a box, and the courier takes it back out of one when he arrives. No
-      // second path for a book that came in through the door.
+      // Reconciled into a box the ordinary way; the courier takes it back out
+      // on arrival. No second path for a book that came in through the door.
       await useLibraryStore.getState().load()
       const world = useWorldStore.getState().world
       if (!world) {
@@ -691,10 +633,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   /**
-   * A box shows the top of the pile; browsing moves the whole slice by a
-   * pileful, so every book in it can be brought to the surface. Stops at the
-   * ends rather than wrapping — riffling past the last book and landing back at
-   * the first reads as the box having reset itself.
+   * Move the visible slice by a pileful, so every book can be brought to the
+   * top. Stops at the ends rather than wrapping: wrapping reads as a reset.
    */
   browseBox: (boxId, direction) => {
     const view = get().boxViews[boxId]
@@ -723,10 +663,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setCrateDeal: (crateViews, recordCrates) => {
-    // Written every time the crates are dealt or riffled, so it guards against
-    // an identical publish for `setBoxViews`' reason. The deal is compared by
-    // identity: the renderer memoises it, and it only changes when a record
-    // does.
+    // Written on every deal or riffle, so it guards no-op publishes like
+    // `setBoxViews`. The deal compares by identity — the renderer memoises it.
     const current = get().crateViews
     const keys = Object.keys(crateViews)
     const same =
@@ -747,10 +685,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   /**
-   * A crate stands up a crateful at a time; riffling moves the sleeve that is
-   * drawn out one record deeper, and the crate shows whichever crateful that
-   * record is in. Stops at the ends rather than wrapping, and keeps the way back
-   * it came, both for the reasons `browseBox` does.
+   * Move the drawn-out sleeve one record deeper; the crate shows whichever
+   * crateful that record is in. Bounded and trailed like `browseBox`.
    */
   browseCrate: (crateId, direction) => {
     const view = get().crateViews[crateId]
@@ -792,9 +728,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 }))
 
 /**
- * Whether a keystroke is meant for the room. One list, because every key handler
- * needs the same answer: a shelf label, a note, the catalogue search, the
- * settings panel and the main menu all take the keyboard away from it.
+ * Whether a keystroke is meant for the room. Asked by every key handler: a
+ * shelf label, a note, the search, the settings panel and the main menu all
+ * take the keyboard. Add any new typed field here.
  */
 export function roomHasKeyboard(): boolean {
   const state = useAppStore.getState()

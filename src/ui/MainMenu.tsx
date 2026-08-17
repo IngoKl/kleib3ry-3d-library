@@ -107,7 +107,7 @@ export function MainMenu() {
       rememberLibrary(chosen)
       setRecent(recentLibraries())
     } catch (error) {
-      // A recent path that no longer exists, or IPC refusing the folder: the
+      // A recent path that has gone, or IPC refusing the folder: the
       // menu says so instead of a button that silently does nothing.
       setOpenError(`Could not open ${chosen}: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
@@ -118,7 +118,7 @@ export function MainMenu() {
   return (
     <div className={started ? 'menu menu-leaving' : 'menu'} data-testid="main-menu">
       <div className="menu-card">
-        <h1 className="menu-title">kleib3ry</h1>
+        <h1 className="menu-title">kleib3ry — 3D Virtual Personal Library</h1>
         <p className="menu-sub">A library you can walk into</p>
 
         <p className="controls-heading">This Library</p>

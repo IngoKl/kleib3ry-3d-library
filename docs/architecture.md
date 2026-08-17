@@ -2,12 +2,12 @@
 
 kleib3ry is a 3D personal library: your own PDFs and EPUBs on shelves you place,
 in a building you describe in a text file, read as physical books. This document
-is the map — what the pieces are, which way the dependencies point, and why the
-awkward decisions were made the way they were.
+covers what the pieces are, which way the dependencies point, and why the
+non-obvious decisions were made.
 
-If you only read one section, read [the one rule](#the-one-rule) and
-[what is derived and what is stored](#what-is-derived-and-what-is-stored). Those
-two shape everything else.
+[The one rule](#the-one-rule) and
+[what is derived and what is stored](#what-is-derived-and-what-is-stored) shape
+everything else — start there.
 
 ```text
                          ┌───────────────────────────────┐
@@ -39,7 +39,7 @@ two shape everything else.
                      │
             ┌────────┴──────────────────────────────────────────────┐
             │  src/world/   the document → geometry, floors, trees  │
-            │  src/state/   zustand stores + three mutable objects  │
+            │  src/state/   zustand stores + four mutable objects   │
             │  src/scene/   R3F scene graph, instancing, raycast    │
             │  src/reader/  read mode: page cache, mesh, the turn   │
             │  src/ui/      DOM overlay                             │
@@ -58,14 +58,13 @@ src/                front end
                     forest, and what happens to shelved books when the room
                     changes
   scene/            R3F scene graph — rooms, roofs, shelves, books, boxes,
-                    furniture, tapes, pinned pages, the forest outside, the
-                    spine atlas that prints titles, the atmosphere layer, the
-                    synthesised sound, and the little bit of gravity that
-                    dropped books fall under
+                    furniture, tapes, pins, the forest, the spine atlas, the
+                    atmosphere layer, synthesised sound, and the gravity a
+                    dropped book falls under
   reader/           read mode: page cache, page mesh, the turn
   state/            zustand stores: world, library, annotations, ambience,
-                    media, video, arcade and the session store; plus player,
-                    cat, courier and metrics, deliberately outside React
+                    media, video, arcade, session; plus player, cat, courier
+                    and metrics, deliberately outside React
   data/             placeholder catalogue + book proportions
   ui/               DOM overlay: crosshair, focus cards, panels, typed fields
 core/               Rust: indexing, the JSON index, format + tag probes, media folders.
@@ -95,34 +94,29 @@ three implementations:
 | `httpDriver`    | **hosted** — the container | Rust core over HTTP | no — the mount is the library | yes     | yes            |
 | `browserDriver` | none; a test fixture       | none; localStorage  | no                            | no      | no             |
 
-Two of those are shipped modes and the third is a fixture, which is a
-distinction the code cannot make on its own — `DRIVER_LABELS` in
-[src/services/index.ts](../src/services/index.ts) is where the three are given
-the names the UI shows, so the menu and the settings card cannot drift apart.
-[modes.md](modes.md) is the two modes written out for someone deciding how to
-run it.
+Two are shipped modes and the third is a fixture — a distinction the code cannot
+make on its own, so `DRIVER_LABELS` in
+[src/services/index.ts](../src/services/index.ts) names all three for the UI and
+the menu and settings card cannot drift apart. [modes.md](modes.md) covers the
+two modes for someone deciding how to run it.
 
-A driver _advertises_ what it can do — `kind`, `canPickFolder`, `canIndex`,
-`canFetchPapers` — and
-the UI disables controls accordingly rather than failing at call time. Anything
-genuinely unsupported throws `UnsupportedOperation`. Note that the capability
-and the mode are not the same question: `canPickFolder` is false in both
-non-desktop drivers for opposite reasons — the container has a real library and
-will not go looking for another, the fixture has no library at all — so a
-message about _why_ a control is off has to key off `kind`, not off the
-capability.
+A driver advertises what it can do — `kind`, `canPickFolder`, `canIndex`,
+`canFetchPapers` — and the UI disables controls accordingly rather than failing
+at call time; anything genuinely unsupported throws `UnsupportedOperation`.
+Capability and mode are different questions: `canPickFolder` is false in both
+non-desktop drivers for opposite reasons (the container has a real library and
+will not look for another; the fixture has none at all), so a message explaining
+_why_ a control is off must key off `kind`, not the capability.
 
-This is the rule that earned its keep. The HTTP driver and the container were
-added without a single change above `src/services/`, which is exactly what it was
-written down for.
+The HTTP driver and the whole container were added without a single change
+above `src/services/`, which is what the rule is for.
 
-`isTauri()` picks the desktop driver at runtime. The other two cannot be told
-apart at runtime — a container's bundle is served by a plain HTTP server and
-looks identical to a static one — so that choice is made at _build_ time with
-`VITE_DRIVER=http` (`npm run build:http`). See
-[src/services/index.ts](../src/services/index.ts) for why a runtime probe would
-be worse: `library` is read synchronously when the first store is created, so a
-probe would mean a slow server coming up as an empty stand-in library.
+`isTauri()` picks the desktop driver at runtime. The other two are
+indistinguishable at runtime — a container's bundle is served by a plain HTTP
+server and looks identical to a static one — so that choice is made at _build_
+time with `VITE_DRIVER=http` (`npm run build:http`). A runtime probe would be
+worse: `library` is read synchronously when the first store is created, so
+probing would make a slow server come up as an empty stand-in library.
 
 ---
 
@@ -136,21 +130,19 @@ server/      HTTP: the same core, one route per LibraryService method.
 
 Four modules: `index` walks the folder and reconciles what it finds, `catalog`
 is the index file itself, `probe` reads PDFs, EPUBs and audio tags, and `media`
-walks the four folders that are not indexed at all. The index is JSON rather
-than a database because **the library folder is the save file**: plain text
-diffs cleanly in version control, reads without the app, and leaves no side
-files for a sync client to copy half of. Paths in it are relative to the library
-root, so copying a folder to another machine — or another operating system —
-strands nothing.
+walks the four folders that are not indexed. The index is JSON rather than a
+database because **the library folder is the save file**: plain text diffs
+cleanly in version control, reads without the app, and leaves no side files for
+a sync client to copy half of. Paths in it are relative to the library root, so
+copying a folder to another machine or OS strands nothing.
 
-`core/` was carved out of `src-tauri/` when the container arrived, and nothing
-moved _logically_ — those four modules never mentioned Tauri once. What it buys
-is a server image that is a binary and a folder of files instead of a Linux box
-carrying a browser engine in order to read a directory.
+Keeping `core/` free of a GUI is what buys a server image that is a binary and a
+folder of files, instead of a Linux box carrying a browser engine in order to
+read a directory.
 
 Each crate owns its errors. `core::Error` has no `Tauri` variant because nothing
 in it can fail that way; the shell wraps it transparently, and the server turns
-it into a status code and a line of text destined for the HUD.
+it into a status code and a line of text for the HUD.
 
 Three decisions in `core/` worth knowing:
 
@@ -166,51 +158,46 @@ Three decisions in `core/` worth knowing:
   rescanning would help. Bump it whenever a probe learns to extract something
   new; every older row is then re-probed once.
 
-`server/` has no HTTP framework. The whole surface is a dozen routes, a static
-directory and byte ranges, which is a few hundred lines of `TcpListener` — the
-same argument the front end makes for hand-rolling its collision and the probe
-makes for reading ID3 without a crate. Byte ranges are not optional: they are
-what makes a video seekable.
+`server/` has no HTTP framework: a dozen routes, a static directory and byte
+ranges is a few hundred lines of `TcpListener`. Byte ranges are not optional —
+they are what makes a video seekable.
 
 The one piece of security in the program is `is_allowed` in
 [server/src/main.rs](../server/src/main.rs). A browser may read four directories
 — `covers`, `music`, `artwork`, `video` — and every path is canonicalised and
-checked against them before a byte is opened. Books are served by index id, never
-by name, so the only files a browser can name are the ones the index already told
-it about. ROMs follow the book's rule, not the media rule: a `.ch8` is a few
-kilobytes read once into the emulator, so `/api/rom/<id>` resolves an id against
-what `/api/roms` listed and `roms/` never joins the readable directories.
+checked against them before a byte is opened. Books are served by index id,
+never by name, so the only files a browser can name are the ones the index
+already told it about. ROMs follow the book's rule rather than the media rule: a
+`.ch8` is a few kilobytes read once, so `/api/rom/<id>` resolves an id against
+what `/api/roms` listed, and `roms/` never joins the readable directories.
 
 ---
 
 ## What Is Derived and What Is Stored
 
-This is the spine of the front end.
+The spine of the front end.
 
 **The layout document stores ids and orderings, not positions.** At its centre
 `books.json` is `{ rows: { "shelfId:row": [bookId, ...] }, boxes: { boxId: [...] } }`.
-Physical placement is recomputed every time: rows are packed
-left to right in [src/scene/shelving.ts](../src/scene/shelving.ts), boxes are
-packed bottom-up in [src/world/boxes.ts](../src/world/boxes.ts). A book whose
-dimensions change pushes its neighbours along instead of overlapping them. Rust
-stores the document verbatim — the schema belongs entirely to the front end.
+Physical placement is recomputed every time: rows are packed left to right in
+[src/scene/shelving.ts](../src/scene/shelving.ts), boxes bottom-up in
+[src/world/boxes.ts](../src/world/boxes.ts). A book whose dimensions change
+pushes its neighbours along instead of overlapping them. Rust stores the
+document verbatim — the schema belongs entirely to the front end.
 
-**The exceptions are the things whose whole point is "there".** A book put down
-on a table or dropped on the floor stores an actual position, because "there,
-where I put it" cannot be derived from an ordering. So does a page or a note
-pinned to a wall, a record set down on a table, and each of the small props —
-the cup, a can, a takeaway box, the headlamp. Four exceptions, and the list is
-worth keeping that short.
+**The exceptions store real positions**, because "there, where I put it" cannot
+be derived from an ordering: a book put down on a table or floor, a page or note
+pinned to a wall, a record set down, and the small props (the cup, a can, a
+takeaway box, the headlamp). Keep that list short.
 
 **Book appearance is a pure function of index data.**
 [src/data/dimensions.ts](../src/data/dimensions.ts) derives thickness from page
 count, and height, depth and a stand-in colour from a hash of the book id —
 arbitrary but stable, so a book always looks the same on the shelf. An EPUB has
 no page count, so the probe measures the uncompressed length of the documents in
-the archive and that is divided by what the reader fits on a page: the only
-signal that tracks the _text_ rather than the cover art. Once its cover has been
-read, the binding colour is sampled from the artwork instead, so a shelf of your
-books looks like _your_ books from across the room.
+the archive, divided by what the reader fits on a page — the only signal that
+tracks the text rather than the cover art. Once a cover has been read, the
+binding colour is sampled from the artwork instead.
 
 **The world document is never written by the app.** `library.json` is hand-edited
 prose with comments in it. Everything the app decides about the room goes to
@@ -223,10 +210,9 @@ this reason.
 
 **Everything geometric is derived from the document, every time.** Wall panels
 with their openings cut out, floor slabs with the stairwells subtracted, roofs,
-shelf transforms, colliders, the forest — all of it recomputed in
-[src/world/derive.ts](../src/world/derive.ts). There is no incremental path that
-can drift from the file, which is what makes live reload safe: save an edit in
-any editor and the room rebuilds while you are standing in it.
+shelf transforms, colliders, the forest — all recomputed in
+[src/world/derive.ts](../src/world/derive.ts). No incremental path can drift
+from the file, which is what makes live reload safe.
 
 ---
 
@@ -244,18 +230,18 @@ into them, and an elevation.
   of the room below it.
 - **`floorAt` answers "what am I standing on"**, treating a `stairs` piece as a
   ramp. A move is refused unless the floor it lands on is within `STEP_UP` of the
-  floor it left. That single check is both how stairs work and why you cannot
-  walk off the loft.
-- **A window blocks you and a door does not.** Wall _colliders_ subtract only
-  openings you could actually walk through, which is what makes a loft balustrade
-  work: a very wide unglazed window with a waist-high sill is something you can
-  see the room over and cannot walk off.
-- **Only the topmost room over a patch of ground is roofed.** `roofsOf` works that
-  out from the document rather than making you declare it, so the loft inside the
-  great room's volume and the reading corner under the bedroom do not sprout
-  roofs indoors. A roof's plane is pinned to the _top of the walls_ and rises from
-  there, and it does not overhang into a building it leans on — otherwise a porch
-  roof comes out through the wall it is tucked under.
+  one it left — which is both how stairs work and why you cannot walk off the
+  loft.
+- **A window blocks you and a door does not.** Wall colliders subtract only
+  openings you could walk through. This is what makes a loft balustrade work: a
+  wide unglazed window with a waist-high sill can be seen over but not walked
+  off.
+- **Only the topmost room over a patch of ground is roofed.** `roofsOf` derives
+  that from the document rather than making you declare it, so a loft inside the
+  great room's volume does not sprout a roof indoors. A roof's plane is pinned to
+  the top of the walls and rises from there, and does not overhang into a
+  building it abuts — otherwise a porch roof comes through the wall it is tucked
+  under.
 
 Collision is hand-rolled axis-separated AABB sliding in
 [src/scene/collision.ts](../src/scene/collision.ts) — no physics engine,
@@ -264,159 +250,163 @@ deliberately, which also keeps `wasm-unsafe-eval` out of the desktop CSP.
 ## Outside
 
 The ground is walkable. [src/world/terrain.ts](../src/world/terrain.ts) owns the
-site — the ground height, the lake, the beach, the path round the water, the
-trail between the buildings, the brook, and the radius at which the world runs
-out — and both the renderer and the walk controller read it. That shared ownership is the
-point: a shoreline you can _see_ in one place and _stand in_ in another is the
-bug the module exists to prevent. `terrainAt` returns `null` in the water and
-past the edge of the world, which is the same answer a stairwell gives and
-refuses a step for the same reason.
+site — ground height, the lake, the beach, the path round the water, the trail
+between the buildings, the brook, and the radius at which the world runs out —
+and both the renderer and the walk controller read it, so a shoreline cannot be
+seen in one place and stood in in another. `terrainAt` returns `null` in the
+water and past the edge of the world, and a step is refused there exactly as it
+is at a stairwell.
 
-The brook is the same argument as a polyline: a stream out of the south-east
-forest, past the office's east window and down into the lake, so there is water
-on both sides of the houses. It is drawn from that line, the forest is kept off
-its banks by it, and the walk controller refuses to step into it — except across
-the beach, where it fans out shallow and is a ford. That exception is load
-bearing: a brook that blocked all the way to the waterline would cut the walk
-round the lake in two, and the crossing would be a bridge standing in a puddle.
-The one plank bridge is `BRIDGES`, snapped to the middle of the water and
-squared up to the flow, and its deck is a height `terrainAt` returns like any
+The brook runs out of the south-east forest, past the office's east window and
+down into the lake. It is drawn from a polyline, the forest is kept off its
+banks, and the walk controller refuses to step into it — except across the
+beach, where it fans out shallow and fords. That exception is load bearing: a
+brook that blocked to the waterline would cut the lakeside walk in two. The one
+plank bridge is `BRIDGES`, and its deck is a height `terrainAt` returns like any
 other floor.
 
-The lake is an ellipse with a wobble on it — `shoreShape` puts a few low
-harmonics on the outline, so it reads as a pond rather than a compass drawing.
-Everything defined in _shoreline units_ (the beach at `SHORE_EDGE`, the walk at
-`PATH`, the tree line) deforms with it for free, because they are all rings of
-the same function; the renderer builds the water and the sand from `lakePoint`,
-which is that function again. The set dressing in
-[src/scene/Outside.tsx](../src/scene/Outside.tsx) — rocks half in the shallows,
-reed clumps, lily pads, and boulders and stumps through the forest — is seeded
-scenery in a handful of instanced draw calls, standing either where the walk
-already refuses to go or clear of the paths via the same `occupied` test the
-trees are grown with. None of it needs a collider.
-[Undergrowth.tsx](../src/scene/Undergrowth.tsx) grows the forest floor by the
-same test — grass across the meadow, ferns in the shade of the conifers,
-mushrooms at the trees' feet, a couple of fallen logs — and is ankle-height
-scenery you walk through, because the trunks stay the things you walk into. See
-[Atmosphere](#atmosphere) for what it shares with the rest of the dressing.
+The lake is an ellipse with a wobble: `shoreShape` puts a few low harmonics on
+the outline so it reads as a pond rather than a compass drawing. Everything
+defined in _shoreline units_ (the beach at `SHORE_EDGE`, the walk at `PATH`, the
+tree line) deforms with it for free, since they are rings of the same function,
+and the renderer builds the water and sand from `lakePoint`.
+
+Set dressing in [src/scene/Outside.tsx](../src/scene/Outside.tsx) — rocks,
+reeds, lily pads, boulders and stumps — and the forest floor in
+[Undergrowth.tsx](../src/scene/Undergrowth.tsx) are seeded scenery in a handful
+of instanced draw calls, placed either where the walk already refuses to go or
+clear of the paths by the same `occupied` test the trees use. None of it needs a
+collider. See [Atmosphere](#atmosphere) for the rules they share.
 
 **A library folder can describe more than one building**, and the default one
-does: the cabin, and the lake house on the rise above the south-west shore. That
-needed nothing new in the format — a building is rooms somewhere else — but it
-did need a route, and a route is a fact about the valley rather than about
-either building. So `TRAIL` is a polyline here, drawn by `Outside` and kept
-clear of trees by `forest.ts`, for the same reason the lake is a function here
-rather than four radii in `library.json`.
+does: the cabin, and the lake house above the south-west shore. That needed
+nothing new in the format — a building is rooms somewhere else — but it did need
+a route, and a route is a fact about the valley rather than about either
+building, so `TRAIL` is a polyline here rather than in `library.json`.
 
-[src/world/forest.ts](../src/world/forest.ts) is the same argument again. Trees
-are grown once in `deriveWorld` and both drawn and collided with from that one
-list; a collider generated from a different seed than the trunk you can see would
-be worse than no collider at all. Only the trunk is solid — pushing through
-branches is what walking in a forest is.
+[src/world/forest.ts](../src/world/forest.ts) follows the same rule: trees are
+grown once in `deriveWorld` and both drawn and collided with from that one list,
+since a collider seeded differently from the trunk you see is worse than none.
+Only the trunk is solid.
 
 ## Weather
 
-Rain is a switch, saved beside the lamps, because "is it raining" is a fact
-about the room in exactly the way "is it night" is. It has two halves and they
-are separate on purpose: what falls is instanced and follows you, since rain a
-hundred metres off is fog's problem; what runs down the glass is a texture on
-the panes `windowPanes` already derives, so a window somebody adds to their own
-map is wet without anybody having said so. One canvas serves every pane in the
-building and is repainted fifteen times a second — water on glass moves slowly,
-and the upload is the cost, not the drawing.
+Rain is a switch saved beside the lamps, because "is it raining" is a room fact
+in the way "is it night" is. Its two halves are separate on purpose: what falls
+is instanced and follows you, since rain a hundred metres off is fog's problem;
+what runs down the glass is a texture on the panes `windowPanes` already
+derives, so a window added to any map is wet without being declared. One canvas
+serves every pane and is repainted fifteen times a second — the upload is the
+cost, not the drawing.
 
-You can hear it too. [src/scene/rainSound.ts](../src/scene/rainSound.ts)
-synthesises the rain rather than playing a file: looping filtered noise through a
-low-pass whose cutoff tracks how much sky is over you. `Sound.tsx` works that out
-from the document — outdoors is all of it, a porch nearly all of it, and indoors
-is what leaks through the openings `openingSpots` derives, so standing at a
-window sounds different from standing at the hearth. Its level is its own slider,
-because weather that is right for one person is a downpour for the next.
+[src/scene/rainSound.ts](../src/scene/rainSound.ts) synthesises the sound rather
+than playing a file: looping filtered noise through a low-pass whose cutoff
+tracks how much sky is over you. `Sound.tsx` derives that from the room and the
+openings `openingSpots` returns, so a window sounds different from the hearth.
+Its level has its own slider.
 
-The switches themselves fade rather than cut.
+The switches fade rather than cut.
 [src/scene/ambienceBlend.ts](../src/scene/ambienceBlend.ts) holds two values —
 how much night, how much rain — easing towards whatever the store says, advanced
 once per frame by `Outside` and read imperatively by everything that colours the
-world: the sky's repainted gradient, the fog, the clear colour, the lake, the
-sun and the window-reveal lights, the glow in a lit room's glass, the chimney
-smoke. It lives outside zustand for the reason `state/player.ts` does — it moves
-every frame of a transition and must not render React — and there is exactly one
-advancer because two would double the speed. Flipping `N` is therefore a dusk,
-not a light switch.
+world: the sky gradient, the fog, the clear colour, the lake, the sun and
+window-reveal lights, the glow in lit glass, the chimney smoke. It sits outside
+zustand for the reason `state/player.ts` does, and there is exactly one advancer
+because two would double the speed.
 
 ## Atmosphere
 
-A family of small modules exists only to make the room read as a place: contact
-shadows and lamp bloom indoors, dust in the lamplight, fireflies and falling
-leaves outside, undergrowth on the forest floor, and the sky's own dressing.
-They are listed together because they are all built to the same four rules, and
-the rules are the interesting part:
+A family of small modules makes the room read as a place: contact shadows and
+lamp bloom indoors, dust in the lamplight, fireflies and falling leaves outside,
+undergrowth on the forest floor, and the sky's dressing. All are built to the
+same four rules:
 
-- **One instanced mesh each.** Every one of them is a draw call or three, never
-  a mesh per thing. A few hundred grass tufts, every mote in the building and
-  every halo over every bulb are each one upload.
+- **One instanced mesh each** — a draw call or three, never a mesh per thing.
 - **Seeded, not random.** `lib/rng.ts` is a `mulberry32` per module, so the same
-  lamp gathers the same dust and the same clearing grows the same ferns on every
-  visit. Nothing here allocates or rolls a die in the frame loop.
-- **Faded, not mounted.** A mote under a lamp you switched off is scaled to
-  nothing rather than unmounted, and the night pieces gate themselves off by day
-  by reading [ambienceBlend.ts](../src/scene/ambienceBlend.ts). Flipping a
-  switch or `N` must not rebuild anything.
-- **Low Performance Mode decides what survives, and it is not everything.**
-  The dust, the fireflies and the leaves go entirely; the undergrowth thins and
-  the cloud bank drops from six banks to the same first three. But
-  [ContactShadows.tsx](../src/scene/ContactShadows.tsx) and
-  [LampGlow.tsx](../src/scene/LampGlow.tsx) are deliberately _kept_: with the
-  shadow map off, the blob under a sofa is the only thing keeping it on the
-  floor, and the halo over a bulb is most of what makes a lit lamp read as lit.
-  One draw call each is the right price for that.
+  lamp gathers the same dust on every visit. Nothing here allocates or rolls a
+  die in the frame loop.
+- **Faded, not mounted.** A mote under a switched-off lamp is scaled to nothing
+  rather than unmounted, and the night pieces gate themselves off by day through
+  [ambienceBlend.ts](../src/scene/ambienceBlend.ts). Flipping a switch or `N`
+  must not rebuild anything.
+- **Low Performance Mode drops some but not all.** The dust, fireflies and
+  leaves go entirely; undergrowth thins and the cloud bank drops from six banks
+  to three. [ContactShadows.tsx](../src/scene/ContactShadows.tsx) and
+  [LampGlow.tsx](../src/scene/LampGlow.tsx) are deliberately kept: with the
+  shadow map off they are the only things grounding furniture and making a lit
+  lamp read as lit, and they cost one draw call each.
+
+## Lamps Are Not Lights
+
+A lamp in `library.json` is a piece of furniture with a position. It is
+deliberately _not_ a `<pointLight>`, and the reason is the single most expensive
+fact about this renderer: three.js forward rendering has no per-object light
+culling, so every point light in the scene is a term in every lit fragment's
+shader — the pendant in the lake house is shading the pixels of the cabin, at
+full price, all the time. The default map declares nearly forty lamps and window
+reveals.
+
+[src/scene/lightPool.ts](../src/scene/lightPool.ts) holds a fixed pool instead —
+eight slots by default — and re-points them at the nearest lit candidates as you
+walk. Three properties make it work:
+
+- **The count never moves.** It is what every lit material is compiled against,
+  so a pool that grew and shrank would recompile every shader in the room
+  mid-stride. `lightBudget` changes it; walking never does.
+- **A slot hands over dark.** It fades out, swaps candidate, fades back in, so a
+  re-binding reads as a lamp passing out of range rather than as a flash.
+- **Off means absent.** An unlit lamp is not a candidate at all, so switching the
+  lights off now makes the room genuinely cheaper rather than merely darker. That
+  was not true when every lamp stayed mounted at zero intensity.
+
+Window reveals, and the fallback fixture a lamp-less room gets, are candidates on
+the same terms — a reveal carries a small handicap so a wall of windows cannot
+crowd a room's own lamps out of the pool. The two things that still mount their
+own light are the television's glow and the campfire, both rare and both worth
+their one recompile.
+
+The sun is the exception that proves the rule: one directional light for the
+whole world, with an 18 m shadow box that follows the camera and snaps to whole
+texels. Covering the whole document instead meant 94 m across — 4.6 cm of world
+per shadow texel, which is a full extra scene pass spent on mush.
 
 Two shared modules hold the seams together.
-[src/scene/sky.ts](../src/scene/sky.ts) owns where the sun and the moon hang and
-the soft radial glow that every one of them is painted with — moon halo, sun
-disc, lamp bloom, firefly, the glint on the lake — so `SkyDressing`, `LampGlow`
-and `Outside` can agree without importing each other in a circle.
-[src/scene/geometry.ts](../src/scene/geometry.ts) is the geometry vocabulary:
-everything assembled out of boxes and merged per material — the cat, the body, a
-shelf carcass, a room shell, a staircase — had grown its own copy of the same
-two helpers, and they live in one place now.
+[src/scene/sky.ts](../src/scene/sky.ts) owns where the sun and moon hang and the
+radial glow everything is painted with — moon halo, sun disc, lamp bloom,
+firefly, lake glint — so `SkyDressing`, `LampGlow` and `Outside` agree without
+importing each other in a circle. [src/scene/geometry.ts](../src/scene/geometry.ts)
+is the shared vocabulary for anything assembled out of boxes and merged per
+material: the cat, the body, a shelf carcass, a room shell, a staircase.
 
 ## Sound
 
-The deck and the television are furniture with positions, and you have a
-position, so volume and direction fall out of the two.
+The deck and the television are furniture with positions, and so are you, so
+volume and direction fall out of the two.
 [src/scene/audioRig.ts](../src/scene/audioRig.ts) routes the element through a
-`PannerNode` when a context can be had and attenuates `element.volume` by
-distance when one cannot. The fallback is the load-bearing part: every failure
-mode of Web Audio lands on "distance but no direction", which is most of the
-effect and is never silence. The elements themselves are still plain `<audio>`
-and `<video>` for all the reasons `state/media.ts` gives.
+`PannerNode` when a context can be had, and attenuates `element.volume` by
+distance when one cannot. That fallback is load bearing: every Web Audio failure
+lands on "distance but no direction", never on silence. The elements themselves
+stay plain `<audio>` and `<video>` — see `state/media.ts`.
 
 A building may have more than one record player, so `state/media.ts` records
-_which_ deck a record went on. There is one audio element and one record playing,
-so the deck is what tells the scene where in the house the music is coming from —
-and what stops every other deck in the building drawing the same disc on its
-platter.
+_which_ deck a record went on. There is one audio element and one record
+playing, so the deck is what tells the scene where the music comes from, and
+what stops every other deck drawing the same disc on its platter.
 
 **The room's own noises are synthesised, like the rain.**
-[src/scene/ambientSound.ts](../src/scene/ambientSound.ts) is shaped noise and
-nothing else: no samples, no files, no dependency. It carries three kinds of
-sound — _loops_ that sit somewhere and are set to a level (a lit fire, the cat's
-purr, the dust on a playing record, the lake at its shore, wind), _one-shots_
-fired by whatever caused them (a footfall on boards or grass or sand or stone, a
-landed book, a turned page, a door, cardboard, thunder), and _choruses_, which
-are birds by day and crickets after dark, re-reading their level at every firing
-so dusk arrives phrase by phrase rather than at the next scheduling. `Sound.tsx`
-decides the levels from where you are standing and what the ambience is doing;
-everything else calls `playOneShot` at the moment of the thing it is about.
+[src/scene/ambientSound.ts](../src/scene/ambientSound.ts) is shaped noise: no
+samples, no files, no dependency. Three kinds of sound — _loops_ that sit
+somewhere at a level (a fire, the cat's purr, record dust, the lake, wind),
+_one-shots_ fired by whatever caused them (a footfall keyed to the floor, a
+landed book, a turned page, a door, thunder), and _choruses_, birds by day and
+crickets after dark, which re-read their level at every firing so dusk arrives
+phrase by phrase. `Sound.tsx` sets the levels from where you are standing;
+everything else calls `playOneShot` at the moment of the event.
 
-Two decisions carry the file. **One `AudioContext` for all of it**, opened when
-the first sound is needed and closed once the loops and the one-shots are both
-done — browsers cap live contexts and the rain already holds one of its own. And
-**every failure falls back to silence** rather than throwing, exactly as the rain
-does: no context, or one that will not start, costs the crackle and not the
-room. Its level is its own slider (**Small Sounds**) for the same reason the
-rain's is: a fire that is right for one person is a distraction for the next.
+Two decisions carry the file. **One `AudioContext`**, opened on the first sound
+and closed when the last is done, because browsers cap live contexts and the
+rain holds one of its own. And **every failure falls back to silence** rather
+than throwing, as the rain does. Its level has its own slider (**Small Sounds**).
 
 ---
 
@@ -440,20 +430,24 @@ rain's is: a fire that is right for one person is a distraction for the next.
 | `state/courier.ts`     | where the courier has got to, while a delivery is out                               | **plain mutable object**                  |
 | `state/metrics.ts`     | draw calls, triangles, frames                                                       | **plain mutable object**                  |
 
-The last four are deliberately outside zustand: they change every frame and
-must not trigger a React render. The same rule puts three more mutables outside
-`state/` altogether, next to the code that advances them — `scene/ambienceBlend.ts`
-(how much night, how much rain), `scene/shaderWarm.ts` (how long the headlamp's
-warm-up beam has been up) and the running CHIP-8 beside `state/arcade.ts`. A
-whiteboard's live stroke is a fourth, for the same reason: it gains a point per
-frame, so a render per point would be a render per frame.
+The last four are outside zustand because they change every frame and must not
+trigger a React render. The same rule puts more mutables outside `state/`
+altogether, next to the code that advances them: `scene/ambienceBlend.ts` (how
+much night, how much rain), `scene/shaderWarm.ts` (the headlamp's warm-up beam),
+the running CHIP-8 beside `state/arcade.ts`, and a whiteboard's live stroke,
+which gains a point per frame.
 
-**The split between `ambience.ts` and `settings.ts` is the one worth stating.**
-Night, rain and the lamps are facts about the _room_ and live in the library
-folder, so they travel with it and `rm ambience.json` undoes them. Low
-Performance Mode, the body, the volume and the mouse sensitivity are facts about
-the _machine_, so they live in browser storage keyed by the app — a folder you
-sync to another computer must not carry an assertion about that computer's GPU.
+**The split between `ambience.ts` and `settings.ts` is worth stating.** Night,
+rain and the lamps are facts about the _room_ and live in the library folder, so
+they travel with it and `rm ambience.json` undoes them. Resolution scale, shadow
+quality, the lamp budget, the body, the volume and the mouse sensitivity are
+facts about the _machine_ and live in browser storage — a folder synced to
+another computer must not carry an assertion about that computer's GPU.
+
+Low Performance Mode is still one switch, and is now a _floor_ over those dials
+rather than a branch at each use site: `effectiveQuality` in
+[settings.ts](../src/state/settings.ts) is the one place the two are reconciled,
+so the switch and the dials can never disagree.
 
 `setPlacements` re-derives the world and therefore re-reconciles the whole
 library, so it belongs on an _edit_ and never in a frame loop. Carrying a moving
@@ -463,129 +457,120 @@ box renders a preview and commits once, when you set it down.
 
 ## The Scene
 
-**Interaction goes through instanced meshes.** Books, shelves, records, tapes and
-loose books are all `InstancedMesh`. [src/scene/refs.ts](../src/scene/refs.ts) is
-a module-level handle so the single per-frame raycast in `Interaction.tsx` can
-reach them without threading refs through the tree for one consumer. Furniture is
-published as _groups_ — seats, surfaces, fixtures, boxes, boards — because the
-crosshair asks a different question of each, and asking all of them of every
-table leg in the cabin is the one thing in the frame that would actually cost
-something.
+**Interaction goes through instanced meshes.** Books, shelves, records, tapes
+and loose books are all `InstancedMesh`. [src/scene/refs.ts](../src/scene/refs.ts)
+is a module-level handle so the single per-frame raycast in `Interaction.tsx`
+can reach them without threading refs through the tree for one consumer.
+Furniture is published as _groups_ — seats, surfaces, fixtures, boxes, boards —
+because the crosshair asks a different question of each, and asking all of them
+of every table leg would be the one real per-frame cost.
 
 **Printed spines come out of one atlas.** A cell holds one book: a spine strip
-down the left and its cover on the right, with the geometry's UVs picking out the
-two regions and a per-instance rectangle choosing the cell. That is what lets a
-shelved book be a real book while the whole library stays one draw call. Cells
-are recycled nearest-first, and a book too far away to read keeps no cell at all.
-The atlas's _total size_ is a per-pass upload cost, which fixes the budget at
-about 15 MB and makes cell size a straight trade against cell count — see
-[src/scene/spineAtlas.ts](../src/scene/spineAtlas.ts), where that trade is
-written down with the numbers. The tapes share the machinery with a grid of their
-own, because a crate of a dozen cassettes does not want eighty-eight cells.
+down the left and its cover on the right, with the geometry's UVs picking out
+the two regions and a per-instance rectangle choosing the cell. That is what
+lets a shelved book be a real book while the library stays one draw call. Cells
+are recycled nearest-first, and a book too far away to read keeps none. The
+atlas's total size is a per-pass upload cost, which fixes the budget at about
+15 MB and makes cell size a straight trade against cell count — see
+[src/scene/spineAtlas.ts](../src/scene/spineAtlas.ts). Tapes share the machinery
+with a smaller grid of their own.
 
 **Covers are rendered in the WebView and cached by Rust.** Rather than shipping
-pdfium, the front end rasterises page one with pdf.js — which it already loads
-for reading — and posts it to be cached like any other cover. `warmCovers` walks
-the whole catalogue in a background lane behind anything urgent, so a library
-finishes rather than resolving as you approach it.
+pdfium, the front end rasterises page one with pdf.js — already loaded for
+reading — and posts it to be cached. `warmCovers` walks the catalogue in a
+background lane behind anything urgent, so a library finishes rather than
+resolving as you approach it.
 
 **Book bytes come through a command, not the asset protocol.** The desktop asset
 scope starts empty and is granted at runtime for exactly four directories —
 covers, music, artwork, video — each only when something asks. Audio and video
-are the reason those are directories rather than commands: a track or a tape is
-streamed while it plays. A ROM is neither — a few kilobytes read once at
-power-on — so `read_rom_file` is a command like `read_book_file`, and `roms/`
-never widens the scope.
+are why those are directories rather than commands: a track or tape is streamed
+while it plays. A ROM is read once at power-on, so `read_rom_file` is a command
+like `read_book_file` and `roms/` never widens the scope.
 
 **The arcade machine is a CHIP-8 interpreter in the front end.**
 [src/arcade/chip8.ts](../src/arcade/chip8.ts) is the whole machine in one
 dependency-free file, stepped per frame by `scene/Arcade.tsx` and painted onto a
 64×32 `CanvasTexture` — an eight-kilobyte upload, the one dynamic texture cheap
-enough to repaint every frame. Games come from the library's `roms/` folder,
-listed like media (walked on demand, not indexed) and read like a book (by listing
-id). The bundled Pong is assembled from scratch by
-[scripts/lib/make-chip8.mjs](../scripts/lib/make-chip8.mjs), and the tests run
-that exact ROM on the interpreter, so the assembler, the ROM and the CPU are
-held to agree.
+enough to repaint every frame. Games come from `roms/`, listed like media
+(walked on demand) and read like a book (by listing id). The bundled Pong is
+assembled by [scripts/lib/make-chip8.mjs](../scripts/lib/make-chip8.mjs), and
+the tests run that exact ROM on the interpreter, so the assembler, the ROM and
+the CPU are held to agree.
 
 **A dropped book gets gravity and friction** from
-[src/scene/drop.ts](../src/scene/drop.ts), which is forty lines and not a solver.
-It runs per frame in `LooseBooks` and tells the store _once_, when the book stops.
+[src/scene/drop.ts](../src/scene/drop.ts) — forty lines, not a solver. It runs
+per frame in `LooseBooks` and tells the store once, when the book stops.
 
 **The small props are a fourth home for things that are not books.** The coffee
-cup, the cans from the fridge and the takeaway boxes the deliveries leave are
-`props` in `books.json` (schema 9): kind, one `full` bit, and a real position,
-for the same reason `loose` stores one. There is exactly one cup (its id is
-`cup`, and it waits by the coffee maker whenever it is not out in the room);
-cans and takeaway boxes are minted as they arrive and destroyed by the kitchen
-bin, which refuses the crockery. `E` takes and places, `F` drinks or eats —
-drinking the coffee writes `player.boostUntil`, which the walk controller reads
-per frame for a quarter more speed, outside React like everything per-frame.
+cup, the cans and the takeaway boxes are `props` in `books.json`: kind, one
+`full` bit, and a real position, for the same reason `loose` stores one. There
+is exactly one cup, id `cup`, waiting by the coffee maker when it is not out in
+the room; cans and takeaway boxes are minted on arrival and destroyed by the
+kitchen bin, which refuses the crockery. `E` takes and places, `F` drinks or
+eats — the coffee writes `player.boostUntil`, read per frame by the walk
+controller for a quarter more speed.
+
 A **paper** is a delivery too: `E` at the telephone offers a takeaway or an
 arXiv id, and [core/src/paper.rs](../core/src/paper.rs) downloads the PDF into
-`books/arxiv/`, asks the arXiv API what it is called, and indexes it — so what
-arrives is an ordinary book with no arXiv-shaped row anywhere. The fetch is in
-the core rather than in the page for two reasons: arxiv.org does not invite
-cross-origin requests, so a browser `fetch` fails in both shipped modes, and the
-result is a file in the library folder, which nothing above `src/services/` may
-make. It is the one dependency in the project that reaches the network (`ureq`,
+`books/arxiv/`, asks the arXiv API for its title, and indexes it — so what
+arrives is an ordinary book, with no arXiv-shaped row anywhere. The fetch is in
+the core rather than the page for two reasons: arxiv.org refuses cross-origin
+requests, and the result is a file in the library folder, which nothing above
+`src/services/` may write. It is the project's one networked dependency (`ureq`,
 blocking and rustls-backed, so the container gains no async runtime and no
 system OpenSSL).
 
-The telephone's delivery is walked in by a courier
+The delivery is walked in by a courier
 ([src/state/courier.ts](../src/state/courier.ts), a per-frame mutable like the
 cat): he comes out of the trees along the clearest straight lane, and the box
 becomes a placed prop only when he reaches `deliverySpot` in
 [src/world/derive.ts](../src/world/derive.ts) — the foot of the nearest `step`,
 or the spawn in a map with none. His meshes mount only while a delivery is out.
-The headlamp starts on the porch table, is _worn_, not held — session state,
-both hands free — comes off onto any bare tabletop as a placed prop, and its
+
+The headlamp starts on the porch table and is _worn_, not held — session state,
+both hands free — and comes off onto any bare tabletop as a placed prop. Its
 beam ([src/scene/Headlamp.tsx](../src/scene/Headlamp.tsx)) is a camera-riding
 spot light mounted only while worn, for the same shader-count reason as the
 television's glow.
 
 **A door is a lamp with a hinge.** The `door` kind stores one bit — standing
-open — in `ambience.json` under the same keyed toggles the lamps use, because
-which doors are open is a fact about the room. The leaf's swing is eased per
-frame in its own component; whether it _blocks_ is the interesting part: the
-static derivation deliberately does not know ambience, so the walk controller
-in `Player.tsx` adds a collider for each closed door itself, rebuilt on the
-toggle — an edit, not a frame cost. The campfire (`campfire`) is a lamp too —
-`E` lights it — but the light switch indoors filters it out of "every light":
-a switch plate must not ignite a fire across the lake. The camp itself is the
-trick worth knowing: **a room with no walls, no roof and a stone floor is a
-campsite** — the format needed nothing new for it, and being a room is what
-clears the forest around it and makes its pad real floor.
+open — in `ambience.json` under the same keyed toggles the lamps use. The leaf's
+swing is eased per frame in its own component. Whether it _blocks_ is the
+interesting part: the static derivation does not know about ambience, so
+`Player.tsx` adds a collider per closed door itself, rebuilt on the toggle — an
+edit, not a frame cost. A `campfire` is a lamp too, but the indoor light switch
+filters it out of "every light", so a switch plate cannot ignite a fire across
+the lake. **A room with no walls, no roof and a stone floor is a campsite** —
+the format needed nothing new, and being a room is what clears the forest around
+it and makes its pad real floor.
 
 ---
 
 ## Nothing Shelves Itself
 
 A newly indexed book goes into a moving box, not onto a shelf
-([src/world/reconcile.ts](../src/world/reconcile.ts)), so a fresh library is full
-boxes and empty shelves. Arrivals are levelled across the boxes book by book —
-or, with **One Box per Folder** switched on in settings, a folder of `books/` at
-a time, so a first scan comes out of the van pre-sorted (`bookFolder` in
-`reconcile.ts` names the group; a folder is never split across boxes).
+([src/world/reconcile.ts](../src/world/reconcile.ts)), so a fresh library is
+full boxes and empty shelves. Arrivals are levelled across the boxes book by
+book, or a folder at a time with **One Box per Folder** on in settings
+(`bookFolder` in `reconcile.ts` names the group; a folder is never split).
 
 Unpacking is an interaction: `G` on a box runs `emptyBoxOntoShelves`, which
-fills empty rows **nearest case first** (`nearestRowsFirst` — carry the box to
-the case you mean to fill, with the climb to another storey weighted double);
-`E` takes one book out or puts one back.
+fills empty rows **nearest case first** (`nearestRowsFirst`, with the climb to
+another storey weighted double); `E` takes one book out or puts one back.
 
-The boxes themselves are yours to manage. `X` carries one; `Backspace` breaks an
-_empty_ one down; `E` on the `boxstack` in the kitchen makes a new one up, which
-becomes real furniture — with a fresh `box-n` id — when it is set down
+The boxes are furniture you manage. `X` carries one; `Backspace` breaks an
+_empty_ one down; `E` on the kitchen `boxstack` makes a new one up, which
+becomes real furniture with a fresh `box-n` id when set down
 (`spawnBox`/`deleteBox` in [src/state/library.ts](../src/state/library.ts)).
-Both edits live in `books.json` (`spawnedBoxes`, `removedBoxes`, schema 7) and
-never in `library.json`, exactly like the shoved-furniture overrides; a
-broken-down id stays burned so its leftover layout entries cannot haunt a later
-box. `deriveWorld` takes the edits as a third argument and grows or filters the
-box furniture before anything downstream looks, so reconciliation, packing and
-the raycast all see the true box population without knowing the feature exists.
+Both edits live in `books.json` (`spawnedBoxes`, `removedBoxes`), never in
+`library.json`; a broken-down id stays burned so leftover layout entries cannot
+attach to a later box. `deriveWorld` takes the edits as a third argument and
+grows or filters the box furniture before anything downstream looks, so
+reconciliation, packing and the raycast all see the true box population.
 
-Reconciliation is the part most likely to lose somebody's arrangement, and so the
-part with the most tests. The rules:
+Reconciliation is the part most likely to lose somebody's arrangement, and has
+the most tests. The rules:
 
 - Move a bookcase and its books move with it. Reorder the file and nothing moves.
 - Delete or rename one and its books go into boxes — but the _saved_ rows are
@@ -604,37 +589,35 @@ is what keeps a page at a readable size without a DPI the GPU cannot carry.
 
 **Both formats open, and read mode does not know which it has.** Everything
 above [src/reader/source.ts](../src/reader/source.ts) is written against "a
-thing with pages you can rasterise" rather than against pdf.js, which is what
-lets the drag, the turn, the bookmarks, `J`, `N` and `P` all work identically
-for an EPUB. Below it there are two implementations:
+thing with pages you can rasterise" rather than against pdf.js, so the drag, the
+turn, bookmarks, `J`, `N` and `P` work identically for both. Below it:
 
-- a **PDF** is pdf.js, as before;
+- a **PDF** is pdf.js;
 - an **EPUB** is opened as a zip by [zip.ts](../src/reader/zip.ts) — the
   platform's own `DecompressionStream('deflate-raw')`, no dependency — reduced
   to headings and paragraphs by [epub.ts](../src/reader/epub.ts), and set in
   type by [epubPages.ts](../src/reader/epubPages.ts).
 
-The honest limits are written at the top of `epub.ts`. An EPUB is a website in a
-zip file and rendering one _properly_ means a CSS engine; what is kept is the
-sequence of headings and paragraphs, which is the book, and what is lost is the
-author's stylesheet, the images and the navigation.
+The limits are written at the top of `epub.ts`: an EPUB is a website in a zip
+file and rendering one properly means a CSS engine. What is kept is the sequence
+of headings and paragraphs; what is lost is the author's stylesheet, the images
+and the navigation.
 
-The one decision in the type setting worth knowing is that **pagination happens
-once, in abstract units, at open time** rather than at whatever pixel size the
-texture wants. Canvas metrics are linear in font size, so measuring at one size
-and drawing at another is exact — and it buys the property that matters: page
-200 is page 200 on any monitor, in any window, next session. Laying out per
-texture size would make a bookmark a number that meant something different every
-time, which is not a bookmark.
+**Pagination happens once, in abstract units, at open time** rather than at the
+texture's pixel size. Canvas metrics are linear in font size, so measuring at
+one size and drawing at another is exact — and it buys the property that
+matters: page 200 is page 200 on any monitor, in any window, next session.
+Laying out per texture size would make a bookmark mean something different every
+time.
 
-Pages are held as textures with a tiny cache: the spread in hand plus one either
-side, which is what makes a turn in either direction instant. Nothing rasterises
-at commit time; the destination spread is rendered while the leaf is still
-swinging, so the swap is atomic or it does not happen yet.
+Pages are held as textures with a small cache — the spread in hand plus one
+either side — which is what makes a turn in either direction instant. Nothing
+rasterises at commit time: the destination spread is rendered while the leaf is
+still swinging, so the swap is atomic or it does not happen yet.
 
-`P` tears a copy of the page out — the book keeps its own page, and the sheet
-records which book and which page number, so it is rasterised from the same file
-next time it is drawn. "Tear out" is the gesture, not the effect.
+`P` tears a copy of the page out. The book keeps its own page, and the sheet
+records which book and page number, so it is rasterised from the same file next
+time it is drawn.
 
 ---
 
@@ -651,27 +634,25 @@ board's face carries. Two decisions:
   written to the layout once, when you let go.
 
 [src/scene/Drawing.tsx](../src/scene/Drawing.tsx) reads the held mouse button and
-raycasts the crosshair against `sceneRefs.boards`. It is the one continuous input
-in the app, which is why it is its own file rather than another branch in
-`Player.tsx` alongside the one-shot verbs.
+raycasts the crosshair against `sceneRefs.boards`. It is the app's only
+continuous input, which is why it is its own file rather than another branch in
+`Player.tsx` beside the one-shot verbs.
 
 ---
 
 ## Records Are Things, Not a List
 
-Records are _dealt_ — every `recordshelf` takes a slice of the music folder in
-folder order — so a few hundred sleeves have somewhere to be with nothing
-written down. What is written down is only what you have had an opinion about: a
-record carried to another crate, or set down on a table. Both are one entry
-rather than an ordering, because unlike a shelf a crate has no order worth
-keeping, and the deal honours explicit filings first so putting one away is not
-immediately undone.
+Records are _dealt_ — every `recordshelf` takes a slice of `music/` in folder
+order — so a few hundred sleeves have somewhere to be with nothing written down.
+Only records you have moved are stored: carried to another crate, or set down on
+a table. Both are one entry rather than an ordering, since a crate has no order
+worth keeping, and the deal honours explicit filings first so putting one away
+is not immediately undone.
 
-The consequence worth stating: there is **one of each record**. It is on
-whichever deck you carried it to, a deck with nothing on it does not help itself
-to the first record in the folder, and `F` takes one back off — otherwise a
-record carried to a deck could never be carried away from one, since it is hidden
-while it plays.
+The consequence: there is **one of each record**. It is on whichever deck you
+carried it to, an empty deck does nothing, and `F` takes one back off —
+otherwise a record carried to a deck could never leave it, being hidden while it
+plays.
 
 ---
 

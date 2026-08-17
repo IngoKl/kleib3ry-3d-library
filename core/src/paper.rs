@@ -1,18 +1,14 @@
 //! Fetching a paper off arXiv and putting it in the library.
 //!
-//! The one place in this project that reaches out to the internet, and it does
-//! it from here rather than from the front end for two reasons. A browser
-//! `fetch` at arxiv.org is a cross-origin request that arXiv does not invite,
-//! so it would fail in the desktop app and in the container alike; and the
-//! result is a *file in your library folder*, which is the one thing everything
-//! above `src/services/` is not allowed to make. Both shells already have a
-//! seam for "ask the core to do a thing to the folder", and this is one of
-//! those things.
+//! The only place in the project that reaches the internet, and it is here
+//! rather than in the front end for two reasons: arxiv.org refuses
+//! cross-origin requests, so a browser `fetch` fails in both shipped modes;
+//! and the result is a file in the library folder, which nothing above
+//! `src/services/` may write.
 //!
-//! What arrives is an ordinary book. There is no arXiv-shaped row in the index,
-//! no second kind of book in the front end, and nothing to migrate if this
-//! module is deleted: a paper is a PDF in `books/arxiv/` that was indexed the
-//! same way as everything else.
+//! What arrives is an ordinary book — a PDF in `books/arxiv/`, indexed like any
+//! other. There is no arXiv-shaped row anywhere, so deleting this module
+//! migrates nothing.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

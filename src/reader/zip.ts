@@ -1,16 +1,10 @@
 /**
- * Just enough ZIP to open an EPUB.
+ * Just enough ZIP to open an EPUB: the central directory, stored entries, and
+ * deflate through the platform's own `DecompressionStream('deflate-raw')`.
  *
- * An EPUB is a zip file with an XML manifest in it, so reading one starts here.
- * There is no dependency for this and there deliberately is not going to be:
- * what is actually needed is the central directory, stored entries, and deflate
- * — and the platform has had `DecompressionStream('deflate-raw')` for years, so
- * the whole of the compression half is four lines. A zip library would be a
- * hundred kilobytes and a licence, in exchange for the parts of the format an
- * e-book never uses: spanning, encryption, and zip64.
- *
- * The same argument the probe makes for reading ID3 without a crate, and the
- * server makes for having no HTTP framework.
+ * No dependency, deliberately. A zip library would add a hundred kilobytes and
+ * a licence for the parts of the format an e-book never uses — spanning,
+ * encryption, zip64.
  */
 
 const EOCD_SIGNATURE = 0x06054b50

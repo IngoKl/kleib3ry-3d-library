@@ -35,11 +35,9 @@ export const FLOOR_SLAB = 0.22
 export const ROOM_GAP = 2 * WALL
 
 /**
- * Footprint and height for each furniture kind, and whether you bump into it.
- *
- * `surface` is the height of the top you can put a book down on, as a fraction
- * of the piece's height — 0 for anything you cannot. A rug is not a surface: a
- * book left on one is on the floor, which is where the physics puts it anyway.
+ * Footprint and height per furniture kind, and whether you bump into it.
+ * `surface` is the height a book can be put down at, as a fraction of the
+ * piece's height, or 0 for anything that takes none.
  */
 export const FURNITURE_SIZE: Record<
   FurnitureKind,
@@ -135,12 +133,9 @@ export const FURNITURE_SIZE: Record<
 }
 
 /**
- * Furniture that hangs on a wall rather than standing on the floor.
- *
- * Three things follow from it: `size` means width by *height*, `y` names the
- * centre of the thing rather than its base, and its depth comes from the kind
- * rather than from the document — nobody hanging a whiteboard is thinking about
- * how far it sticks out.
+ * Furniture that hangs on a wall. Three things follow: `size` is width by
+ * *height*, `y` is the centre rather than the base, and depth comes from the
+ * kind rather than the document.
  */
 export const WALL_MOUNTED = new Set<FurnitureKind>([
   'picture',
@@ -160,16 +155,12 @@ export const SITTABLE = new Set<FurnitureKind>([
 ])
 
 /**
- * Furniture you can pick up and carry off, which is a shorter list than
- * "furniture light enough to shift": a moving box is not on it, because the box
- * has its own verbs — filling it, emptying it, breaking it down — and pressing
- * `X` on one has meant "carry the box" since before there was anything else to
- * carry. What is on it is the folding pair: a chair to take down to the water
- * and a table to put the coffee on when you get there.
+ * Furniture `X` picks up and carries off. A moving box is not on the list: it
+ * has its own verbs and its own `X` handling.
  *
- * A carried piece is stored exactly like a shoved box, as a `FurnitureOverride`
- * in `books.json`. The document says where it *lives* — on the porch — and the
- * override says where you left it.
+ * A carried piece is stored like a shoved box, as a `FurnitureOverride` in
+ * `books.json` — the document says where it lives, the override where you left
+ * it.
  */
 export const PORTABLE = new Set<FurnitureKind>(['foldingchair', 'foldingtable'])
 
@@ -216,12 +207,9 @@ export type Panel = {
 }
 
 /**
- * A collider with a vertical extent.
- *
- * The 2D `Aabb` the walk controller uses is still what the sliding maths runs
- * on — see `collision.ts`, which stays a few dozen lines of arithmetic — but
- * with a loft over the living room, "is there a wall here" now depends on which
- * floor you are standing on. So the world derives solids with a top and a
+ * A collider with a vertical extent. The sliding maths still runs on the 2D
+ * `Aabb` in `collision.ts`, but with a loft over the living room "is there a
+ * wall here" depends on which floor you stand on — so solids carry a top and a
  * bottom, and the controller flattens the ones at its own height.
  */
 export type Solid = Aabb & { bottom: number; top: number }
@@ -331,10 +319,8 @@ export function windowPanes(room: RoomSpec): Panel[] {
 }
 
 /**
- * Where a room's openings are, and whether anything is in them.
- *
- * For whatever has to know how *open* a room is — the rain you can hear is the
- * obvious one. A door lets in the whole weather; a pane lets in some of it.
+ * Where a room's openings are, and whether anything is in them. For anything
+ * that needs to know how open a room is — chiefly the rain you can hear.
  */
 export type OpeningSpot = {
   x: number
@@ -359,12 +345,9 @@ export function openingSpots(room: RoomSpec): OpeningSpot[] {
 export const WALLS: readonly Wall[] = ['north', 'south', 'east', 'west']
 
 /**
- * Colliders for this room's walls: the whole length, minus the doors.
- *
- * A window's apron still blocks you — it is a waist-high wall — so only
- * openings you could actually walk through are subtracted. That is also what
- * makes a loft balustrade work: a wide "window" with a metre-high sill is
- * something you can see the room over and cannot walk off.
+ * Colliders for this room's walls: the whole length, minus the doors. Only
+ * openings you could walk through are subtracted — a window's apron is a
+ * waist-high wall, which is also what makes a loft balustrade work.
  */
 export function wallSolids(room: RoomSpec): Solid[] {
   const boxes: Solid[] = []

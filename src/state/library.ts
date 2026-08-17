@@ -34,7 +34,6 @@ import {
 } from '../world/derive'
 import { boxesIn } from '../world/boxes'
 import {
-  LAYOUT_SCHEMA_VERSION,
   bookFolder,
   describeReconciliation,
   reconcile,
@@ -70,10 +69,8 @@ type LibraryState = {
   /** Every book in a box, box by box. The unshelved half of the library. */
   boxed: string[]
   /**
-   * Books put down somewhere that is not a shelf and not a box: on a table, or
-   * on the floor where you dropped them. A third home, and the only one whose
-   * position is stored rather than derived — because "there" is the whole
-   * point of putting something down.
+   * Books put down on a table or the floor. A third home, and the only one
+   * whose position is stored rather than derived.
    */
   loose: Record<string, LoosePlacement>
   /** What the last reconciliation cost, for the panel. Null when it cost nothing. */
@@ -83,27 +80,20 @@ type LibraryState = {
   /** Shelf id -> what is written on its label card. Overrides the document. */
   labels: Record<string, string>
   /**
-   * Pages and notes pinned to the walls.
-   *
-   * A list rather than a map because two sheets have nothing to do with each
-   * other and there is no key anybody would look one up by: they are found by
-   * pointing at them.
+   * Pages and notes pinned to the walls. A list rather than a map: sheets are
+   * found by pointing at them, so there is no key to look one up by.
    */
   pins: PinnedSheet[]
   /** Whiteboard id -> what has been drawn on it, oldest stroke first. */
   drawings: Record<string, BoardStroke[]>
   /**
-   * Records you have had an opinion about: `filed` is the crate you put one in,
-   * `looseRecords` is where you set one down. Everything else is dealt out of
-   * the music folder in its own order, so both are usually empty.
+   * Records that have been moved: `filed` is the crate one was put in,
+   * `looseRecords` where one was set down. Everything else is dealt from
+   * `music/` in folder order, so both are usually empty.
    */
   filedRecords: Record<string, string>
   looseRecords: Record<string, RecordPlacement>
-  /**
-   * The small props standing about the room — the cup, the cans, the takeaway
-   * boxes. The same argument as `loose`: a position is stored because "there"
-   * is the point of putting one down.
-   */
+  /** The small props standing about the room. Positions stored, like `loose`. */
   props: Record<string, PlacedProp>
   /** Furniture that has been shoved somewhere else. Boxes, in practice. */
   placements: Record<string, FurnitureOverride>
@@ -143,9 +133,8 @@ type LibraryState = {
    */
   packEverything: () => number
   /**
-   * Only the strays: every book lying on a *floor* — dropped, tumbled, kicked
-   * about — into the nearest box. Books left deliberately on tables stay put.
-   * Returns how many were picked up.
+   * Every book lying on a *floor* into the nearest box. Books left on tables
+   * stay put. Returns how many were picked up.
    */
   packLooseBooks: () => number
   /** Remember where you got to in a book, so putting it down keeps the page. */
@@ -191,10 +180,9 @@ type LibraryState = {
 }
 
 /**
- * What `carried` holds while you are carrying a box that does not exist yet
- * — one fresh off the stack in the kitchen. It becomes real furniture, with a
- * real id, the moment it is set down. Starts with `#` so it can never collide
- * with a document id.
+ * What `carried` holds while carrying a box that does not exist yet — one off
+ * the kitchen stack. It becomes real furniture with a real id when set down.
+ * Starts with `#` so it can never collide with a document id.
  */
 export const NEW_BOX = '#new-box'
 
@@ -208,9 +196,9 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => Promise<void>) | null = null
 
 /**
- * Write any pending layout save out now. Callers about to read the file
- * (`load`) or lose the page (shutdown) flush first, so the debounce is never a
- * window in which the last edit is lost.
+ * Write any pending layout save now. Callers about to read the file (`load`) or
+ * lose the page (shutdown) flush first, so the debounce cannot swallow the last
+ * edit.
  */
 export async function flushLayoutSave(): Promise<void> {
   if (saveTimer === undefined) return
@@ -225,9 +213,8 @@ function currentWorld(): DerivedWorld | null {
 }
 
 /**
- * Whether a part-empty row leans. A setting rather than a fact about the
- * library, so it is read at the moment of packing rather than stored with it —
- * the same books, the same rows, drawn plumb or settled.
+ * Whether a part-empty row leans. A setting rather than a library fact, so it
+ * is read when packing rather than stored with the layout.
  */
 const leaning = () => useSettings.getState().booksLean
 
@@ -277,7 +264,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   const saveNow = async () => {
     const state = get()
     const document: LayoutDocument = {
-      schemaVersion: LAYOUT_SCHEMA_VERSION,
       rows: state.savedRows,
       boxes: state.savedBoxes,
       progress: state.readProgress,
@@ -305,11 +291,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   }
 
   /**
-   * Remember a placement in the saved layout as well as the live one.
-   *
-   * A book is in exactly one place, so writing it down anywhere takes it out of
-   * everywhere else. Rows for shelves this world does not have are carried
-   * through untouched — see `savedRows`.
+   * Remember a placement in the saved layout as well as the live one. A book is
+   * in exactly one place, so writing it anywhere removes it from everywhere
+   * else. Rows for shelves this world lacks pass through untouched.
    */
   const remember = (
     id: string,
@@ -403,12 +387,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Filing, setting down and letting go of a record.
-     *
-     * All three are one small write, because a record's place is one entry
-     * rather than an arrangement: unlike a shelf, a crate has no order worth
-     * keeping — see `Records.tsx` for why the rest of the collection is dealt
-     * rather than laid out.
+     * Filing, setting down and letting go of a record. All three are one small
+     * write: a crate has no order worth keeping, so a record's place is a
+     * single entry rather than an arrangement. See `Records.tsx` for the deal.
      */
     fileRecord: (trackId, crateId) => {
       set({
@@ -552,7 +533,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const result = reconcile(
         world,
         hasSavedLayout
-          ? { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: savedRows, boxes: savedBoxes, loose }
+          ? { rows: savedRows, boxes: savedBoxes, loose }
           : null,
         books.map((b) => b.id),
         (id) => dims.get(id),
@@ -795,9 +776,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Unpack a box: every book in it onto the shelves, empty rows in the
-     * nearest case first. Carrying the box to a bookcase and pressing G fills
-     * *that* case — which is the whole point of being able to carry one.
+     * Unpack a box onto the shelves, empty rows in the nearest case first — so
+     * carrying the box to a bookcase and pressing `G` fills *that* case.
      */
     emptyBoxOntoShelves: (boxId) => {
       const { rows, boxes, dims, savedBoxes } = get()
@@ -838,9 +818,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     /**
-     * Strip the shelves: everything back into the boxes. Runs the same
-     * reconciliation a brand-new library does, so the result is the state you
-     * were in the first time you opened the folder.
+     * Everything back into the boxes. Runs the same reconciliation a new
+     * library does, so the result matches a freshly opened folder.
      */
     packEverything: () => {
       const { books, dims } = get()
@@ -850,7 +829,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
       const result = reconcile(
         world,
-        { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {}, boxes: {} },
+        { rows: {}, boxes: {} },
         books.map((b) => b.id),
         (id) => dims.get(id),
         // The same folder-per-box rule a scan follows, so clearing the shelves

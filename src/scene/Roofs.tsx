@@ -6,32 +6,20 @@ import { useWorldStore } from '../state/world'
 import type { DerivedRoof } from '../world/derive'
 
 /**
- * The roof.
+ * The roof. Three decisions worth knowing:
  *
- * The building used to stop at the top of its walls, which from inside is
- * invisible — every room has a ceiling — and from the shore of the lake is a set
- * of open boxes. Now that you can walk out and look back at the place, it needs
- * to be a building.
+ *   - the pitched planes are *slabs*, not planes: from below the eaves a roof
+ *     has an underside and a thickness, both visible from the porch;
+ *   - the gable ends come from the roof's own geometry rather than taller
+ *     walls, so the pitch is owned in one place;
+ *   - none of it collides. A roof starts at the top of the walls and only the
+ *     eaves come down, outside and over head height (see `roofsOf`).
  *
- * Two decisions worth knowing about. The pitched planes are *slabs* rather than
- * planes, because a roof seen from below the eaves has an underside and a
- * thickness, and both are visible the moment you stand next to the porch. And
- * the gable ends are drawn from the roof's own geometry rather than by making
- * the walls taller: a wall that grew a triangle would have to know the pitch of
- * the roof over it, and then two places would own the same number.
- *
- * None of it collides. A roof starts at the top of the walls and only the eaves
- * come down, outside, well over head height — see `roofsOf` for why the plane is
- * pinned to the wall top rather than sunk into the room.
- *
- * And none of it is in the shadow pass, which is not an oversight. These are by
- * some way the largest surfaces in the scene — a slope over the great room is
- * ten metres by nine, bigger than any wall — and the shadow map costs texels in
- * proportion to what is rasterised into it. Adding them measurably cost frames
- * on the software rasteriser the tests run on, for a shadow that lands almost
- * nowhere: every room has a ceiling, so the only ground a roof could darken is
- * the strip its eaves overhang, and the walls under it are already casting the
- * building's shadow across it.
+ * None of it is in the shadow pass, deliberately. These are the largest
+ * surfaces in the scene, the shadow map costs texels in proportion to what is
+ * rasterised into it, and the shadow lands almost nowhere — every room has a
+ * ceiling, so only the strip under the eaves could darken, and the walls
+ * already shade that.
  */
 
 /** How thick a roof slab is, in metres. Rafters, boards and shingles. */

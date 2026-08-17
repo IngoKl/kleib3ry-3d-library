@@ -4,24 +4,14 @@ import { eveningNow, useSettings } from './settings'
 import type { AmbienceState } from '../services/types'
 
 /**
- * How the room is right now: which lamps are on, whether it is night, whether
- * it is raining.
+ * Which lamps are on, whether it is night, whether it is raining — all facts
+ * about the room, saved in `.library/ambience.json` beside the layout.
  *
- * Saved beside the layout, in `.library/ambience.json`, with the lamps keyed by
- * furniture id — so a lamp you switch off stays off across launches, and a lamp
- * taken out of `library.json` stops being remembered as soon as nothing refers
- * to it. The document's `"on"` is the *initial* state and nothing writes back
- * over it: `library.json` is yours, and flipping a switch should not reformat
- * it.
- *
- * The three live in one file because they are one kind of fact — the weather is
- * not a setting any more than the evening is — and because the whole file is
- * deliberately trivial to reason about. Delete it and you get every light back
- * on and a dry afternoon, which is a repair anyone can perform without knowing
- * what a schema is.
+ * Lamps are keyed by furniture id, so one taken out of `library.json` stops
+ * being remembered. The document's `"on"` is the *initial* state and is never
+ * written back over: flipping a switch must not reformat a hand-edited file.
+ * Deleting this file restores every light and a dry day.
  */
-
-export const AMBIENCE_SCHEMA_VERSION = 1
 
 const SAVE_DEBOUNCE_MS = 400
 
@@ -51,7 +41,6 @@ let runSave: (() => void) | null = null
 export const useAmbienceStore = create<AmbienceStore>((set, get) => {
   const saveNow = () => {
     const document: AmbienceState = {
-      schemaVersion: AMBIENCE_SCHEMA_VERSION,
       on: get().on,
       night: get().night,
       rain: get().rain,

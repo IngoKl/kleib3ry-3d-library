@@ -67,12 +67,9 @@ export function coverFor(book: IndexedBook): Promise<string | null> {
 }
 
 /**
- * The colour a book's binding should be, taken from its cover.
- *
- * Spine colours used to come from a hash of the id — stable, and completely
- * unrelated to the book. Sampling the artwork instead means a shelf of your
- * books looks like *your* books from across the room, before any of the type is
- * legible.
+ * The colour a book's binding should be, sampled from its cover, so a shelf
+ * reads as your books before any of the type is legible. Falls back to the id
+ * hash in `data/dimensions.ts` when there is no cover.
  *
  * Pale and near-black pixels are skipped: most covers are largely paper or
  * margin, and averaging those gives every book the same dirty grey.
@@ -239,12 +236,8 @@ export function coverImageFor(book: IndexedBook) {
 }
 
 /**
- * Warm the whole library in the background.
- *
- * Covers used to arrive only for books you had walked up to, which meant a
- * shelf resolved as you approached it and a book you had never picked up had
- * no artwork at all. Kicking the whole catalogue off at load — slowly, behind
- * anything urgent — means the room is finished rather than finishing.
+ * Warm the whole library in the background, slowly and behind anything urgent,
+ * so a library finishes rather than resolving as you approach it.
  */
 export function warmCovers(books: readonly IndexedBook[]) {
   for (const book of books) {

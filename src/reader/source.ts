@@ -5,18 +5,12 @@ import { PAGE_ASPECT, layOutEpub, renderEpubPage, type EpubLayout } from './epub
 import { openDocument, renderPage } from './pdf'
 
 /**
- * What the reader actually reads.
+ * What the reader reads: "a thing with pages you can rasterise", rather than
+ * pdf.js's own shape.
  *
- * The reader used to hold a `PDFDocumentProxy` directly, which is why EPUBs
- * were books you could shelve and not open: everything downstream of opening —
- * the page cache, the turn, the dock, the bookmarks — was written against
- * pdf.js's shape rather than against "a thing with pages you can rasterise".
- *
- * This is that shape. Two implementations: pdf.js for a PDF, and the type
- * setter in `epubPages.ts` for an EPUB. Everything above it is unchanged and
- * does not know which it has, which is why the whole of read mode — dragging a
- * leaf across, tearing a page out to pin up, going to page 340 — works
- * identically for both.
+ * Two implementations — pdf.js for a PDF, the type setter in `epubPages.ts` for
+ * an EPUB. Nothing above this knows which it has, which is why the drag, the
+ * turn, the bookmarks, `J`, `N` and `P` are identical for both.
  */
 export type PageSource = {
   pages: number

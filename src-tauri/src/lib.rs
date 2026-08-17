@@ -1,13 +1,12 @@
 //! The desktop shell: commands, settings, and the paths they resolve.
 //!
-//! Everything that actually reads a book lives in `kleib3ry_core`, which has no
-//! idea a window exists. What is left here is the part that is genuinely about
-//! being a desktop app — the IPC surface, the asset-protocol scope, the native
-//! folder picker, and where an installed application is allowed to keep files.
+//! Everything that reads a book lives in `kleib3ry_core`. What is left here is
+//! what is genuinely about being a desktop app — the IPC surface, the
+//! asset-protocol scope, the native folder picker, and where an installed
+//! application may keep files.
 //!
-//! The modules are re-exported because `src/bin/scan.rs` and the tests reach
-//! for them by their old names, and because "the core is over there" is worth
-//! being able to see from here.
+//! The core modules are re-exported so `src/bin/scan.rs` and the tests can
+//! reach them from here.
 
 pub use kleib3ry_core::{catalog, index, media, probe};
 
@@ -21,11 +20,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use catalog::{Book, Catalog};
 
 /// What can go wrong in the shell: whatever the core can, plus Tauri itself.
-///
-/// The core's errors are flattened rather than nested — `Core(#[from] ...)` with
-/// a transparent message — so a failure reads the same in the HUD whether it
-/// came from the indexer or from the window manager. A user does not care which
-/// crate could not find their book.
+/// The core's errors are flattened rather than nested, so a failure reads the
+/// same in the HUD whichever crate it came from.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
@@ -179,11 +175,9 @@ fn index_file(app: &AppHandle) -> Result<PathBuf> {
     Ok(kleib3ry_core::save_files(&root_of(app)?).index)
 }
 
-/// Let the WebView load images out of the cover cache.
-///
-/// The asset protocol starts with an empty scope, so without this every cover
-/// is a silently broken image — and the cache now lives at a path the user
-/// chose, which cannot be known at build time.
+/// Let the WebView load images out of the cover cache. The asset protocol
+/// starts with an empty scope, and the cache lives at a user-chosen path that
+/// cannot be known at build time, so without this every cover is broken.
 fn allow_covers(app: &AppHandle) -> Result<PathBuf> {
     let dir = covers_dir(app)?;
     fs::create_dir_all(&dir)?;
@@ -217,12 +211,11 @@ fn save_files(app: &AppHandle) -> Result<SaveFiles> {
 
 /// Let the WebView load one of the library folder's own media directories.
 ///
-/// The asset scope starts empty and stays that way apart from three named
-/// directories — covers, music, artwork — each granted only when something
-/// actually asks for it. Audio is the reason this exists rather than a
-/// `read_music_file` command to match `read_book_file`: a track is streamed
-/// while it plays, and pulling a whole FLAC through IPC to play it would be
-/// both slower and a great deal more memory than letting the WebView fetch it.
+/// The asset scope starts empty and gains only four named directories —
+/// covers, music, artwork, video — each when something first asks for it.
+/// A directory rather than a `read_music_file` command because audio and video
+/// are streamed while they play; pulling a whole FLAC through IPC would be
+/// slower and far more memory. `roms/` is read once, so it stays a command.
 fn allow_media(app: &AppHandle, name: &str) -> Result<Option<PathBuf>> {
     let root = match root_of(app) {
         Ok(root) => root,
@@ -469,9 +462,9 @@ fn save_paths(app: AppHandle) -> Result<serde_json::Value> {
     }))
 }
 
-/// The book layout is an opaque, versioned document owned by the front end.
-/// Rust stores and returns it verbatim so the schema can evolve without a
-/// matching change on this side.
+/// The book layout is an opaque document owned by the front end. Rust stores
+/// and returns it verbatim so its shape can change without a matching change
+/// on this side.
 #[tauri::command]
 fn get_layout(app: AppHandle) -> Result<Option<serde_json::Value>> {
     let file = save_files(&app)?.layout;

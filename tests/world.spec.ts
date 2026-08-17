@@ -33,7 +33,7 @@ import {
 import { occupied } from '../src/world/forest'
 import { parseWorldText, type WorldDocument } from '../src/world/schema'
 import { DEFAULT_WORLD_TEXT } from '../src/world/defaults'
-import { LAYOUT_SCHEMA_VERSION, bookFolder, reconcile } from '../src/world/reconcile'
+import { bookFolder, reconcile } from '../src/world/reconcile'
 import { boxesIn, packBoxes } from '../src/world/boxes'
 import { allRowKeys, arrangeInto, emptyRowsFirst, nearestRowsFirst, parseRowKey } from '../src/scene/shelving'
 import { dimensionsFor } from '../src/data/dimensions'
@@ -114,11 +114,10 @@ test.describe('world document', () => {
   })
 
   test('no window has the floor of the room above running through it', () => {
-    // The great room's north window used to reach 2.9 m up a wall the loft floor
-    // crosses at 2.28, so from the lake the view window had a plank across it.
-    // Stated generally, because the same mistake is available in every room with
-    // a storey over part of it — and it is invisible from inside, where the sill
-    // and the head are both just wall.
+    // A window whose head reaches past a floor slab above it shows a plank
+    // across the view from outside, while looking like plain wall from inside.
+    // Checked generally: the mistake is available in every room with a storey
+    // over part of it.
     const problems: string[] = []
 
     for (const room of WORLD.rooms) {
@@ -459,10 +458,9 @@ test.describe('outside', () => {
 
   test('you can walk out of the porch and down onto the grass', () => {
     // Straight out of the cabin's south door at world x = 2.6, across the
-    // decking and down the steps, which are now directly below it — the gap in
-    // the railing used to be at the far end, so leaving meant threading between
-    // the porch furniture. The drop from the decking is 24 cm, which is a step
-    // rather than a fall.
+    // decking and down the steps directly below it, so leaving does not mean
+    // threading between the porch furniture. The 24 cm drop off the decking is
+    // a step rather than a fall.
     let stance: Stance = { x: 2.6, z: 5.6, floor: 0 }
     for (let i = 0; i < 60; i++) {
       stance = stepPlayer(WORLD, solids, stance, { x: stance.x, z: stance.z + 0.05 }, 0.28)
@@ -541,8 +539,8 @@ test.describe('outside', () => {
   })
 
   test('a tree is something you walk into, not through', () => {
-    // The forest used to be scenery. Now that the ground is walkable it has to
-    // be solid, and it has to be solid at *head* height as well as at the knees.
+    // The ground is walkable, so a trunk has to be solid — and solid at *head*
+    // height as well as at the knees.
     const here = solidsAt(solids, GROUND_Y)
     expect(WORLD.trees.length).toBeGreaterThan(100)
     const trunks = WORLD.trees.filter((tree) =>
@@ -556,7 +554,6 @@ test.describe('reconciling a layout with a changed room', () => {
   const ids = BOOKS.map((b) => b.id)
   /** A library somebody has shelved — which is now the only way books get shelved. */
   const saved = {
-    schemaVersion: LAYOUT_SCHEMA_VERSION,
     rows: arrangeInto(WORLD, {}, ids, lookup).rows,
   }
 
@@ -674,9 +671,7 @@ test.describe('reconciling a layout with a changed room', () => {
     const many = Array.from({ length: 4000 }, (_, i) => book(`x${i}`))
     const dims = new Map(many.map((b) => [b.id, dimensionsFor(b)]))
     const all = many.map((b) => b.id)
-    const result = reconcile(WORLD, { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {} }, all, (id) =>
-      dims.get(id),
-    )
+    const result = reconcile(WORLD, { rows: {} }, all, (id) => dims.get(id))
     const shelved = Object.values(result.rows).flat().length
     expect(shelved).toBe(0)
     expect(result.boxed.length).toBe(all.length)
@@ -688,7 +683,6 @@ test.describe('sorting books into boxes', () => {
 
   test('a book put in a particular box is in that box on the next load', () => {
     const saved = {
-      schemaVersion: LAYOUT_SCHEMA_VERSION,
       rows: {},
       boxes: { 'box-3': [ids[0]!, ids[1]!] },
     }
@@ -698,7 +692,6 @@ test.describe('sorting books into boxes', () => {
 
   test('deleting a box tips its books into the ones that are left', () => {
     const saved = {
-      schemaVersion: LAYOUT_SCHEMA_VERSION,
       rows: {},
       boxes: { 'box-1': ids.slice(0, 10) },
     }
@@ -718,7 +711,6 @@ test.describe('sorting books into boxes', () => {
 
   test('a shelf beats a box for a book that somehow claims both', () => {
     const saved = {
-      schemaVersion: LAYOUT_SCHEMA_VERSION,
       rows: { 'west-0:0': [ids[0]!] },
       boxes: { 'box-1': [ids[0]!] },
     }
@@ -843,12 +835,7 @@ test.describe('moving boxes', () => {
     const unshelved = BOOKS.slice(0, 5).map((b) => b.id)
 
     // Nothing is assigned to a box that does not exist...
-    const result = reconcile(
-      bare,
-      { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {} },
-      unshelved,
-      lookup,
-    )
+    const result = reconcile(bare, { rows: {} }, unshelved, lookup)
     expect(result.boxes).toEqual({})
     // ...but they are still unshelved, and still counted.
     expect([...result.boxed].sort()).toEqual([...unshelved].sort())
@@ -1018,7 +1005,7 @@ test.describe('boxes you make up and break down', () => {
     expect(world.furniture.length).toBe(WORLD.furniture.length - 1)
 
     const ids = BOOKS.slice(0, 10).map((b) => b.id)
-    const saved = { schemaVersion: LAYOUT_SCHEMA_VERSION, rows: {}, boxes: { 'box-1': ids } }
+    const saved = { rows: {}, boxes: { 'box-1': ids } }
     const result = reconcile(world, saved, ids, lookup)
     expect(result.boxes['box-1']).toBeUndefined()
     expect([...result.boxed].sort()).toEqual([...ids].sort())

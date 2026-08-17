@@ -11,16 +11,12 @@ import { useWorldStore } from '../state/world'
 /**
  * The machine behind the cabinet: the clock, the keypad and the beeper.
  *
- * One of these for the whole app, however many cabinets a document declares —
- * there is one machine, so a second cabinet shows the same game, exactly as
- * every deck would play the same record if a document declared two. The
- * cabinet component in `Furniture.tsx` only *paints*; everything that advances
- * state lives here, so an unmounted cabinet (you walked to the lake house)
+ * One machine for the whole app however many cabinets a document declares, so a
+ * second cabinet shows the same game. `Furniture.tsx` only *paints* the
+ * cabinet; everything that advances state lives here, so an unmounted cabinet
  * cannot pause the game.
  *
- * The machine runs whenever a cartridge is in, not only while you stand at it
- * — an arcade cabinet in a room runs its attract mode, and walking past a
- * live game of Pong is the point of having put one in the room.
+ * It runs whenever a cartridge is in, not only while you stand at it.
  */
 
 /** The CHIP-8 timers tick at 60 Hz wherever the machine runs. */

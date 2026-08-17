@@ -8,34 +8,23 @@ import { useAppStore } from '../state/store'
 import { useSettings } from '../state/settings'
 
 /**
- * Your own body, seen from inside it.
+ * Your own body, seen from inside it. A setting, since it makes some people
+ * queasy. Four decisions keep it out of trouble:
  *
- * Off by default in most first-person things because it is hard to get right and
- * cheap to get wrong: a body that clips through the camera, or whose legs stride
- * out of time with the floor, is worse than no body at all. It is worth having
- * here for the opposite reason to a shooter — looking down at your own knees on
- * a sofa is most of what "being in the room" is — so it is a setting, and the
- * people it makes queasy can turn it off.
+ *   - **it stops below the collar** — the camera is inside the head, and a head
+ *     modelled round it is a face seen from the inside;
+ *   - **it hangs off eye height, from the torso down**, so crouching, sitting
+ *     and climbing stairs move it for free;
+ *   - **it stands a hand's width behind the eyes**, where a chest actually is.
+ *     Centred on the camera, the torso front sits 10 cm from the near plane: it
+ *     clips, and on a software rasteriser fills half the screen with fragments
+ *     nobody sees;
+ *   - **the legs swing off distance travelled**, not a clock, so they stop when
+ *     you do and never skate.
  *
- * Three decisions keep it out of trouble:
- *
- *   - **it stops below the collar.** No head, no neck. The camera is inside the
- *     head, and a head modelled round it is a face you see the inside of.
- *   - **it is drawn from the *torso* down and hung off the eye height**, so
- *     crouching, sitting and climbing stairs all move it for free — those are
- *     all changes to where your eyes are, and the body follows the eyes.
- *   - **it stands a hand's width behind your eyes**, which is where a chest
- *     actually is relative to a face. Centred on the camera instead, the front
- *     of the torso is 10 cm in front of the near plane: it clips, and on a
- *     software rasteriser a surface that close fills half the screen with
- *     fragments nobody ever sees.
- *   - **the legs swing off distance travelled**, not off a clock, so they stop
- *     when you stop and never skate.
- *
- * It is deliberately not raycast by anything: `Interaction` asks specific
- * groups, and a body that could be pointed at would be a body you could take a
- * book out of. It is also four merged geometries rather than fourteen meshes,
- * for the reason every other assembly in `scene/` gives.
+ * Not raycast by anything — `Interaction` asks specific groups, and a body you
+ * could point at would be a body you could take a book out of. Four merged
+ * geometries rather than fourteen meshes, like every assembly in `scene/`.
  */
 
 const CLOTH = '#4a4f57'

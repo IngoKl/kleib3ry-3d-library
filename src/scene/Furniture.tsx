@@ -73,9 +73,6 @@ const ALUMINIUM = '#a9aeb0'
 const PUTTY = '#c9c2ad'
 const PUTTY_DARK = '#a29a86'
 
-/** Warm bulb colour, shared by everything that lights the room. */
-const BULB = '#ffd9a0'
-
 /**
  * A piece's body as one geometry per material rather than a JSX tree of
  * boxes: the FairyLights/Plant/Stairs idiom, shared. An armchair was nine
@@ -582,10 +579,9 @@ function FairyLights({ width, sag, lit }: { width: number; sag: number; lit: boo
   // Normalised -1..1 across the span, so the shape is the same at any length.
   const dip = (t: number) => -sag * (1 - t * t)
 
-  // Merged: a string used to be ~36 flex-segment meshes plus a mesh per bulb —
-  // the single most draw-call-dense piece in the file, times every string in
-  // the map. The flex is one geometry, the bulbs one instanced mesh: two draws
-  // for the lot, the `Plant` foliage argument at greater length.
+  // Two draw calls per string: the flex is one merged geometry and the bulbs
+  // one instanced mesh. Unmerged this is ~36 segment meshes plus one per bulb,
+  // times every string in the map.
   const flex = useMemo(() => {
     const parts: THREE.BufferGeometry[] = []
     const segments = bulbs * 3
@@ -2740,90 +2736,19 @@ export function Furniture() {
  * baked into every shader three compiles, so unmounting one recompiles the whole
  * cabin mid-frame.
  */
+/**
+ * What is left of the room's lighting once the lamps moved into the pool: the
+ * television's glow, which is not a lamp and is mounted only while a tape runs.
+ *
+ * The lamps themselves are candidates now rather than lights — see
+ * [lightPool.ts](./lightPool.ts). The rule they were mounted for still holds
+ * (every point light is a term every lit fragment pays for, even at zero
+ * intensity); the pool is how a building keeps forty lamps and pays for eight.
+ */
 export function FurnitureLights() {
   const world = useWorldStore((s) => s.world)
-  const on = useAmbienceStore((s) => s.on)
   if (!world) return null
-
-  return (
-    <>
-      {world.lights
-        // The campfire's light mounts only while it burns, like the
-        // television's glow: every point light is a term every lit fragment
-        // pays for even at zero intensity, and the campfire is dark almost
-        // always. Lighting it recompiles the shaders once, behind the far
-        // larger cost of walking to the camp.
-        .filter((lamp) => lamp.kind !== 'campfire' || (on[lamp.id] ?? lamp.defaultOn))
-        .map((lamp) => {
-        const lit = on[lamp.id] ?? lamp.defaultOn
-        const fire = lamp.kind === 'fireplace' || lamp.kind === 'campfire'
-        const fairy = lamp.kind === 'fairylights'
-        return (
-          <Lamp
-            key={lamp.id}
-            // Candela, falling off with the square of distance, so these are
-            // larger than they look: at the 2 m from a pendant to the table
-            // under it, 4.5 cd arrives as just over 1. Intensity pools glare at
-            // the fitting; distance is what carries a soft edge into the
-            // corners. Fairy lights are dimmer and reach further, which makes
-            // them decoration rather than lighting.
-            target={!lit ? 0 : fire || lamp.kind === 'pendant' ? 4.5 : fairy ? 1.8 : 2.8}
-            breathing={fire}
-            position={[lamp.x, lamp.y, lamp.z]}
-            distance={fire ? 6 : lamp.kind === 'pendant' ? 10 : fairy ? 7 : 5.6}
-            color={fire ? '#ff9346' : fairy ? '#ffcf82' : BULB}
-          />
-        )
-      })}
-      <CrtGlows world={world} />
-    </>
-  )
-}
-
-/**
- * One lamp, eased rather than switched: a toggle stepping 0 → 2.8 in a single
- * frame reads as a relay closing, a ~quarter-second ramp reads as a filament
- * warming. One float write per frame during the fade only — the light itself
- * stays mounted (see `FurnitureLights` on why unmounting recompiles shaders).
- * A fire also breathes a slow ±7%: the mesh's flames are deliberately static
- * (see `Fireplace`), but a light is below the corner-of-eye threshold.
- */
-function Lamp({
-  target,
-  breathing,
-  position,
-  distance,
-  color,
-}: {
-  target: number
-  breathing: boolean
-  position: [number, number, number]
-  distance: number
-  color: string
-}) {
-  const light = useRef<THREE.PointLight>(null)
-  const primed = useRef(false)
-
-  useFrame(({ clock }, delta) => {
-    const node = light.current
-    if (!node) return
-    // First frame lands on the target: the room must not visibly warm up on load.
-    if (!primed.current) {
-      primed.current = true
-      node.intensity = target
-      return
-    }
-    const swing = breathing && target > 0 ? 1 + Math.sin(clock.elapsedTime * 1.7) * 0.07 : 1
-    const wanted = target * swing
-    const diff = wanted - node.intensity
-    if (Math.abs(diff) < 0.005) {
-      if (node.intensity !== wanted) node.intensity = wanted
-      return
-    }
-    node.intensity += diff * Math.min(1, delta * 9)
-  })
-
-  return <pointLight ref={light} position={position} distance={distance} color={color} />
+  return <CrtGlows world={world} />
 }
 
 /**

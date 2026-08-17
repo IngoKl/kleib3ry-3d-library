@@ -1,11 +1,10 @@
 # Controls
 
-Every key, in one place. `F1` shows the same keys inside the room, grouped the
-same way, which is where you will actually look them up.
+Every key, in one place. `F1` shows the same list inside the room, grouped the
+same way.
 
-There are no modes to choose. You are walking, you are reading a book you
-opened, or you are standing at the arcade machine — and `Esc` gets you out of
-the last two.
+There are no modes to choose: you are walking, reading a book you opened, or
+standing at the arcade machine. `Esc` gets you out of the last two.
 
 ## Moving
 
@@ -133,46 +132,46 @@ your hand.
 ## Bookmarks and Notes
 
 Bookmarks are slips standing out of the top of the book, placed along its width
-by how far in they are, and each one is a different colour with a stitched edge
-so several in one book stay tellable apart. Click one to open the book there.
-Notes are paper tabs standing out of the fore-edges the same way — click one and
-the book opens at its page. They, and the ink drawn with the pen, are saved with the library, in
-`.library/annotations.json` — a plain page-numbered file yours to read outside
-the app, and **Export Annotations** in settings writes the whole lot out as
-Markdown; see [library-folder.md](library-folder.md).
+by how far in they are, each a different colour so several stay tellable apart.
+Notes are paper tabs on the fore-edge. Click either to open the book at its
+page.
 
-A book you leave open stays open: it lies there showing the spread you were on,
-and picking it up again and pressing `R` puts you back on that page.
+Both, and the ink drawn with the pen, are saved in `.library/annotations.json` —
+a plain page-numbered file readable outside the app. **Export Annotations** in
+settings writes the lot out as Markdown; see
+[library-folder.md](library-folder.md).
+
+A book you leave open stays open, showing the spread you were on; picking it up
+and pressing `R` puts you back on that page.
 
 ## The Menu and Settings
 
-The app opens on a main menu: which library folder, and then **Go In**. The room
-loads _behind_ it, so choosing is a decision rather than a wait, and nothing you
-press reaches the room until you have gone in. In the container there is nothing
-to choose — the library is the folder that was mounted — so the menu says so and
-the button is off; see [modes.md](modes.md).
+The app opens on a main menu: which library folder, then **Go In**. The room
+loads _behind_ it, and nothing you press reaches the room until you have gone
+in. In the container there is nothing to choose — the library is whatever was
+mounted — so the button is off; see [modes.md](modes.md).
 
-Settings are `F2`, from the menu or from the room. Most of them are about your
-machine rather than about your library — **Low Performance Mode** (no shadows,
-no window light, one pixel per pixel, for an older GPU), **Show My Body**,
-**Books Lean** (a row with room left in it settles back against the side panel;
-off stands every book plumb, and it changes how a shelf looks rather than what
-is on it), **Interface**, **Mouse Sensitivity**, **Volume**, **Rain Volume**,
-**Small Sounds** (the fire's crackle, the cat's purr, the dust on a record), **Sound in
-the Room** (the deck and the television get quieter as you walk away, and come
-from where they stand), and **One Box per Folder**, which decides whether a scan
-levels new books across the moving boxes or gives each folder of `books/` a box
-of its own. Those are kept in browser storage keyed by the app, so a library
-folder you copy to another computer does not carry an opinion about that
-computer's GPU.
+Settings are `F2`, from the menu or the room. Most are about your machine rather
+than your library:
 
-**Night** and **Rain** are on the same card but are not the same kind of thing:
-along with which lamps are on, they are facts about the room, so they live in
-the library folder in `.library/ambience.json` and come back with it.
-**Match the Clock** sits between them and is a machine setting again — with it
-on, a library opens into an evening room when this computer says it is evening,
-which is a fact about where _you_ are and not about the library. `N` still works
-afterwards.
+- **Low Performance Mode** — no shadows, no window light, one pixel per pixel.
+- **Show My Body**, **Interface**, **Mouse Sensitivity**, **Volume**.
+- **Books Lean** — a row with room left settles back against the side panel;
+  off stands every book plumb.
+- **Rain Volume**, **Small Sounds** (the fire, the cat's purr, record dust), and
+  **Sound in the Room** (the deck and television attenuate with distance and
+  come from where they stand).
+- **One Box per Folder** — whether a scan levels new books across the boxes or
+  gives each folder of `books/` a box of its own.
+
+Those live in browser storage, so a library folder copied to another computer
+does not carry an opinion about that computer's GPU.
+
+**Night** and **Rain** are on the same card but are room facts, so they live
+with the lamps in `.library/ambience.json` and come back with the library.
+**Match the Clock** sits between them and is a machine setting again: with it
+on, a library opens into an evening room when this computer says it is evening.
+`N` still works afterwards.
 
 The same card carries three buttons that move the whole library at once:
 **Clear the Shelves** puts every book back in the boxes, **Box the Strays**

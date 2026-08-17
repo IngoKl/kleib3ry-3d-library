@@ -4,17 +4,12 @@ import { supportAt, type DerivedWorld } from '../world/derive'
 /**
  * Books falling, and being kicked about the floor.
  *
- * The standing decision not to use a physics engine still holds — a wasm
- * runtime would cost the desktop CSP its `wasm-unsafe-eval` exemption, and a
- * solver would be running every frame for a handful of paperbacks. What is
- * actually wanted is much smaller than rigid-body dynamics: a dropped book
- * should fall, land flat, stop, and shift when you walk into it. That is
- * gravity, a support height, and a shove, which is what this is.
+ * Gravity, a support height and a shove — not a physics engine: a wasm runtime
+ * would cost the desktop CSP its `wasm-unsafe-eval` exemption, and a solver is
+ * far more than a dropped book needs.
  *
- * Everything a shelved or boxed book does is still *derived* from an ordering —
- * see `shelving.ts` and `boxes.ts`. This is the one place in the app where a
- * book's position is a stored number, because "on the rug, where I dropped it"
- * cannot be derived from anything else.
+ * The one place a book's position is a stored number rather than derived from
+ * an ordering (compare `shelving.ts` and `boxes.ts`).
  */
 
 export type Body = {
@@ -43,19 +38,16 @@ const SLEEP_SPEED = 0.06
 export type Support = (x: number, z: number, from: number) => number
 
 /**
- * Whether a point is inside something solid — a wall, or the flank of a table
- * or a bookcase. Optional because the shove already keeps kicked books slow;
- * it is thrown books that used to sail through into the next room.
+ * Whether a point is inside something solid. Optional: kicked books are slow
+ * enough not to need it, thrown ones sail into the next room without it.
  */
 export type Blocked = (x: number, y: number, z: number) => boolean
 
 /**
- * Bodies thrown this frame, waiting for the renderer to adopt them.
- *
- * The store's placement is just a point — it has nowhere to carry a velocity —
- * so a drop used to arrive in `LooseBooks` looking exactly like a saved resting
- * placement and was seeded asleep, leaving the book hanging where your hand
- * was. The throw parks its full body here and the simulation picks it up.
+ * Bodies thrown this frame, waiting for the renderer to adopt them. The store's
+ * placement is only a point, with nowhere to carry a velocity — without this a
+ * throw arrives in `LooseBooks` indistinguishable from a resting placement and
+ * is seeded asleep in mid-air.
  */
 const launched = new Map<string, Body>()
 
@@ -74,29 +66,18 @@ export const supportFrom = (world: DerivedWorld): Support => (x, z, from) =>
   supportAt(world, x, z, from)
 
 /**
- * The simulation's own clock.
- *
- * Falling used to advance by one clamped frame per frame, which quietly made
- * gravity a function of the frame rate: at sixty frames a second a dropped book
- * landed at once, and on the software rasteriser the tests run on — a frame or
- * two a second — the same book took most of a minute to come down, because each
- * frame bought it a thirtieth of a second of falling.
- *
- * So the step is fixed and a slow frame runs several of them. The catch-up is
- * capped rather than unbounded: after a long stall (a tab in the background, a
- * shader compiling) it is better for a book to fall a fifth of a second's worth
- * and carry on next frame than to teleport through a table because one step
- * covered two metres.
+ * The simulation's own clock. A fixed step, with a slow frame running several,
+ * so gravity is not a function of the frame rate — the tests run at a frame or
+ * two a second. Catch-up is capped so a long stall makes a book fall a fifth of
+ * a second rather than teleport through a table in one step.
  */
 const FIXED_STEP = 1 / 90
 const MAX_CATCH_UP = 0.2
 
 /**
- * One frame of falling, however long that frame was.
- *
- * `thickness` is how far the book's centre sits above whatever it is lying on.
- * A resting body is returned unchanged and untouched, which is what keeps a
- * room full of dropped books free once they have settled.
+ * One frame of falling, however long that frame was. `thickness` is how far the
+ * book's centre sits above what it lies on. A resting body is returned
+ * untouched, so a room full of settled books costs nothing.
  */
 export function stepBody(
   body: Body,
@@ -116,7 +97,7 @@ export function stepBody(
   return out
 }
 
-/** One fixed step. Everything about the physics lives here; `stepBody` is the clock. */
+/** One fixed step. The physics lives here; `stepBody` is only the clock. */
 function advance(
   body: Body,
   thickness: number,
@@ -137,11 +118,9 @@ function advance(
   next.yaw += next.spin * step
   next.spin *= Math.max(0, 1 - 3 * step)
 
-  // A step into something solid is refused sideways: the book bumps the wall,
-  // sheds its travel, and drops where it hit — which is what paper does. A
-  // body already inside (released pressed up against a bookcase, whose collider
-  // the thrower's own radius overlaps) is left to fly clear instead of being
-  // pinned where it spawned.
+  // A step into something solid is refused sideways: the book sheds its travel
+  // and drops where it hit. A body already inside something — released pressed
+  // against a bookcase — is let fly clear rather than pinned where it spawned.
   if (blocked && blocked(next.x, next.y, next.z) && !blocked(body.x, body.y, body.z)) {
     next.x = body.x
     next.z = body.z
@@ -150,9 +129,8 @@ function advance(
     next.spin = 0
   }
 
-  // Where the floor — or the table it is over — is, measured from just above
-  // the book so it lands on the surface it is falling towards rather than on
-  // one it has already passed through.
+  // Measured from just above the book, so it lands on the surface it is falling
+  // towards rather than one it has already passed through.
   const rest = support(next.x, next.z, body.y + thickness) + thickness / 2
 
   if (next.y <= rest) {
@@ -177,13 +155,7 @@ function advance(
   return next
 }
 
-/**
- * Shove a book out from under someone's feet.
- *
- * Walking into things is the only force in the room besides gravity, and it is
- * what makes a pile on the floor feel like it is in the way rather than
- * painted on. The push is horizontal only: nobody kicks a book into the air.
- */
+/** Shove a book out from under someone's feet. Horizontal only. */
 export function shove(
   body: Body,
   from: { x: number; z: number },
@@ -194,14 +166,13 @@ export function shove(
   const dz = body.z - from.z
   const distance = Math.hypot(dx, dz)
   if (distance > radius) return body
-  // Standing exactly on it: pick a direction rather than dividing by zero.
+  // Standing exactly on it: pick a direction rather than divide by zero.
   const nx = distance < 1e-4 ? 1 : dx / distance
   const nz = distance < 1e-4 ? 0 : dz / distance
   const strength = Math.min(1.6, speed * 0.55 + 0.25)
 
-  // A velocity, not a teleport: jumping the body to the player-circle boundary
-  // put books inside walls in one frame. Pushed instead, it scoots out over a
-  // few frames — the kick reapplies until it is clear.
+  // A velocity, not a teleport: jumping to the player-circle boundary puts
+  // books inside walls in one frame. The kick reapplies until it is clear.
   return {
     ...body,
     vx: nx * strength,
@@ -212,9 +183,8 @@ export function shove(
 }
 
 /**
- * Where a book leaves your hands: a little way in front of you, at chest
- * height, with the speed you were walking at added so that dropping one while
- * running throws it ahead of you.
+ * Where a book leaves your hands: in front, at chest height, carrying your
+ * walking speed so dropping one while running throws it ahead.
  */
 export function throwFrom(
   pose: { x: number; z: number; yaw: number; eye: number; speed: number },

@@ -1,13 +1,12 @@
 //! Track metadata, read directly rather than through a tagging crate.
 //!
-//! Only two containers are worth the code: ID3v2 (which is what an MP3 has) and
-//! a FLAC Vorbis comment. Both are a length-prefixed list of key/value pairs a
-//! short way into the file, and reading them here keeps the dependency list —
-//! and therefore the licence surface of anything shipped — exactly where it was.
+//! Only two containers are worth the code: ID3v2 (MP3) and FLAC Vorbis
+//! comments. Both are a length-prefixed list of key/value pairs a short way
+//! into the file, so reading them here adds no dependency.
 //!
 //! Everything else falls back to the filename, and to the folder above it for
-//! the artist, because `music/Nina Simone/Wild Is the Wind/03 Four Women.mp3`
-//! is how music folders are actually laid out.
+//! the artist — `music/Nina Simone/Wild Is the Wind/03 Four Women.mp3` is how
+//! music folders are actually laid out.
 
 use std::fs;
 use std::path::Path;

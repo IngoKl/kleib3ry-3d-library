@@ -1,13 +1,12 @@
 //! The book index: what the last scan found, kept as JSON beside the books.
 //!
-//! It is a *cache* — every field is recovered by rescanning, and the documented
-//! repair is to delete the file. It is JSON rather than a database because the
-//! library folder is the save file: plain text diffs cleanly in version
-//! control, can be read without the app, and carries no side files for a sync
-//! client to copy half of.
+//! A *cache*: every field is recovered by rescanning, and the documented repair
+//! is to delete the file. JSON rather than a database because the library
+//! folder is the save file — plain text diffs cleanly in version control, reads
+//! without the app, and leaves no side files for a sync client to half-copy.
 //!
-//! Paths are stored relative to the library root, so copying a folder to
-//! another machine — or another operating system — does not strand every book.
+//! Paths are relative to the library root, so copying a folder to another
+//! machine or OS strands nothing.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};

@@ -33,9 +33,8 @@ const SKIP_DIRS: [&str; 7] = [
 /// Where books live inside a library folder.
 const BOOKS_DIR: &str = "books";
 
-/// The other things a library folder holds, by the same convention: records for
-/// the player, pictures for the walls, tapes for the television, ROMs for the
-/// arcade machine. None of them is ever a book.
+/// The media folders, reserved at the top level of a library folder. None of
+/// them is ever indexed as books.
 const RESERVED_DIRS: [&str; 4] = ["music", "artwork", "video", "roms"];
 
 #[derive(Debug, Clone, Serialize)]
@@ -56,11 +55,9 @@ pub struct ScanSummary {
     pub failed: u32,
 }
 
-/// Stable identity for a file: its length plus its opening bytes.
-///
-/// Deliberately not the path, so renaming or moving a book keeps its reading
-/// progress and its place on your shelves. Two byte-identical files collapse to
-/// one entry, which is the behaviour you want for a duplicate.
+/// Stable identity for a file: its length plus its opening bytes. Not the path,
+/// so renaming or moving a book keeps its shelf position and reading progress.
+/// Two byte-identical files collapse into one entry.
 pub fn book_id(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path)?;
     let len = file.metadata()?.len();
@@ -90,9 +87,8 @@ fn hex16(bytes: &[u8]) -> String {
     bytes.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
-/// Milliseconds, matching `stamp_of`: whole seconds missed a same-length
-/// rewrite landing within one clock second. Shared with `paper`, which writes
-/// an index entry of its own and must date it the same way a scan would.
+/// Milliseconds, matching `stamp_of`: whole seconds miss a same-length rewrite
+/// inside one clock second. Shared with `paper`, which dates its own entries.
 pub(crate) fn modified_millis(meta: &fs::Metadata) -> i64 {
     meta.modified()
         .ok()
@@ -101,15 +97,10 @@ pub(crate) fn modified_millis(meta: &fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-/// The folder a scan of `root` will actually read, and `None` when that is the
-/// library folder itself.
-///
-/// A library folder is more than books — `music/` for the record player,
-/// `artwork/` for what hangs on the walls, `.library/` for the app's own save —
-/// so indexing is confined to `books/` as soon as that folder exists. A folder
-/// from before the convention, with books lying loose at the top level, is
-/// still read whole: refusing to index it would look like the app having lost
-/// the collection.
+/// The folder a scan of `root` will read, or `None` when that is the library
+/// folder itself. Indexing is confined to `books/` as soon as it exists, so the
+/// media folders are never mistaken for books; a folder without one is read
+/// whole, minus the reserved names.
 pub fn books_root(root: &Path) -> Option<PathBuf> {
     let books = root.join(BOOKS_DIR);
     books.is_dir().then_some(books)
@@ -148,12 +139,9 @@ pub fn discover(root: &Path) -> Vec<(PathBuf, Format)> {
         .collect()
 }
 
-/// Run a parser with a net under it.
-///
-/// `lopdf` and `zip` are given whatever the user happens to have on disk, and
-/// malformed files make them panic rather than return an error. One bad book in
-/// a collection of thousands must not end the scan — or, with an aborting
-/// profile, the process.
+/// Run a parser with a net under it. `lopdf` and `zip` panic on malformed
+/// files rather than returning an error, and one bad book must not end a scan.
+/// This is why the release profile is not `panic = "abort"`.
 fn guard<T>(what: impl FnOnce() -> T) -> Option<T> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(what)).ok()
 }
@@ -193,15 +181,12 @@ pub fn index_one(path: &Path, format: Format, covers_dir: &Path) -> Result<Book>
 }
 
 /// Walk the library folder's `books/` — or the whole folder, if it has none —
-/// and bring the index in line with it.
+/// and bring the index in line with it. `on_progress` fires per file, since a
+/// large collection can take minutes.
 ///
-/// `on_progress` is called as each file is handled so the UI can show something
-/// during what may be a multi-minute scan of a large collection.
-///
-/// Two scans of one folder at once is refused a level up, in each shell. Across
-/// *processes* — the `scan` binary run while the app is open — the loser's work
-/// is simply overwritten, which costs a rescan and nothing else: the index is
-/// derived, and an atomic write leaves no half-file behind either way.
+/// Concurrent scans are refused a level up, in each shell. Across processes the
+/// loser's work is overwritten, which costs only a rescan: the index is derived
+/// and the write is atomic.
 pub fn scan(
     root: &Path,
     index_path: &Path,
@@ -213,15 +198,13 @@ pub fn scan(
 
     let mut summary = ScanSummary { found: files.len() as u32, ..Default::default() };
     let mut seen = Vec::with_capacity(files.len());
-    // Files the walk found but could not open — a sync client's lock, not a
-    // deletion. Remembered so the prune below leaves their entries alone, and
-    // with them the shelf position keyed by that id.
+    // Found but unopenable — a sync client's lock, not a deletion. Remembered
+    // so the prune leaves their entries, and the shelf positions keyed by them.
     let mut unreadable = Vec::new();
 
-    // Saving rewrites the whole file, so a flush per book would be quadratic on
-    // a first scan of a large collection. Flushing on a count *and* an interval
-    // bounds that while still keeping a crash to a few seconds of lost probing
-    // rather than the whole walk.
+    // Saving rewrites the whole file, so flushing per book is quadratic on a
+    // first scan. A count and an interval together bound that while keeping a
+    // crash to seconds of lost probing rather than the whole walk.
     const FLUSH_EVERY: u32 = 64;
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     let mut since_flush = 0u32;
@@ -249,8 +232,8 @@ pub fn scan(
         let mtime = modified_millis(&meta);
         let rel = relative_path(root, path);
         if catalog.is_current(&id, meta.len(), mtime) {
-            // Unchanged content can still have moved; the stored path must
-            // follow it or the book can never be opened again.
+            // Unchanged content can still have moved, and the stored path must
+            // follow or the book cannot be opened.
             catalog.refresh_path(&id, &rel);
             summary.unchanged += 1;
             continue;
@@ -347,8 +330,7 @@ mod tests {
         fs::create_dir_all(dir.join("artwork")).unwrap();
         fs::write(dir.join("books/one.pdf"), b"x").unwrap();
         fs::write(dir.join("books/essays/two.epub"), b"x").unwrap();
-        // Everything outside `books/` belongs to something else — the record
-        // player, the walls — or is simply not filed yet.
+        // Everything outside `books/` belongs to something else, or is unfiled.
         fs::write(dir.join("music/sleeve-notes.pdf"), b"x").unwrap();
         fs::write(dir.join("artwork/catalogue.pdf"), b"x").unwrap();
         fs::write(dir.join("loose.pdf"), b"x").unwrap();
@@ -430,8 +412,8 @@ mod tests {
 
         let second = scan(&dir, &index_path, &covers, |_| {}).unwrap();
         assert_eq!((second.found, second.added, second.unchanged), (2, 0, 2));
-        // Nothing changed, so the save file must not have either — which is
-        // what makes a library folder worth keeping in version control.
+        // Nothing changed, so the save file must not have either — this is what
+        // lets a library folder live in version control.
         assert_eq!(fs::read(&index_path).unwrap(), written);
 
         let _ = fs::remove_dir_all(&dir);
@@ -455,10 +437,8 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// The library folder is someone's actual book collection. Indexing reads
-    /// it and writes nothing of its own accord — it only ever writes where the
-    /// caller points it. The companion test below covers the case that matters
-    /// in practice, where the caller points it inside the library folder.
+    /// Indexing only ever writes where the caller points it. The companion test
+    /// below covers the case where that is inside the library folder.
     #[test]
     fn scanning_never_modifies_the_library_folder() {
         let library = temp_dir("readonly-library");
@@ -551,8 +531,7 @@ mod tests {
         };
 
         let before = books(&library);
-        // Covers now cache beside the library rather than in the app's own data
-        // directory. Everything the app writes must stay under `.library/`.
+        // Everything the app writes must stay under `.library/`.
         let save = library.join(".library");
         let covers = save.join("covers");
         let index_path = save.join("index.json");

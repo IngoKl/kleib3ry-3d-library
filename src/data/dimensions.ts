@@ -1,18 +1,15 @@
 import type { IndexedBook } from '../services/types'
 
 /**
- * Physical proportions for a book, derived from what the index actually knows.
+ * Physical proportions for a book, derived from index data alone.
  *
- * Page count drives thickness — that is the point of it: a shelf should tell
- * you at a glance which books are the long ones. Height, depth and cloth colour
- * come from a hash of the book's id, so they are arbitrary but *stable*: a given
- * book always looks the same and you can learn to spot it on a shelf.
+ * Page count drives thickness, so a shelf shows at a glance which books are the
+ * long ones. Height, depth and cloth colour come from a hash of the book id:
+ * arbitrary but *stable*, so a book always looks the same.
  *
- * Everything here is deliberately larger than life. A spine is read from across
- * a room, and at true scale the printed title lands on a handful of screen
- * pixels no matter how much texture is thrown at it — the only thing that buys
- * legibility is size, so the books are about a quarter over life size and the
- * bookcases in `shelf.ts` were grown to match.
+ * Everything is about a quarter over life size, and `world/shelf.ts` matches.
+ * At true scale a printed spine lands on a handful of screen pixels however
+ * much texture is thrown at it; only size buys legibility.
  */
 export type BookDimensions = {
   thickness: number

@@ -1,21 +1,15 @@
-//! kleib3ry over HTTP: the third driver's other half.
+//! kleib3ry over HTTP — what `httpDriver` talks to.
 //!
-//! The front end has always reached the filesystem through one interface, with
-//! the promise that "a Linux-hosted web build is a driver swap rather than a
-//! rewrite". This is what that swap talks to. Every route here answers exactly
-//! one method of `LibraryService`, in the same order they are declared in
-//! `src/services/types.ts`, so the two files can be read side by side.
+//! Every route answers exactly one `LibraryService` method, in the order they
+//! are declared in `src/services/types.ts`, so the two files read side by side.
 //!
-//! Two things it does that the desktop shell does not have to:
+//! Two things the desktop shell does not have to do:
 //!
-//!   - It serves the built front end itself, so the container is one process.
-//!   - It serves media by *path*, under `/media/`, with every path checked
-//!     against the library folder before a byte is read. The desktop app grants
-//!     the WebView three directories through Tauri's asset scope; there is no
-//!     such scope here, so the check is this file's job and it is the one piece
-//!     of security in the whole program.
-//!
-//! Run it with the library folder as its only required argument:
+//!   - serve the built front end itself, so the container is one process;
+//!   - serve media by *path* under `/media/`, checking every path against the
+//!     library folder first. Tauri's asset scope does this for the desktop app;
+//!     there is none here, so `is_allowed` is the one piece of security in the
+//!     program.
 //!
 //!     kleib3ry-server --root /library --dist /app/dist --port 8080
 
@@ -37,13 +31,9 @@ struct Config {
     dist: PathBuf,
 }
 
-/// What a scan is doing, for the progress poll.
-///
-/// The desktop app pushes progress into the WebView as Tauri events. There is no
-/// event channel here, and inventing one — server-sent events, a websocket —
-/// would be a second protocol for one number. The driver polls this instead,
-/// which is a stat-sized request every quarter second for the duration of a scan
-/// and nothing at all the rest of the time.
+/// What a scan is doing, for the progress poll. Polled rather than pushed:
+/// there is no event channel here, and a websocket for one number would be a
+/// second protocol to keep working. The driver polls only during a scan.
 #[derive(Default, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Progress {
@@ -56,8 +46,8 @@ struct Progress {
 struct State {
     config: Config,
     progress: Mutex<Progress>,
-    /// Non-zero while a scan is running, so a second one is refused rather than
-    /// duplicating the first one's work and overwriting its index.
+    /// Non-zero while a scan runs, so a second is refused rather than
+    /// duplicating the first's work and overwriting its index.
     scanning: AtomicU32,
 }
 
@@ -103,8 +93,7 @@ fn main() -> std::process::ExitCode {
         }
     }
 
-    // The environment is how a container is configured, and the flags win, so
-    // both a compose file and a shell are comfortable.
+    // Environment first, flags win — so compose files and shells both work.
     let root = root
         .or_else(|| std::env::var_os("KLEIB3RY_LIBRARY").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("/library"));
@@ -114,9 +103,8 @@ fn main() -> std::process::ExitCode {
         eprintln!("mount your library folder there, or pass --root");
         return std::process::ExitCode::FAILURE;
     }
-    // Canonicalised once, at startup, because every path check below compares
-    // against it — and a symlinked mount point would otherwise make each of
-    // those comparisons fail for a file that is genuinely inside the library.
+    // Canonicalised once at startup: every path check compares against it, and
+    // a symlinked mount point would fail those checks for legitimate files.
     let root = root.canonicalize().unwrap_or(root);
 
     let files = save_files(&root);
@@ -150,13 +138,11 @@ fn main() -> std::process::ExitCode {
 
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
-        // A client that connects and then drips bytes — or nothing — must
-        // release its thread rather than pin it forever.
+        // A client that connects and then stalls must release its thread.
         let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
         let state = Arc::clone(&state);
-        // A thread per connection. This serves one household; a thread pool
-        // would be machinery for a load that does not exist, and a book being
-        // read must not block a track being streamed.
+        // A thread per connection: household scale, and a book being read must
+        // not block a track being streamed.
         std::thread::spawn(move || serve(stream, &state));
     }
 
@@ -185,11 +171,8 @@ fn serve(stream: TcpStream, state: &State) {
     }
 }
 
-/// Errors are strings on purpose.
-///
-/// They go straight into the HUD's error line, which is where the desktop app's
-/// go too — and the front end has no way to act differently on a missing file
-/// than on a corrupt one, so a taxonomy would be a taxonomy nobody reads.
+/// Errors are strings: they go straight into the HUD's error line, and the
+/// front end cannot act differently on a missing file than a corrupt one.
 type Handler = std::result::Result<Response, String>;
 
 fn oops<E: std::fmt::Display>(e: E) -> String {
@@ -210,9 +193,8 @@ fn route(request: &Request, state: &State) -> Handler {
     match (method, path) {
         // ---- where the library is -------------------------------------------
         //
-        // The root is the mount, not a choice: there is no folder picker in a
-        // container, and offering one would mean letting the browser walk the
-        // server's disk. `canPickFolder` is false in this driver for that reason.
+        // The root is the mount, not a choice: a picker would mean letting the
+        // browser walk the server's disk, so `canPickFolder` is false here.
         ("GET", "/api/root") => Ok(Response::json(&json!({
             "root": state.config.root.to_string_lossy(),
         }))),
@@ -221,8 +203,8 @@ fn route(request: &Request, state: &State) -> Handler {
         ("GET", "/api/books") => {
             let catalog = Catalog::load(&files.index).map_err(oops)?;
             let books = catalog.list_books(&state.config.root, &files.covers);
-            // Covers come back as absolute paths, exactly as the desktop app's
-            // do, and the driver turns them into `/media/...` URLs.
+            // Absolute paths, as the desktop app returns; the driver turns them
+            // into `/media/...` URLs.
             let with_covers: Vec<_> = books
                 .into_iter()
                 .map(|mut book| {
@@ -236,9 +218,8 @@ fn route(request: &Request, state: &State) -> Handler {
         }
 
         // A paper off arXiv, downloaded into the mounted folder and indexed.
-        // The one route that reaches out of the container, and it is the same
-        // core function the desktop app calls — see `core/src/paper.rs` for why
-        // the fetch happens down here rather than in the browser.
+        // The one route that reaches outside the container; the same core
+        // function the desktop app calls. See `core/src/paper.rs`.
         ("POST", "/api/paper") => {
             let id = std::str::from_utf8(&request.body).unwrap_or("").trim().to_string();
             match paper::fetch(&state.config.root, &files.index, &files.covers, &id) {
@@ -248,8 +229,8 @@ fn route(request: &Request, state: &State) -> Handler {
                     }
                     Ok(Response::json(&serde_json::to_value(book).map_err(oops)?))
                 }
-                // The id was wrong, or arXiv has nothing under it: the person
-                // typing gets told which, because the two have different fixes.
+                // A bad id and an unknown paper have different fixes, so the
+                // message distinguishes them.
                 Err(e @ (kleib3ry_core::Error::BadPaperId(_) | kleib3ry_core::Error::UnknownPaper(_))) => {
                     Ok(Response::text(404, &e.to_string()))
                 }
@@ -258,8 +239,8 @@ fn route(request: &Request, state: &State) -> Handler {
         }
 
         ("POST", "/api/scan") => {
-            // One at a time. Two scans of one folder only duplicate each
-            // other's work and overwrite each other's index.
+            // One at a time: concurrent scans duplicate work and overwrite each
+            // other's index.
             if state.scanning.swap(1, Ordering::SeqCst) == 1 {
                 return Ok(Response::text(409, "a scan is already running"));
             }
@@ -305,9 +286,8 @@ fn route(request: &Request, state: &State) -> Handler {
             Err(e) => Err(oops(e)),
         },
 
-        // Writes the starter document and only that: refuses to overwrite, for
-        // the same reason the desktop command does — this is called on first run
-        // and a race here would replace a room somebody built.
+        // Refuses to overwrite: called on first run, and a race here would
+        // replace a room somebody built.
         ("POST", "/api/world") => {
             if files.world.exists() {
                 return Ok(Response::json(&json!({ "written": false })));
@@ -353,8 +333,8 @@ fn route(request: &Request, state: &State) -> Handler {
             Ok(Response::empty(204))
         }
 
-        // Bookmarks and notes. Its own file so the marginalia are readable
-        // without the app; the schema is the front end's, like the layout.
+        // Bookmarks and notes. Its own file so they are readable without the
+        // app; the schema is the front end's, like the layout.
         ("GET", "/api/annotations") => match fs::read_to_string(&files.annotations) {
             Ok(text) => Ok(Response::new(200, "application/json; charset=utf-8", text.into_bytes())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Response::empty(404)),
@@ -389,9 +369,8 @@ fn route_by_prefix(request: &Request, state: &State) -> Handler {
     let method = request.method.as_str();
     let files = save_files(&state.config.root);
 
-    // A book's bytes, for pdf.js. Read whole and answered whole, exactly as the
-    // desktop `read_book_file` command does: the reader parses the file in one
-    // go, so there is nothing for a range to save.
+    // A book's bytes, for pdf.js. Read and answered whole, like the desktop
+    // `read_book_file`: the reader parses in one go, so a range saves nothing.
     if method == "GET" {
         if let Some(id) = path.strip_prefix("/api/book/") {
             let catalog = Catalog::load(&files.index).map_err(oops)?;
@@ -432,10 +411,8 @@ fn route_by_prefix(request: &Request, state: &State) -> Handler {
 }
 
 fn write_json_file(path: &Path, body: &[u8]) -> std::result::Result<(), String> {
-    // Parsed before it is written, so a truncated PUT cannot leave a layout file
-    // that the next load refuses — which would look like the library forgetting
-    // where every book was. Written atomically so a crash mid-write cannot
-    // truncate the save either.
+    // Parsed before writing, so a truncated PUT cannot leave a layout the next
+    // load refuses. Written atomically against a crash mid-write.
     let value: serde_json::Value = serde_json::from_slice(body).map_err(oops)?;
     write_atomic(path, serde_json::to_string_pretty(&value).map_err(oops)?.as_bytes())
         .map_err(oops)
@@ -452,17 +429,17 @@ fn is_reserved_name(id: &str) -> bool {
 }
 
 fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handler {
-    // The id becomes a file name in the covers directory. It is normally a hex
-    // hash, but it arrives from a browser, and `join` follows `..` and absolute
-    // paths — so anything that is not a plain name is a write outside the cache.
+    // The id becomes a file name in the covers directory and arrives from a
+    // browser. `join` follows `..` and absolute paths, so anything that is not
+    // a plain name would write outside the cache.
     if id.is_empty()
         || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         || is_reserved_name(id)
     {
         return Ok(Response::text(400, "not a cover id"));
     }
-    // Only a book the index knows may have a cover cached — anything else is a
-    // way to fill the disk with orphan PNGs, one POST at a time.
+    // Only a book the index knows may have a cover cached; anything else fills
+    // the disk with orphan PNGs one POST at a time.
     if !Catalog::load(&files.index).map_err(oops)?.contains(id) {
         return Ok(Response::text(404, "no such book"));
     }
@@ -474,7 +451,7 @@ fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handle
     let bytes = decode_base64(payload).ok_or("not valid base64")?;
 
     // The file is the record: listing derives a book's cover from the cache, so
-    // nothing writes the index here and the scan stays its only writer.
+    // the scan stays the index's only writer.
     let name = format!("{id}.png");
     fs::create_dir_all(&files.covers).map_err(oops)?;
     fs::write(files.covers.join(&name), &bytes).map_err(oops)?;
@@ -484,8 +461,8 @@ fn save_cover(id: &str, body: &[u8], files: &kleib3ry_core::SaveFiles) -> Handle
     })))
 }
 
-/// Standard base64, no line breaks, `=` padding. Twenty lines rather than a
-/// dependency, and the only thing that ever posts to it is our own front end.
+/// Standard base64, no line breaks, `=` padding. Hand-rolled rather than a
+/// dependency; only our own front end posts to it.
 fn decode_base64(text: &str) -> Option<Vec<u8>> {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut lookup = [255u8; 256];
@@ -514,13 +491,12 @@ fn decode_base64(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The three directories a library folder lets the front end read.
+/// The four directories a library folder lets the front end read — the same
+/// four the desktop app grants through Tauri's asset scope.
 ///
-/// The same three the desktop app grants through Tauri's asset scope — covers,
-/// music, artwork — plus video, which the television needs. Nothing else in the
-/// library folder is reachable, and in particular `books/` is not: a book goes
-/// through `/api/book/<id>`, which means the only files a browser can name
-/// directly are the ones the index already told it about.
+/// Nothing else is reachable, and `books/` in particular is not: a book goes
+/// through `/api/book/<id>`, so the only files a browser can name directly are
+/// the ones the index already told it about. `roms/` follows that rule too.
 fn media_roots(root: &Path) -> Vec<PathBuf> {
     let files = save_files(root);
     vec![
@@ -531,13 +507,11 @@ fn media_roots(root: &Path) -> Vec<PathBuf> {
     ]
 }
 
-/// True if `path` really is inside one of the directories we are prepared to
-/// serve.
+/// True if `path` really is inside one of the servable directories.
 ///
-/// Canonicalised first, which is the whole point: `..` in a URL, a symlink
-/// planted in `music/`, and a Windows short name all resolve away before the
-/// comparison, and a path that cannot be canonicalised does not exist and is
-/// therefore not allowed either.
+/// Canonicalised first: `..` in a URL, a symlink planted in `music/` and a
+/// Windows short name all resolve away before the comparison. A path that
+/// cannot be canonicalised does not exist, and is refused.
 fn is_allowed(path: &Path, root: &Path) -> bool {
     let Ok(real) = path.canonicalize() else { return false };
     if !real.is_file() {
@@ -554,8 +528,7 @@ fn is_allowed(path: &Path, root: &Path) -> bool {
 fn serve_media(request: &Request, state: &State) -> Handler {
     let raw = request.path.trim_start_matches("/media/");
     // The driver sends an absolute server-side path, because that is what the
-    // index hands it and inventing a second naming scheme for the same files
-    // would mean the two could disagree.
+    // index hands it; a second naming scheme could disagree with the first.
     let wanted = PathBuf::from(raw);
     let wanted = if wanted.is_absolute() {
         wanted
@@ -758,7 +731,7 @@ mod tests {
         let h = Harness::new("layout");
         assert_eq!(h.call("GET", "/api/layout", b"").status, 404);
 
-        let layout = br#"{"schemaVersion":3,"rows":{"west-0:0":["abc"]}}"#;
+        let layout = br#"{"rows":{"west-0:0":["abc"]}}"#;
         assert_eq!(h.call("PUT", "/api/layout", layout).status, 204);
 
         let back: serde_json::Value = serde_json::from_slice(&h.call("GET", "/api/layout", b"").body).unwrap();
@@ -777,7 +750,7 @@ mod tests {
         let h = Harness::new("ambience");
         assert_eq!(h.call("GET", "/api/ambience", b"").status, 404);
         assert_eq!(
-            h.call("PUT", "/api/ambience", br#"{"schemaVersion":1,"on":{"lamp":false},"rain":true}"#)
+            h.call("PUT", "/api/ambience", br#"{"on":{"lamp":false},"rain":true}"#)
                 .status,
             204
         );
@@ -793,7 +766,7 @@ mod tests {
         let h = Harness::new("annotations");
         assert_eq!(h.call("GET", "/api/annotations", b"").status, 404);
 
-        let doc = br#"{"schemaVersion":1,"books":{"abc":{"title":"A Book","author":null,"bookmarks":[1,45]}}}"#;
+        let doc = br#"{"books":{"abc":{"title":"A Book","author":null,"bookmarks":[1,45]}}}"#;
         assert_eq!(h.call("PUT", "/api/annotations", doc).status, 204);
 
         let back: serde_json::Value =

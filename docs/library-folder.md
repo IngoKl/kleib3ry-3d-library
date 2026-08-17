@@ -1,9 +1,8 @@
 # The Library Folder
 
 A library is a **folder**. Point the app at one and you get that library: its
-rooms, its furniture, and which book is on which shelf. Point it at a different
-folder and you get a different library. Copy the folder and you have copied the
-library; back it up and you have backed it up.
+rooms, its furniture, and which book is on which shelf. Copy the folder and you
+have copied the library.
 
 ```text
 My Library/                   ← the folder you choose in the app
@@ -47,25 +46,23 @@ turn up on a shelf. A folder from before this convention, with books lying loose
 at the top level, is still read whole, minus those four; the scan says which of
 the two it is doing.
 
-**Only `books/` is indexed.** The other four are walked on demand, every time the
-app asks. A book index is worth caching — probing a PDF is slow and a collection
-is tens of thousands of files — while a music folder is hundreds and a video
-folder is dozens, so a second cache to keep in sync would buy nothing and a record
-you dropped in five seconds ago would not be on the shelf.
+**Only `books/` is indexed.** The other four are walked on demand. A book index
+is worth caching — probing a PDF is slow and a collection is tens of thousands
+of files — while a music folder is hundreds and a video folder dozens, so a
+second cache would buy nothing and a record dropped in five seconds ago would
+not be on the shelf.
 
 **Before you have chosen a folder**, `library.json`, `books.json`,
-`ambience.json` and `annotations.json` live in the app's own config directory instead, so a fresh
-install still has somewhere to put them. They move to the library folder the
-first time you choose one. The panel in the app always shows the path of the file
-that is currently live.
+`ambience.json` and `annotations.json` live in the app's own config directory,
+so a fresh install has somewhere to put them. They move to the library folder
+the first time you choose one. The panel always shows the live path.
 
 **Covers are cached in `.library/covers/`.** Rasterising a thousand PDF first
-pages takes minutes, so the artwork travels with the library: copy the folder to
-another machine and it does not have to be done again. Delete the folder and it
-is rebuilt on demand.
+pages takes minutes, so the artwork travels with the library. Delete the folder
+and it is rebuilt on demand.
 
-**The index is in there too**, so that `npm run scan` and the app read the same
-one. It is still derived: delete `.library/index.json` and rescan.
+**The index is in there too**, so `npm run scan` and the app read the same one.
+It is still derived: delete `.library/index.json` and rescan.
 
 Every file in `.library/` is plain JSON, which means the whole folder can go into
 version control as it is — a rescan that finds nothing new writes nothing at
@@ -87,23 +84,21 @@ npm run scan -- "D:\Books" --quiet
 
 The same indexer the app runs, without the app: it walks the folder's `books/`,
 reads metadata from every PDF and EPUB, extracts EPUB cover art, and writes both
-into `.library/`. Useful for indexing a large collection ahead of time — and for
-finding out which file a failing scan died on, since it names each one before
-reading it. The first line it prints is the folder it is actually reading.
+into `.library/`. Useful for indexing a large collection ahead of time, and for
+finding which file a failing scan died on, since it names each before reading
+it. The first line printed is the folder it is reading.
 
 It cannot produce PDF cover art: those first pages are rasterised by pdf.js
-inside the app, so the build does not have to ship a native PDF renderer. They
-are filled in the first time you look at the book, and cached from then on.
+inside the app, so the build need not ship a native PDF renderer. They are
+filled in the first time you look at the book, and cached from then on.
 
 ## `library.json` — The Rooms
 
-This is the file you edit. It is JSON, except that **comments are allowed**,
-because a file meant to be read by a person should be able to explain itself:
+This is the file you edit. It is JSON, except that **comments are allowed**:
 
 ```jsonc
 {
   // both // and /* */ work
-  "schemaVersion": 2,
   "name": "The Cabin",
   "spawn": { "room": "main", "at": [0, 1.0], "facing": 0 },
   "rooms": [/* … */]
@@ -265,10 +260,8 @@ far a staircase climbs), and `on` (whether a lamp starts lit).
 The full table, with what is solid and what you can do to it, is in
 [Building a Map](custom-maps.md#the-kinds).
 
-Most of these are something you bump into, so keep furniture out of
-the line you walk in on. (The default reading corner has a comment about exactly
-this: a footstool in a doorway is the kind of thing you only find by walking
-into it.)
+Most of these are solid, so keep furniture out of the line you walk in on — a
+footstool in a doorway is the kind of thing you only find by walking into it.
 
 ## `books.json` — Which Book Is Where
 
@@ -277,7 +270,6 @@ list of book ids, and a map from box id to the books in that box:
 
 ```json
 {
-  "schemaVersion": 9,
   "rows": {
     "west-0:0": ["a3f1…", "9c02…"],
     "west-0:1": ["71bd…"]
@@ -316,48 +308,39 @@ duplicating it.
 into the box by the door is in _that_ box and is still in it next time. A box
 holds as many books as you put in it; it shows as many as physically fit.
 
-`loose` is the third place a book can be: on a table, or on the floor where you
-dropped it. It is the only part of this file that stores coordinates, because
-"there, where I put it" is not derivable from an ordering the way a shelf
-position is. `open` and `spread` are what let a book lie face down at the page
-you were reading.
+`loose` is the third place a book can be: on a table, or on the floor. It is the
+only part of this file that stores coordinates, because "there, where I put it"
+is not derivable from an ordering the way a shelf position is. `open` and
+`spread` let a book lie face down at the page you were reading.
 
 `progress` maps a book to the spread it was last open at — a fact about the
-room's copy, not marginalia, which is why it stays here while bookmarks and
-notes live in `annotations.json`. `labels` is what you have written on each
-bookcase — it overrides the `label` in `library.json`. `furniture` is where you
-have shoved things; only the moving boxes can be shoved.
+room's copy rather than marginalia, which is why bookmarks and notes live in
+`annotations.json` instead. `labels` is what you have written on each bookcase,
+overriding the `label` in `library.json`. `furniture` is where you have shoved
+things; only the moving boxes and the portable furniture can be shoved.
 
 `spawnedBoxes` are the boxes you have made up off a `boxstack` — each records
 which room's frame its position is written in — and `removedBoxes` are the
 document's boxes you have broken down. Both are the app's own edits to the box
 population, which is why they live here and never touch `library.json`.
 
-`props` are the small things — the coffee cup, the cans from the fridge, the
-takeaway boxes the deliveries leave, and the headlamp — each with a real
-position, for the same reason `loose` has one. There is exactly one cup and its
-id is `cup`, and exactly one headlamp (`headlamp`), which is written down only
-while it is _off_ your head: worn, it is session state, and putting it on a
-table is what gives it a position again. Cans and takeaway boxes are minted as
-they arrive and vanish into the kitchen bin.
+`props` are the small things — the coffee cup, the cans, the takeaway boxes and
+the headlamp — each with a real position, for the same reason `loose` has one.
+There is exactly one cup (`cup`) and one headlamp (`headlamp`); the headlamp is
+written down only while it is _off_ your head, since worn is session state. Cans
+and takeaway boxes are minted on arrival and vanish into the kitchen bin.
 
-Everything here is in `books.json` rather than in `library.json` for the same
-reason: **`library.json` is a file you wrote**, comments and all, and pushing a
-box across the room must not reformat it.
+All of this is in `books.json` rather than `library.json` for one reason:
+**`library.json` is a file you wrote**, comments and all, and pushing a box
+across the room must not reformat it.
 
 A label or a placement referring to something the library no longer has is
 dropped on load, the same way a shelf entry is.
 
-Version 2 rekeyed `rows` from shelf index to shelf id; version 3 added
-`bookmarks`; version 4 added `boxes` and stopped shelving newly indexed books
-for you; version 5 added `loose`, `progress`, `labels` and `furniture`; version
-6 added `drawings` and `records`; version 7 added `spawnedBoxes` and
-`removedBoxes`; version 8 moved bookmarks out to `annotations.json` (an old
-file's are carried over on the first launch that has none); version 9 added
-`props`. Older documents
-still load, because every field added since has been optional. The one break is
-the rekey itself: a pre-version-2 file keyed its rows by shelf _position_, and
-those keys name no bookcase any more.
+The file carries no version number, and neither do the other three the app
+writes. Every field but `rows` is optional and unknown ones are ignored, so the
+document reads by its shape alone — which is all a file the app writes and only
+the app reads has ever needed.
 
 ### Pages and Notes
 
@@ -372,18 +355,16 @@ those keys name no bookcase any more.
 ]
 ```
 
-A `page` is a **copy**. It records which book and which page number, and the book
-keeps its own page — nothing is torn out of anything, and the sheet is rasterised
-from the same file the next time it is drawn. That is also why taking one down and
-putting it up somewhere else loses nothing.
+A `page` is a **copy**: it records which book and which page number, and the
+book keeps its own page. The sheet is rasterised from the same file next time it
+is drawn, which is also why taking one down and putting it up elsewhere loses
+nothing.
 
-Positions are in world metres with a `yaw`, like a book left on a table, and for
-the same reason: you stuck it _there_. A wall that goes away leaves the sheet
-hanging over where it was rather than teleporting to whichever wall inherited
-the id.
+Positions are in world metres with a `yaw`, like a book left on a table. A wall
+that goes away leaves the sheet hanging where it was rather than teleporting to
+whichever wall inherited the id.
 
-On load, a page whose book the index has lost is dropped — it is a page of
-nothing. A note is nobody's but yours and always stays.
+On load, a page whose book the index has lost is dropped. A note is always kept.
 
 ### Records You Have Moved
 
@@ -424,7 +405,6 @@ open when you want your marginalia somewhere else.
 
 ```json
 {
-  "schemaVersion": 1,
   "books": {
     "a3f1…": {
       "title": "The Shelf as Argument",
@@ -452,11 +432,11 @@ pairs in page space, across from the left edge and up from the bottom, 0 to
 1 — so the line lands in the same place on the page at any screen size.
 
 Unlike everything in `books.json` it speaks **1-based page numbers**, as
-printed, not the reader's spreads — a bookmark on page 45 means something in
-any other reader. Each entry carries the book's title and author so it stays
-legible on its own, and for the same reason **nothing here is ever pruned**: a
-book that leaves the index keeps its entry, and if the file comes back — ids
-are content hashes — the marginalia reattach by themselves.
+printed, rather than the reader's spreads, so a bookmark on page 45 means
+something in any other reader. Each entry carries the book's title and author so
+it stays legible alone, and **nothing here is ever pruned**: a book that leaves
+the index keeps its entry, and because ids are content hashes, the marginalia
+reattach by themselves if the file comes back.
 
 Bookmarks are recorded as the right-hand page of the spread the slip is in. For
 an EPUB, page numbers are the reader's own pagination (the same one "go to
@@ -473,7 +453,6 @@ Also written by the app, and deliberately tiny:
 
 ```json
 {
-  "schemaVersion": 1,
   "on": { "porch-lamp": true, "kitchen-pendant": false },
   "night": false,
   "rain": true
@@ -481,25 +460,22 @@ Also written by the app, and deliberately tiny:
 ```
 
 `on` is keyed by the `id` of a piece of furniture that gives light. A lamp
-missing from here is however `library.json` said it should start. **Delete the
-file and every light in the library comes back on** — which is a repair anybody
-can perform without knowing what a schema is, and the reason it is its own file
-rather than four more lines in `books.json`.
+missing from here starts however `library.json` says. **Delete the file and
+every light comes back on** — a repair anybody can perform, and the reason this
+is its own file rather than four more lines in `books.json`.
 
-`night` and `rain` are here for the same reason the lamps are: they are facts
-about the room _right now_ rather than settings about the app, so they belong to
-the library and travel with it. Deleting the file brings back the daylight and
-the dry weather along with every lamp. Everything that is about your _machine_ —
-low performance mode, whether you can see your own body, how loud things are —
-is deliberately not here; it is in browser storage, keyed by the app, so it does
-not follow a library folder onto somebody else's computer.
+`night` and `rain` are here for the same reason as the lamps: they are facts
+about the room right now rather than settings about the app, so they travel with
+the library. Deleting the file restores the daylight and dry weather too.
+Anything about your _machine_ — low performance mode, whether you see your own
+body, how loud things are — is deliberately not here; it is in browser storage,
+so it does not follow a library folder onto somebody else's computer.
 
 ## What Happens to Your Books When You Change the Room
 
-This is the part worth understanding, because it is the part that could lose
-work. The rule is: **the app never puts a book on a shelf. You do.** A book it
-has not been told where to put is in a box — which is where a whole newly
-indexed library starts.
+This is the part that could lose work, so it is worth understanding. The rule:
+**the app never puts a book on a shelf. You do.** A book it has not been told
+where to put is in a box — which is where a newly indexed library starts.
 
 | you edit `library.json` to…        | what happens to the books                             |
 | ---------------------------------- | ----------------------------------------------------- |
@@ -519,11 +495,10 @@ And separately:
 | a book's file was deleted            | simply gone; not reported as displaced     |
 | you delete a `box` from the document | its books tip into the boxes that are left |
 
-**Deleting a bookcase is reversible.** `books.json` is deliberately _not_ pruned
-when a shelf disappears: the books are shown in the boxes, but the file still
-records which shelf they belonged to. Put the bookcase back — same id — and they
-go straight back onto it, in the same order. That only stops being true once you
-shelve one of them somewhere else, which is you making a new decision.
+**Deleting a bookcase is reversible.** `books.json` is not pruned when a shelf
+disappears: the books show in the boxes, but the file still records which shelf
+they belonged to. Put the bookcase back with the same id and they return to it
+in order — until you shelve one of them somewhere else.
 
 The panel tells you when an edit cost something:
 

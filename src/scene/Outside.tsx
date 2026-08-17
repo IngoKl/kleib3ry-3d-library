@@ -55,12 +55,11 @@ import { useWorldStore } from '../state/world'
  * about two dozen draw calls for the entire outdoors, dressing included —
  * because none of it should ever compete with the books for frame budget.
  *
- * What has changed is that it is no longer only scenery. You can walk out of
- * the porch and round the water now, so where the lake is and where the trees
- * are are answers the walk controller needs as much as this file does — and
- * they therefore live in `world/terrain.ts` and `world/forest.ts`, with this
- * module reading them rather than inventing them. A shoreline you can see in
- * one place and stand in in another is the bug that arrangement prevents.
+ * None of it is only scenery: the ground is walkable, so where the lake and
+ * the trees are is something the walk controller needs too. Both live in
+ * `world/terrain.ts` and `world/forest.ts`, and this module reads them rather
+ * than inventing them — a shoreline you can see in one place and stand in in
+ * another is the bug that arrangement prevents.
  */
 
 const TRUNK = '#4a3826'

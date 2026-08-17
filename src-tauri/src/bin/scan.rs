@@ -4,17 +4,15 @@
 //! metadata out of every PDF and EPUB it finds, extracts EPUB cover art, and
 //! writes both into `<folder>/.library/`.
 //!
-//! It exists for two reasons. Indexing a large collection is slow and worth
-//! being able to do ahead of time, or over ssh, or from a script. And when a
-//! scan goes wrong, this reproduces it with a stack trace and a filename
-//! instead of a window disappearing.
+//! Useful for indexing a large collection ahead of time, over ssh or from a
+//! script, and for reproducing a failing scan with a stack trace and a filename
+//! rather than a window disappearing.
 //!
 //!     npm run scan -- "D:\\Books"
 //!     npm run scan -- "D:\\Books" --quiet
 //!
-//! What it cannot do: PDF cover art. Those first pages are rasterised by pdf.js
-//! inside the app, so that the build does not have to ship a native PDF
-//! renderer — they are filled in the first time you look at the book.
+//! It cannot produce PDF cover art: those first pages are rasterised by pdf.js
+//! inside the app, so the build need not ship a native PDF renderer.
 
 use std::path::PathBuf;
 use std::process::ExitCode;

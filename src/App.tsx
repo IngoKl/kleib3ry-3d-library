@@ -54,7 +54,7 @@ import { useMediaStore } from './state/media'
 import { useVideoStore } from './state/video'
 import { arcadeMachine, useArcadeStore } from './state/arcade'
 import { useWorldStore } from './state/world'
-import { useSettings } from './state/settings'
+import { effectiveQuality, useSettings } from './state/settings'
 import { cat } from './state/cat'
 import { askCatForBook, callCat, petCat } from './scene/Cat'
 import { warmCovers } from './state/covers'
@@ -65,6 +65,7 @@ import { deliverySpot, roomAt } from './world/derive'
 import { courier } from './state/courier'
 import { boxesIn } from './world/boxes'
 import { sceneRefs } from './scene/refs'
+import { poolBindings } from './scene/lightPool'
 import { ASSIGNABLE_SLOTS } from './scene/spineAtlas'
 
 export default function App() {
@@ -92,7 +93,6 @@ export default function App() {
       await loadWorld()
       await loadRoot()
       await loadLibrary()
-      // After the library: migrating old bookmarks needs the index for titles.
       await Promise.all([loadAnnotations(), loadAmbience(), loadMedia(), loadVideo(), loadArcade()])
       // Start the cover sweep only once everything else is up: it is a long,
       // low-priority walk through the whole catalogue, and it must never be
@@ -111,12 +111,9 @@ export default function App() {
   useEffect(() => watchWorld(), [watchWorld])
 
   /**
-   * `F2` opens and closes the settings panel, and `Esc` closes it.
-   *
-   * Here rather than in the walk controller because the walk controller ignores
-   * every key while the panel is open — which is what stops `W` walking you
-   * through a wall while you drag a slider, and would also make the key that
-   * opened the panel the one key that could not close it.
+   * `F2` toggles the settings panel; `Esc` closes it. Here rather than in the
+   * walk controller, which ignores every key while the panel is open — so the
+   * key that opened it would otherwise be the one key that could not close it.
    */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -126,12 +123,11 @@ export default function App() {
         const app = useAppStore.getState()
         app.setSettingsOpen(!app.settingsOpen)
       } else if (e.code === 'Escape' && !typing) {
-        // The panels that take the keyboard each close themselves from their own
-        // field; this is the way out when the focus has wandered off it — which
-        // is one stray click away and used to leave `Esc` doing nothing at all.
-        // A consumed Esc stops here: the reader and the arcade register their
-        // handlers after this one, and without the stop the press that closed
-        // the panel would go on to close the book or step you off the machine.
+        // Panels that take the keyboard close themselves from their own field;
+        // this is the way out when focus has wandered off it, one stray click
+        // away. A consumed Esc stops here — the reader and the arcade register
+        // after this handler, and would otherwise also close the book or step
+        // you off the machine.
         const app = useAppStore.getState()
         if (app.settingsOpen) app.setSettingsOpen(false)
         else if (app.searching) app.setSearching(false)
@@ -182,6 +178,23 @@ export default function App() {
           shelves: world.world?.shelves.length ?? 0,
           worldRevision: world.revision,
         }
+      },
+      /**
+       * The scene's point lights: how many exist, and how many are carrying
+       * anything. The *count* is the number that matters — it is what every lit
+       * material is compiled against, so a count that moves as you walk means
+       * the pool has started recompiling shaders mid-stride. See
+       * [scene/lightPool.ts](./scene/lightPool.ts).
+       */
+      pointLights: () => {
+        let mounted = 0
+        let lit = 0
+        sceneRefs.scene?.traverse((node) => {
+          if (!(node as THREE.PointLight).isPointLight) return
+          mounted += 1
+          if ((node as THREE.PointLight).intensity > 0.01) lit += 1
+        })
+        return { mounted, lit, bound: poolBindings.filter((id): id is string => id !== null) }
       },
       player: () => ({ ...player }),
       /** Which room the player is standing in, by id. */
@@ -270,13 +283,10 @@ export default function App() {
       putDownForTest: (id: string, placement: LoosePlacement) =>
         useLibraryStore.getState().putDown(id, placement),
       /**
-       * Put a book on a particular shelf, as aiming and pressing E does.
-       *
-       * Exists because "which rows happen to be stocked" is not something a test
-       * may assume: unpacking fills empty rows nearest the box first and stops when
-       * the boxes run out, so with more shelves than books there are always rows
-       * with nothing on them. A test about what happens to the books *on* a
-       * bookcase has to be able to put some there.
+       * Put a book on a particular shelf, as aiming and pressing `E` does. A
+       * test cannot assume which rows are stocked — unpacking fills empty rows
+       * nearest the box and stops when the boxes run out — so a test about
+       * books on a bookcase needs a way to put some there.
        */
       shelveForTest: (id: string, shelfId: string, row: number, index = 0) =>
         useLibraryStore.getState().shelve(id, shelfId, row, index),
@@ -441,13 +451,9 @@ export default function App() {
       focusedPin: () => useAppStore.getState().focusedPin,
       artwork: () => useMediaStore.getState().artwork.map((picture) => picture.id),
       /**
-       * How high off the floor each whiteboard actually *is*, measured off the
-       * meshes rather than off the document.
-       *
-       * Asked of the scene because that is where it went wrong: the derived
-       * world had the board at the right height all along and the renderer drew
-       * it centred on its own base, half a board too low. Nothing above the
-       * scene graph can see that.
+       * How high off the floor each whiteboard actually is, measured off the
+       * meshes rather than the document — a renderer that mounts a board at the
+       * wrong height is invisible to anything above the scene graph.
        */
       boards: () =>
         (sceneRefs.boards?.children ?? []).map((piece) => {
@@ -540,26 +546,29 @@ export default function App() {
   }, [rootLoaded, libraryLoaded, annotationsLoaded, worldLoaded])
 
   /**
-   * Low performance mode, at the one place it cannot be applied per frame.
+   * Display settings that cannot be applied per frame. Antialiasing and the
+   * shadow map are fixed when the WebGL context is created, so changing them
+   * means a new canvas — hence the `key`, built from exactly those flags.
    *
-   * Antialiasing and the shadow map are decided when the WebGL context is
-   * created, so changing them means a new canvas — hence the `key`. Remounting
-   * the scene mid-session is jarring and is the right trade for a switch you
-   * throw once: everything that matters is in the stores, so the room comes back
-   * exactly as you left it, and the alternative is a setting that only takes
-   * effect on the next launch.
+   * Resolution scale is deliberately not among them: R3F re-applies `dpr` on
+   * the live context, so the dial most worth dragging costs nothing to drag.
+   * Remounting is safe because the room's state lives in the stores.
    */
-  const lowPerformance = useSettings((s) => s.lowPerformance)
+  const settings = useSettings()
+  const quality = effectiveQuality(settings)
+  // Supersampling already resolves edges, so the multisample buffer above 1.5×
+  // is paying twice for the same thing.
+  const antialias = quality.resolutionScale < 1.5 && !settings.lowPerformance
 
   return (
     <div className="app">
       <Canvas
-        key={lowPerformance ? 'low' : 'full'}
-        shadows={!lowPerformance}
-        dpr={lowPerformance ? 1 : [1, 2]}
+        key={`${antialias ? 'aa' : 'raw'}-${quality.shadowQuality}`}
+        shadows={quality.shadowQuality !== 'off'}
+        dpr={quality.resolutionScale}
         gl={{
-          antialias: !lowPerformance,
-          powerPreference: lowPerformance ? 'default' : 'high-performance',
+          antialias,
+          powerPreference: settings.lowPerformance ? 'default' : 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
         }}

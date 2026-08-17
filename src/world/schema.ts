@@ -1,21 +1,15 @@
 /**
- * The world document: `library.json` in your library folder.
+ * The world document: `library.json` in the library folder.
  *
- * This is the file you edit by hand, so parsing is written for the person
- * making the mistake rather than for the machine — every failure names the path
- * that is wrong and what was expected there. A document that does not parse is
- * *rejected whole*: the room already on screen keeps running and the error goes
- * to the HUD. Half-applying an edit would be a good way to lose a library.
+ * Hand-edited, so every parse failure names the path that is wrong and what was
+ * expected there. A document that does not parse is *rejected whole* — the room
+ * on screen keeps running and the error goes to the HUD; half-applying an edit
+ * would be a good way to lose a library.
  *
- * What is deliberately NOT in here: which book sits on which shelf, which books
- * are lying on the table, where the moving boxes have been pushed to, or which
- * lamps are on. All of that is machine-written state and lives beside this file
- * — see `reconcile.ts` for what happens to it when this document changes
- * underneath it. The rule is that nothing the app writes ever lands in the file
- * you are editing.
+ * Not in here: which book sits on which shelf, what is lying on a table, where
+ * the boxes have been pushed, which lamps are on. That is machine-written state
+ * beside this file (see `reconcile.ts`). Nothing the app writes lands here.
  */
-
-export const WORLD_SCHEMA_VERSION = 2
 
 /** Which wall of a room an opening sits in. +Z is south, -Z is north. */
 export type Wall = 'north' | 'south' | 'east' | 'west'
@@ -30,9 +24,8 @@ export type Opening = {
   sill: number
   kind: 'door' | 'window'
   /**
-   * Whether a pane is fitted. Windows are glazed; a loft balustrade and a
-   * porch railing are the same shape — a waist-high apron you can see over and
-   * cannot walk through — with nothing in the hole.
+   * Whether a pane is fitted. Windows are glazed; an unglazed one with a
+   * waist-high sill is how a balustrade or porch railing is built.
    */
   glazed: boolean
 }
@@ -49,21 +42,16 @@ export type ShelfSpec = {
   facing: number
   rows: number
   /**
-   * A starting label for the case, written on a card on its top edge. You can
-   * relabel a shelf in the app, and that overrides this — the app's labels live
-   * in `books.json` so that hand edits and app edits never fight over a file.
+   * A starting label for the case, on a card on its top edge. An in-app label
+   * overrides it and lives in `books.json`, so hand edits and app edits never
+   * contend for one file.
    */
   label?: string
 }
 
 /**
- * Everything that stands in a room.
- *
- * The list has grown past "a chair and a rug" because a library you want to be
- * in is not only bookcases: the kitchen, the record player and the picture on
- * the wall are what make it somewhere rather than a warehouse. Each kind is a
- * few boxes and cylinders in `Furniture.tsx` — nothing here is a model file, so
- * the repo stays text and the proportions stay arguable.
+ * Everything that stands in a room. Each kind is a few boxes and cylinders in
+ * `Furniture.tsx` — there are no model files, so the repo stays text.
  */
 export type FurnitureKind =
   // seating and surfaces
@@ -128,9 +116,8 @@ export type FurnitureSpec = {
   at: [number, number]
   facing: number
   /**
-   * Footprint override, in metres. For anything hung on a wall — a `picture`, a
-   * `whiteboard` — this is the mounted size, width by *height*, because a thing
-   * on a wall has no depth worth naming.
+   * Footprint override, in metres. For anything hung on a wall this is the
+   * mounted size, width by *height* — a wall-mounted thing has no useful depth.
    */
   size?: [number, number]
   /** Height override, for the kinds where it is worth varying (tables, counters). */
@@ -152,19 +139,13 @@ export type FurnitureSpec = {
 }
 
 /**
- * The roof over a room.
+ * The roof over a room. Only the *topmost* room over a patch of ground is
+ * roofed (see `roofsOf`), derived rather than declared, so a loft inside
+ * another room's volume does not sprout a roof indoors.
  *
- * Only the *topmost* room over any patch of ground is roofed — see `roofsOf` —
- * so a loft inside the great room's volume and a reading corner with a bedroom
- * on it do not sprout roofs indoors. That is derived rather than declared,
- * because "is there a room above me" is a fact about the document and not a
- * decision anybody wants to restate every time they move a wall.
- *
- * `fall` is the one thing worth stating by hand. For a gable it names the sides
- * the eaves run along — `south` puts the eaves on the north and south walls and
- * therefore runs the ridge east to west — and for a shed it names the low side.
- * A porch roof falls away from the building it leans on, and getting that
- * backwards is a roof draining into the house.
+ * `fall` is worth setting by hand: for a gable it names the sides the eaves run
+ * along (`south` runs the ridge east to west), for a shed the low side. A porch
+ * roof must fall away from the building it leans on, or it drains into it.
  */
 export type RoofKind = 'none' | 'gable' | 'shed' | 'flat'
 
@@ -194,9 +175,9 @@ export type RoomSpec = {
   size: [number, number]
   height: number
   /**
-   * Height of this room's floor above the world's ground plane. A loft is a
-   * room with an elevation, standing over another room's plan — which is why
-   * rooms may overlap now, as long as they are on different levels.
+   * Height of this room's floor above the ground plane. A loft is a room with
+   * an elevation standing over another room's plan, which is why rooms may
+   * overlap as long as they are on different levels.
    */
   elevation: number
   /** Which walls are built. A porch has none; a loft has three and a balustrade. */
@@ -215,7 +196,6 @@ export type RoomSpec = {
 }
 
 export type WorldDocument = {
-  schemaVersion: number
   name: string
   /** Where you stand when the library opens: room id and room-local metres. */
   spawn: { room: string; at: [number, number]; facing: number }
@@ -457,12 +437,9 @@ function parseFurniture(raw: unknown, path: string): FurnitureSpec {
 }
 
 /**
- * The roof, with defaults chosen so that no existing document has to mention it.
- *
- * A room gets a gable and a porch gets a shed, because that is what each one is;
- * and the eaves default to the *longer* pair of walls, so the ridge runs the
- * length of the building rather than across it — which is the difference between
- * a house and a shed with delusions.
+ * The roof, with defaults chosen so no document has to mention it: a gable for
+ * a room, a shed for a porch, and eaves on the *longer* pair of walls so the
+ * ridge runs the length of the building rather than across it.
  */
 function parseRoof(source: Json, path: string, room: { size: [number, number]; outdoor: boolean }): RoofSpec {
   const wider = room.size[0] >= room.size[1]
@@ -567,15 +544,6 @@ function parseSpawn(raw: unknown, path: string): WorldDocument['spawn'] {
 export function parseWorld(raw: unknown): WorldDocument {
   const source = object(raw, '')
 
-  const version = num(source, 'schemaVersion', '', WORLD_SCHEMA_VERSION)
-  if (version > WORLD_SCHEMA_VERSION) {
-    fail(
-      'schemaVersion',
-      `this document is version ${version} but this build only understands ` +
-        `${WORLD_SCHEMA_VERSION} — a newer version of the app wrote it`,
-    )
-  }
-
   const rooms = list(source, 'rooms', '').map((item, i) => parseRoom(item, `rooms[${i}]`))
   if (rooms.length === 0) fail('rooms', 'a library needs at least one room')
 
@@ -609,7 +577,6 @@ export function parseWorld(raw: unknown): WorldDocument {
   }
 
   return {
-    schemaVersion: WORLD_SCHEMA_VERSION,
     name: typeof source.name === 'string' ? source.name : 'Library',
     spawn,
     rooms,

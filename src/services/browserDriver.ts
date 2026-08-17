@@ -67,7 +67,7 @@ const SAMPLE_EPUB: IndexedBook = {
   author: 'A. Sample',
   cover: null,
   // An EPUB has no page count until it is set in type — see `epubPages.ts` —
-  // which is why the index has always left this null for them.
+  // so the index leaves this null for them.
   pageCount: null,
   sizeBytes: 11_000,
 }

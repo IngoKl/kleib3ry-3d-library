@@ -1,23 +1,16 @@
 import type { Block, BlockKind, EpubBook } from './epub'
 
 /**
- * Setting an EPUB in type.
+ * Setting an EPUB in type: measure words, break lines, break pages, stop. No
+ * hyphenation, justification, floats, or widow control beyond one rule.
  *
- * The reader has no layout engine, which is what kept EPUBs off the shelves as
- * objects you could not open. This is the smallest thing that is honestly a
- * layout engine: measure words, break lines, break pages, and stop. No
- * hyphenation, no justification, no floats, no widow control beyond the one
- * rule that matters.
- *
- * The one decision that shapes everything else is that **pagination happens
- * once, in abstract units, at open time** — not at the pixel size the texture
- * happens to want. A page is 620 by 900 *units*; rendering scales the whole
- * thing by `height / 900`. Canvas text metrics are linear in font size, so
- * measuring at one size and drawing at another is exact, and it buys the
- * property that matters: **page 200 is page 200**. Resize the window, put the
- * book down, come back on another monitor — the bookmark is still on the same
- * words. Laying out per texture size would have made a bookmark a number that
- * meant something different every session, which is not a bookmark.
+ * **Pagination happens once, in abstract units, at open time** — not at the
+ * texture's pixel size. A page is 620 by 900 *units*, and rendering scales by
+ * `height / 900`. Canvas text metrics are linear in font size, so measuring at
+ * one size and drawing at another is exact, which buys the property that
+ * matters: page 200 is page 200 on any monitor, in any window, next session.
+ * Laying out per texture size would make a bookmark mean something different
+ * every time.
  */
 
 /** The page, in units. Roughly a hardback's proportions. */

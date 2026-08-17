@@ -22,13 +22,14 @@ import { playOneShot } from '../scene/ambientSound'
 import { approach } from '../lib/ease'
 
 /**
- * Read mode, ported from the reading spike (see docs/reading-spike.md).
+ * Read mode. Three constraints that are easy to break:
  *
- * The spike's three hard-won corrections are preserved here: the gutter curl
- * decays to zero (or the sheet dives through the page block), the turn rotates
- * negatively about Y (or the leaf sweeps down through the table), and the
- * camera *docks* so the spread fills the viewport — legibility is capped by
- * screen pixels, not texture resolution.
+ *   - the gutter curl must decay to zero, or the sheet dives through the page
+ *     block;
+ *   - the turn rotates *negatively* about Y, or the leaf sweeps down through
+ *     the table;
+ *   - the camera *docks* so the spread fills the viewport — legibility is
+ *     capped by screen pixels, not texture resolution.
  */
 
 const PAGE_HEIGHT = 0.24

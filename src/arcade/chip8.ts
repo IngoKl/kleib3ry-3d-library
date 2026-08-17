@@ -1,22 +1,16 @@
 /**
- * A CHIP-8 interpreter, whole, in one file.
+ * A CHIP-8 interpreter, whole, in one file: thirty-five two-byte instructions,
+ * 4 KiB of memory, sixteen registers, a 64×32 one-bit screen and a sixteen-key
+ * pad.
  *
- * CHIP-8 is not a console but a tiny virtual machine from 1977 — thirty-five
- * two-byte instructions, 4 KiB of memory, sixteen registers, a 64×32 one-bit
- * screen and a sixteen-key pad — which is exactly why it is the machine in the
- * arcade cabinet: the whole of it fits in a file you can read top to bottom,
- * and a game for it is a few hundred bytes in `roms/ch8`.
+ * Nothing here knows about textures, keyboards or audio. The machine is a plain
+ * mutable object stepped from outside — the cabinet renders `screen`, feeds
+ * `keys` and listens to `soundTimer`. Outside any store, like `drop.ts`: it
+ * changes hundreds of times a second and must never trigger a React render.
  *
- * Nothing here knows about textures, keyboards or audio. The machine is a
- * plain mutable object stepped from outside — the cabinet renders `screen`,
- * feeds `keys`, and listens to `soundTimer` — the same shape as `drop.ts`:
- * per-frame state deliberately outside any store, because it changes hundreds
- * of times a second and must never trigger a React render.
- *
- * Where the original COSMAC VIP and later interpreters disagree (the shift and
- * load/store instructions, mostly), this one takes the modern behaviour that
- * the widely-shared test ROMs expect: shifts operate on VX alone, and FX55/FX65
- * leave I unchanged. The bundled Pong avoids the ambiguous forms entirely.
+ * Where the COSMAC VIP and later interpreters disagree (shift and load/store,
+ * mostly), this takes the modern behaviour the common test ROMs expect: shifts
+ * operate on VX alone, and FX55/FX65 leave I unchanged.
  */
 
 export const SCREEN_WIDTH = 64

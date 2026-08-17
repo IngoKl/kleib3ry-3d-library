@@ -6,9 +6,9 @@ while you are standing in it. Break it and nothing happens except an error in
 the panel — the room you are in keeps running and your file is never written
 over.
 
-This is the long version. [The library folder](library-folder.md) is the short
-one, and the default document the app writes for you is the worked example: it
-is commented throughout, and reading it top to bottom is the fastest way in.
+This is the long version; [the library folder](library-folder.md) is the short
+one. The default document the app writes is a commented worked example, and
+reading it top to bottom is the fastest way in.
 
 ---
 
@@ -17,7 +17,6 @@ is commented throughout, and reading it top to bottom is the fastest way in.
 ```jsonc
 {
   // Both // and /* */ work. The file is meant to be read by a person.
-  "schemaVersion": 2,
   "name": "The Cabin",
   "spawn": { "room": "main", "at": [0, 1.0], "facing": 0 },
   "rooms": [/* … */]
@@ -29,16 +28,14 @@ Metres throughout, and the vertical axis is Y.
 - A room's `origin` is its **centre**, in world metres.
 - Everything _inside_ a room — shelves, furniture, spawn — is positioned
   relative to **that room's centre**, so moving a whole room moves its contents.
-- `facing` is **degrees clockwise about Y**. For a thing, `0` points its front
-  at +Z (south); `90` points east, `180` north, `270` west. For a _person_ —
-  `spawn.facing` — it is the direction they are looking, and `0` is north. The
-  two are opposite because a bookcase's front faces you and your front faces
-  away; it is easier to remember than to justify.
+- `facing` is **degrees clockwise about Y**. For an object, `0` points its front
+  at +Z (south); `90` east, `180` north, `270` west. For `spawn.facing` it is
+  the direction the person is looking, so `0` is north — the two are opposite
+  because an object's front faces you and yours faces away.
 
-Nothing the app does is ever written back into this file. Where you shove the
-boxes, which lamps you switch off, what you write on a shelf label: all of that
-lives in `books.json` and `ambience.json` beside it, so your comments and your
-formatting are yours.
+Nothing the app does is written back into this file. Where you shove the boxes,
+which lamps you switch off and what you write on a shelf label all live in
+`books.json` and `ambience.json` beside it.
 
 ---
 
@@ -63,34 +60,31 @@ formatting are yours.
 }
 ```
 
-Rooms are axis-aligned boxes. Walls are 0.12 m thick and are drawn **outward**
-from the floor area, so a room's `size` is the space you can actually walk in.
-The floor runs out under them, which is what lets two rooms a wall-gap apart
-have something to stand on in the doorway between them.
+Rooms are axis-aligned boxes. Walls are 0.12 m thick and drawn **outward** from
+the floor area, so a room's `size` is the space you can walk in. The floor runs
+out under them, which gives two rooms a wall-gap apart something to stand on in
+the doorway between them.
 
 **Joining two rooms:** place them `0.24` m apart — twice the wall thickness — so
-their wall slabs sit flush, and put a matching door in each of the facing walls.
-The arithmetic is written out in a comment in the default document.
+their wall slabs sit flush, and put a matching door in each facing wall. The
+arithmetic is written out in a comment in the default document.
 
 **Butting two rooms together instead:** place them exactly touching and give the
-second one no wall on the shared side. That is what the porch does: its north
-edge is the cabin's south edge, so the decking meets the floorboards with
-nothing to step over, and the cabin's own south wall is what you walk through.
+second no wall on the shared side. That is what the porch does: its north edge
+is the cabin's south edge, so the decking meets the floorboards with nothing to
+step over, and the cabin's own south wall is what you walk through.
 
-**A second building** is just rooms somewhere else. Nothing in the format ever
-said there had to be one house — put a room a hundred metres away and it is a
-separate building, with its own roof, its own light and its own bookcases. The
-default document does exactly this: the lake house and its deck sit on the rise
-above the south-west shore, a walk away from the cabin. Two things are worth
-knowing before you site one:
+**A second building** is just rooms somewhere else: put a room a hundred metres
+away and it is a separate building, with its own roof, light and bookcases. The
+default document does this with the lake house above the south-west shore. Two
+things to know before siting one:
 
 - **the forest is grown around every room's footprint**, plus a few metres of
   clearing, so a building anywhere gets somewhere to stand;
 - **the walk round the lake and the trail between the buildings are cleared
-  ground**, and putting a room on top of one means walking through your own
-  building to get past. Both live in `src/world/terrain.ts`, which is also
-  where the trail is drawn — the _route_ between two buildings is a fact about
-  the valley rather than about either of them, so it is not in this file.
+  ground**, and putting a room on one means walking through your own building to
+  get past. Both live in `src/world/terrain.ts`, not in this file — a route
+  between buildings is a fact about the valley rather than about either of them.
 
 ### Openings
 
@@ -113,11 +107,10 @@ knowing before you site one:
 A `door` at floor level is walkable. A `window` is not — its apron is a wall you
 bump into, which is what you want when the sill is at 0.9 m.
 
-That last property is load-bearing and worth understanding, because **the apron
-under an unglazed window is how you build a railing**. A very wide "window" with
-a metre-high sill and `"glazed": false` is a balustrade: you can see the whole
-room over it, you cannot walk off it, and there is no glass in the way. The
-loft's open side and all three sides of the porch are built this way.
+That last property is how you build a **railing**: a very wide window with a
+metre-high sill and `"glazed": false` is a balustrade — you can see over it, you
+cannot walk off it, and there is no glass in the way. The loft's open side and
+all three sides of the porch are built this way.
 
 ---
 
@@ -169,16 +162,14 @@ A flight climbs **towards its facing direction**. `size` is `[width, run]` and
 `rise` is how far up it gets. Underfoot it is a smooth ramp; what you see is
 treads.
 
-Put the **bottom of the flight somewhere you can actually stand**: the default
-one is entered from the open floor by the seating and climbs north along the
-east wall. A flight whose bottom step is a hand's width from a wall is a
-staircase nobody can get onto — and keep doors off the wall the flight runs
-along, or the door opens into the side of it.
+Put the **bottom of the flight somewhere you can stand**: a flight whose bottom
+step is a hand's width from a wall is a staircase nobody can get onto. Keep
+doors off the wall the flight runs along, or the door opens into its side.
 
-The one measurement that has to be right is **where the flight reaches the top**
-relative to the stairwell. The floor above only exists outside the hole, so the
+The measurement that has to be right is **where the flight reaches the top**
+relative to the stairwell. The floor above exists only outside the hole, so the
 hole must end exactly where the ramp reaches the upper floor — otherwise you
-walk up the stairs and find a 60 cm step you cannot climb. Work it out from the
+climb the stairs and find a 60 cm step you cannot take. Work it out from the
 run:
 
 ```text
@@ -192,14 +183,13 @@ the stairwell hole must therefore END at z = -2.10, not after it
 ```
 
 Ending the hole _later_ than the top of the flight leaves a strip with no floor
-at either height — the ramp has run out and the boards have not started — and
-you will climb the stairs and stop dead one pace short of the landing. Ending it
-earlier is harmless as long as the ramp is within a step of the floor by then.
+at either height — the ramp has run out and the boards have not started — so you
+stop dead one pace short of the landing. Ending it earlier is harmless as long
+as the ramp is within a step of the floor by then.
 
-The rule the walk controller applies is that a move is only allowed if the floor
-you are stepping onto is within 0.42 m of the floor you are on. That is both how
-a staircase works and why you cannot walk off the loft, which is a good sign it
-is the right rule.
+The walk controller allows a move only if the floor you step onto is within
+0.42 m of the floor you are on. That is both how a staircase works and why you
+cannot walk off the loft.
 
 ---
 
@@ -218,12 +208,10 @@ A case is 1.0 m wide and 0.32 m deep, so `1.05` apart is the tightest a run can
 stand. The default map uses `1.2`, which leaves a hand's width between cases and
 reads as furniture rather than as built-in shelving.
 
-`label` is an optional _starting_ label for the card on its top edge, and the
-default map deliberately uses it nowhere: a bookcase arrives bare, and you write
-on it with `L` once you have decided what is in it. A room that arrives
-pre-sorted into somebody else's categories is a room you have to undo first.
-An in-app label overrides whatever is written here — the app's labels live in
-`books.json` so that a hand edit and an in-app edit never fight over one file.
+`label` is an optional _starting_ label for the card on its top edge. The
+default map uses it nowhere: a bookcase arrives bare and you write on it with
+`L`. An in-app label overrides whatever is written here — the app's labels live
+in `books.json`, so a hand edit and an in-app edit never fight over one file.
 
 **The `id` is load-bearing.** It is what `books.json` is keyed by. Move a case
 and its books move with it; rename or delete one and its books go into the
@@ -307,20 +295,18 @@ Common fields: `id`, `kind`, `at`, `facing`. Then, all optional:
 | `step`           | no    | walk down                                               | a pair of treads hanging off the edge of a deck. Decoration: the walk controller takes a 24 cm drop unaided                                             |
 
 Everything marked solid is something you bump into, so keep furniture out of the
-line you walk in on. (The default reading corner has a comment about exactly
-this: a footstool in a doorway is the kind of thing you only find by walking
-into it.)
+line you walk in on — a footstool in a doorway is the kind of thing you only
+find by walking into it.
 
 ---
 
 ## Roofs
 
 Every room gets one without being asked, and only the **topmost** room over any
-patch of ground gets one at all — so a loft inside the great room's volume, and a
-reading corner with a bedroom on top of it, do not sprout roofs indoors. That is
-worked out from the document rather than declared, because "is there a room above
-me" is a fact about the file and not a decision anybody wants to restate every
-time they move a wall.
+patch of ground gets one at all — so a loft inside the great room's volume does
+not sprout a roof indoors. That is derived from the document rather than
+declared: "is there a room above me" is a fact about the file, not a decision to
+restate every time a wall moves.
 
 The default is a 30° gable over the room's longer axis, or an 18° lean-to over
 anything `"outdoor"`. Say otherwise with a `roof` block:
@@ -336,30 +322,28 @@ anything `"outdoor"`. Say otherwise with a `roof` block:
 | `overhang` | how far the eaves stand out past the walls, in metres                        |
 | `fall`     | for a gable, the sides the **eaves** run along; for a shed, the **low** side |
 
-`fall` is the one worth thinking about. `"south"` puts the eaves on the north and
-south walls, which runs the ridge east to west — along the length of a building
-that is wider than it is deep. And a lean-to must fall _away_ from what it leans
-on: get the porch's backwards and you have a roof draining into the house.
+`fall` is the one worth thinking about. `"south"` puts the eaves on the north
+and south walls, running the ridge east to west — along the length of a building
+wider than it is deep. A lean-to must fall _away_ from what it leans on: get the
+porch's backwards and the roof drains into the house.
 
-Two things are handled for you. The plane is pinned to the **top of the walls** and
-only rises from there, so a roof can never come down into a room's headroom or
-through the ceiling below it. And a roof does not overhang into a building it
+Two things are handled for you. The plane is pinned to the **top of the walls**
+and only rises from there, so a roof can never come down into a room's headroom
+or through the ceiling below. And a roof does not overhang into a building it
 abuts — without that, the porch's shed roof reaches 45 cm through the cabin's
-south wall and comes out over the great room.
+south wall.
 
-An opening's _head_ is your problem, though. The great room's north window used to
-reach 2.9 m up a wall the loft floor crosses at 2.28, so from the lake the view
-window had a plank across it. It is invisible from inside, where the sill and the
-head are both just wall, and there is a test that now refuses it.
+An opening's _head_ is your problem. A window reaching higher than a floor slab
+above it puts a plank across the view from outside while looking like plain wall
+from inside; a test refuses it.
 
 ---
 
 ## Light
 
-Rooms are lit by the sun, by the sky, by a wash off each glazed window's
-reveal — and by the lamps you put in them. A room that declares no lamp at all
-gets one soft ceiling fixture so that a map you are halfway through writing is
-not pitch dark while you write it.
+Rooms are lit by the sun, the sky, a wash off each glazed window's reveal, and
+the lamps you put in them. A room that declares no lamp gets one soft ceiling
+fixture, so a half-written map is not pitch dark while you write it.
 
 Switching a lamp is `E` while looking at it, and which lamps are on is saved in
 `.library/ambience.json`, keyed by furniture id. Delete that file and every light
@@ -371,9 +355,9 @@ Two things to watch:
 - **A pendant hangs from its `y`.** Under a loft, that has to be below the loft
   floor, or the fitting is inside the floor above and lights the room upstairs.
 - **Brightness is not a field.** A lamp's intensity is fixed per kind in the
-  scene, and it is in candela, falling off with the square of distance — 7 cd at
-  the 2 m from a pendant to the table under it arrives as under 2. If a room
-  reads dim, the answer is another lamp, not a number to turn up.
+  scene, in candela, falling off with the square of distance — 7 cd over the 2 m
+  from a pendant to the table under it arrives as under 2. If a room reads dim,
+  add another lamp.
 
 ---
 
@@ -398,31 +382,28 @@ a file puts it on the shelf. Titles come from the file's tags where it has them
 the folder above it as the artist: `music/Nina Simone/Wild Is the Wind/04
 Four Women.mp3` reads exactly as you would hope.
 
-A record is also a **thing you can carry**. `E` takes one out of a crate, and
-then `E` puts it on a deck, files it in any crate you like, or sets it down flat
-on a table; `F` takes it back off the deck and `Q` sends it to wherever the
-folder deals it. Only the records you have moved are written down — see
-[library-folder.md](library-folder.md) — so a collection nobody has rearranged
-costs nothing. There is one of each record: it is on whichever deck you carried
-it to, and a deck with nothing on it stays quiet.
+A record is also a **thing you can carry**. `E` takes one out of a crate; `E`
+then puts it on a deck, files it in any crate, or sets it down on a table. `F`
+takes it back off the deck and `Q` returns it to wherever the folder deals it.
+Only records you have moved are written down (see
+[library-folder.md](library-folder.md)), so an unrearranged collection costs
+nothing. There is one of each record, and an empty deck stays quiet.
 
 `artwork/` fills the picture frames. A frame with a `source` names its file; the
 rest are dealt out of the folder in document order, so dropping images in is the
 whole of the work.
 
-`video/` fills the tape crates, dealt the same way the records are — folder order,
-nothing to arrange, and the folder a file sits in becomes what is written under
-the title on its label. Whether a tape actually plays is up to the WebView, which
-decodes what Chromium decodes: roughly H.264 in MP4, VP8 or VP9 in WebM. A
-container it cannot read is still a tape in the crate — it goes in the machine,
-fails to start, and the panel says why, which is a better answer than pretending
-the file is not there.
+`video/` fills the tape crates, dealt like the records — folder order, and the
+folder a file sits in is written under the title on its label. Whether a tape
+plays is up to the WebView, which decodes what Chromium decodes: roughly H.264
+in MP4, VP8 or VP9 in WebM. A container it cannot read is still a tape in the
+crate; it goes in the machine, fails to start, and the panel says why.
 
 `roms/` fills the `rombox` beside the `arcade` cabinet. Only `.ch8` files count
-— CHIP-8 images, which is the machine the cabinet's emulator implements — and a
-ROM's filename is its title, since a CHIP-8 image is a bare byte array with no
-header to ask. The demo library ships a Pong in `roms/ch8/`, assembled by this
-repository's own `scripts/lib/make-chip8.mjs`.
+— CHIP-8 images, which is what the cabinet's emulator implements — and a ROM's
+filename is its title, since a CHIP-8 image has no header to ask. The demo
+library ships a Pong in `roms/ch8/`, assembled by
+`scripts/lib/make-chip8.mjs`.
 
 ---
 
@@ -439,10 +420,8 @@ Any wall in the building takes a sheet of paper, and so does a `whiteboard`.
   a page from a wall to the board is `E`, `E`.
 - **`Q`** throws away the sheet in your hand.
 
-Nothing about this needs anything in `library.json`: a wall is a wall. The
-whiteboard in the default map's office is a good place to aim at, and the office
-is the room the feature was built for, but a page pins just as happily over the
-hearth.
+None of this needs anything in `library.json`: a wall is a wall. The default
+map's office has a whiteboard, but a page pins just as happily over the hearth.
 
 ## Drawing on a Whiteboard
 

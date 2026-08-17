@@ -17,6 +17,11 @@ import { create } from 'zustand'
  * lives in `ambience.json` beside it.
  */
 
+export type ShadowQuality = 'off' | 'low' | 'high'
+const SHADOW_QUALITIES: readonly ShadowQuality[] = ['off', 'low', 'high']
+/** Pixels on a side, by name. `off` never reaches here. */
+export const SHADOW_MAP_SIZE: Record<Exclude<ShadowQuality, 'off'>, number> = { low: 1024, high: 2048 }
+
 const KEY = 'kleib3ry.settings'
 /** Recent library folders, for the main menu. Also per-machine, also not a library fact. */
 const RECENT_KEY = 'kleib3ry.recent'
@@ -33,6 +38,30 @@ export type Settings = {
    * library looks the same shape on both settings.
    */
   lowPerformance: boolean
+  /**
+   * How many pixels are drawn per pixel of window — the most expensive number
+   * in the app. Keep the cap at 1: a high-DPI panel at 2 is four times the
+   * fragments, and those machines disproportionately have integrated GPUs.
+   * Values below 1 are a genuine blur, offered because a soft 30 fps beats a
+   * sharp 5.
+   */
+  resolutionScale: number
+  /**
+   * The sun's shadow map: off, or its resolution. `low` is 1024 and is the
+   * default, because the pass is charged for the whole site either way — see
+   * `Lighting`, where the frustum is now tied to where you are standing rather
+   * than to the bounding box of every room in the document.
+   */
+  shadowQuality: 'off' | 'low' | 'high'
+  /**
+   * How many lamps may light the room at once.
+   *
+   * Three.js has no per-object light culling: every point light in the scene is
+   * a term in every lit fragment's shader, whether it is next to you or in
+   * another building. The default map declares nearly forty. This is the size
+   * of the pool that stands in for them — see `scene/lightPool.ts`.
+   */
+  lightBudget: number
   /** Whether you can see your own body when you look down. */
   showBody: boolean
   /** Master volume for the record player and the television, 0 to 1. */
@@ -77,6 +106,12 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   lowPerformance: false,
+  // Deliberately not 2. A quarter over one pixel per pixel is the point where
+  // the spine text stops looking soft; the rest of the way to 2 costs 60% more
+  // fragments for a difference you have to go looking for.
+  resolutionScale: 1.25,
+  shadowQuality: 'low',
+  lightBudget: 8,
   showBody: true,
   volume: 0.8,
   rainVolume: 0.35,
@@ -86,6 +121,34 @@ export const DEFAULT_SETTINGS: Settings = {
   boxPerFolder: false,
   matchClock: false,
   booksLean: true,
+}
+
+/**
+ * The three dials as the renderer should actually read them.
+ *
+ * Low Performance Mode stays what it always was — everything that costs frames,
+ * off at once — and is now expressed as a *floor* over the dials rather than as
+ * a separate branch at each use site. One switch still works for the person who
+ * is not tuning a renderer; the dials are there for the person who is, and the
+ * two can never disagree because the floor always wins.
+ */
+export function effectiveQuality(s: Settings): {
+  resolutionScale: number
+  shadowQuality: ShadowQuality
+  lightBudget: number
+} {
+  if (!s.lowPerformance) {
+    return {
+      resolutionScale: s.resolutionScale,
+      shadowQuality: s.shadowQuality,
+      lightBudget: s.lightBudget,
+    }
+  }
+  return {
+    resolutionScale: Math.min(1, s.resolutionScale),
+    shadowQuality: 'off',
+    lightBudget: Math.min(4, s.lightBudget),
+  }
 }
 
 /** Whether this machine's clock says it is evening: before 7, or from 19:00. */
@@ -105,6 +168,11 @@ function read(): Settings {
     // one will then write back and act on.
     return {
       lowPerformance: parsed.lowPerformance ?? DEFAULT_SETTINGS.lowPerformance,
+      resolutionScale: clamp(parsed.resolutionScale ?? DEFAULT_SETTINGS.resolutionScale, 0.5, 2),
+      shadowQuality: SHADOW_QUALITIES.includes(parsed.shadowQuality as ShadowQuality)
+        ? (parsed.shadowQuality as ShadowQuality)
+        : DEFAULT_SETTINGS.shadowQuality,
+      lightBudget: clamp(parsed.lightBudget ?? DEFAULT_SETTINGS.lightBudget, 2, 32),
       showBody: parsed.showBody ?? DEFAULT_SETTINGS.showBody,
       volume: clamp(parsed.volume ?? DEFAULT_SETTINGS.volume, 0, 1),
       rainVolume: clamp(parsed.rainVolume ?? DEFAULT_SETTINGS.rainVolume, 0, 1),
@@ -180,6 +248,9 @@ function persist(state: Settings) {
       KEY,
       JSON.stringify({
         lowPerformance: state.lowPerformance,
+        resolutionScale: state.resolutionScale,
+        shadowQuality: state.shadowQuality,
+        lightBudget: state.lightBudget,
         showBody: state.showBody,
         volume: state.volume,
         rainVolume: state.rainVolume,

@@ -5,20 +5,16 @@ import { pageToSpread, spreadToPage } from '../data/pageNumbers'
 import { useLibraryStore } from './library'
 
 /**
- * Bookmarks, notes and ink — the marginalia, in `.library/annotations.json`.
+ * Bookmarks, notes and ink, in `.library/annotations.json`.
  *
- * Their own file, apart from the layout, because they are a different kind of
- * fact: where a book stands is the room's business, but what you wrote in it is
- * yours, and the file is meant to be read without the app. So it speaks page
- * numbers rather than spreads, and every book entry carries its title and
- * author — an entry whose book has left the index is still legible, and is
- * deliberately never pruned. Words are not dropped by a rescan.
+ * Their own file, apart from the layout, and meant to be read without the app:
+ * it speaks 1-based page numbers rather than spreads, and every entry carries
+ * its book's title and author so it stays legible after the book leaves the
+ * index. Entries are never pruned — a rescan must not drop somebody's words.
  *
- * The reader, though, thinks in spreads, and the conversion lives at the file
- * boundary: bookmarks are spread-indexed in memory and page-numbered on disk.
+ * The reader thinks in spreads, so the conversion happens at the file boundary:
+ * spread-indexed in memory, page-numbered on disk.
  */
-
-export const ANNOTATIONS_SCHEMA_VERSION = 1
 
 const SAVE_DEBOUNCE_MS = 400
 
@@ -106,22 +102,8 @@ export const useAnnotationsStore = create<AnnotationsStore>((set, get) => {
           return
         }
 
-        // No file yet. Bookmarks used to live in the layout (schema <= 7);
-        // carry them over once, and write the file straight away — before the
-        // next layout save rewrites `books.json` without them, or a crash
-        // between the two would be the only launch that ever saw them.
-        const layout = await library.loadLayout()
-        const known = new Set(useLibraryStore.getState().books.map((b) => b.id))
-        const bookmarks: Record<string, number[]> = {}
-        for (const [id, spreads] of Object.entries(layout?.bookmarks ?? {})) {
-          // The old load pruned lost books' bookmarks every launch; migrating
-          // them would resurrect entries with no title to give them.
-          if (known.has(id) && spreads.length) {
-            bookmarks[id] = [...spreads].sort((a, b) => a - b)
-          }
-        }
-        set({ bookmarks, loaded: true })
-        if (Object.keys(bookmarks).length) await saveNow()
+        // No file yet: nothing has been written in a book in this library.
+        set({ loaded: true })
       } catch {
         set({ loaded: true })
       }
@@ -225,7 +207,7 @@ export function annotationsDocument(): AnnotationsDocument {
     }
     books[id] = entry
   }
-  return { schemaVersion: ANNOTATIONS_SCHEMA_VERSION, books }
+  return { books }
 }
 
 // A note written just before closing the window is still a note; the debounce

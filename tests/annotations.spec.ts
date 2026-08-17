@@ -39,7 +39,6 @@ test('a book with no page count externalises unclamped', () => {
 
 test('the markdown digest reads by title, with pages, dates and authors', () => {
   const doc: AnnotationsDocument = {
-    schemaVersion: 1,
     books: {
       bbb: {
         title: 'Zettel',

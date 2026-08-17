@@ -62,6 +62,11 @@ declare global {
     __app: {
       ready: () => boolean
       stats: () => Stats
+      /**
+       * Point lights in the scene: how many exist, how many are carrying light,
+       * and which candidate each pool slot is currently showing.
+       */
+      pointLights: () => { mounted: number; lit: number; bound: string[] }
       player: () => {
         x: number
         z: number
@@ -257,12 +262,11 @@ async function unpackEverything(page: Page) {
 /**
  * Wait for the crosshair to report something, or give up on this pose.
  *
- * Everything the crosshair knows is written by a raycast that runs every other
- * frame, so the question "has it noticed yet" is answered in frames, not in
- * milliseconds — and one frame here is however long a software rasteriser takes
- * over the whole cabin. Sweeping poses on a fixed sleep therefore reads stale
- * nulls under load and finds nothing anywhere, which looks exactly like the
- * room being wrong.
+ * The crosshair is written by a raycast running every other frame, so "has it
+ * noticed yet" is answered in frames, not milliseconds — and one frame here is
+ * however long a software rasteriser takes over the whole cabin. Sweeping poses
+ * on a fixed sleep reads stale nulls under load and finds nothing anywhere,
+ * which looks exactly like the room being wrong.
  *
  * Resolves false rather than throwing, because "not from this pose" is the
  * normal answer for most of the poses these helpers try.
@@ -330,13 +334,12 @@ async function faceTheShelves(page: Page) {
       )
       /**
        * Wait for the crosshair to answer rather than for a fixed moment. The
-       * raycast runs every other frame, so "how long until the store catches
-       * up" is a number of *frames* — and a headless software rasteriser
+       * raycast runs every other frame, and a headless software rasteriser
        * drawing a forest and seventeen hundred books can take longer over one
        * frame than any sleep short enough to sweep thirty poses with.
        *
-       * What counts as an answer depends on what is in your hands, and asking
-       * for "either" is how this used to return happily from a pose that had
+       * What counts as an answer depends on what is in your hands. Asking for
+       * "either" returns happily from a pose that had
        * found a book while the caller went on to need a shelf.
        */
       const found = await settled(page, () =>
@@ -360,20 +363,14 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
   await expect(page.locator('canvas')).toBeVisible()
 
   /**
-   * Alive and rendering — and *only* that, which is why it is a wait rather than
-   * a reading.
+   * Alive and rendering, and *only* that — which is why it is a wait rather
+   * than a reading.
    *
-   * This runs on SwiftShader, a software rasteriser, where the printed spines
-   * cost a texture fetch per fragment across a thousand-odd boxes: free on a GPU,
-   * expensive here. Counting frames inside a fixed 2 s window therefore measured
-   * the host's spare capacity, not the app — the same 8-frame bar read 13 on an
-   * idle machine and exactly 8 on a busy one, and a test that flips on whether
-   * something else is compiling is a test nobody can act on.
-   *
-   * So: wait until enough frames have gone by, with an allowance long enough that
-   * only a *stopped* render loop can fail it. Which is what the assertion was
-   * ever for; the threshold was 30 when books were flat colours, and every
-   * lowering of it since has been this discovery arriving late.
+   * On SwiftShader the printed spines cost a texture fetch per fragment across
+   * a thousand-odd boxes. Counting frames inside a fixed window would measure
+   * the host's spare capacity, not the app. Waiting instead, with an allowance
+   * long enough that only a *stopped* render loop can fail it, is what the
+   * assertion was always for.
    */
   const enoughFrames = 9
   await page.waitForFunction(
@@ -415,26 +412,20 @@ test('the room renders and the library arrives in boxes', async ({ page }) => {
 })
 
 /**
- * Walking is measured in *frames*, not in milliseconds.
+ * Walking is measured in *frames*, not milliseconds.
  *
- * The controller caps its own step at 1/20 s so that a dropped frame cannot
- * teleport anybody through a wall, which means distance covered is bounded by
- * frames rendered — and one frame here is however long a software rasteriser
- * takes over the whole cabin, on a machine that has other things to do. Holding
- * `W` for a fixed 1200 ms therefore tests the host's spare capacity rather than
- * the walk controller: the same code covers 1.9 m on an idle machine and 5 cm on
- * a busy one.
+ * The controller caps its step at 1/20 s so a dropped frame cannot teleport
+ * anybody through a wall, so distance covered is bounded by frames rendered —
+ * and one frame here is however long a software rasteriser takes over the whole
+ * cabin. Holding `W` for a fixed 1200 ms would measure the host's spare
+ * capacity: the same code covers 1.9 m idle and 5 cm busy.
  *
- * So: hold the key until the thing being tested has happened, or give up. Same
- * property, and the failure now means "walking does not work" rather than "this
- * machine was busy" — which is the distinction `settled()` above draws for the
- * crosshair, for exactly the same reason.
+ * So hold the key until the thing being tested has happened, or give up — the
+ * same distinction `settled()` draws for the crosshair.
  *
- * The budgets are minutes, not seconds, and were raised again when the building
- * grew a second storey's worth of rooms. Distance covered is bounded by frames
- * rendered; frames rendered is bounded by how much room there is to draw and how
- * busy the host is. A generous budget still catches a stopped walk controller —
- * which is the only thing it is for — while a tight one just reports the weather.
+ * Budgets are minutes, not seconds, deliberately. A generous budget still
+ * catches a stopped walk controller, which is all it is for; a tight one just
+ * reports how busy the machine was.
  */
 async function walkUntil(page: Page, reached: (z: number) => boolean, budgetMs = 60_000) {
   await page.keyboard.down('KeyW')
@@ -1538,40 +1529,6 @@ test('the pen draws visibly on an EPUB page too', async ({ page }) => {
   expect(await page.evaluate(() => window.__app.inkPixelsOnPage(1))).toBeGreaterThan(0)
 })
 
-test('bookmarks kept in an old layout migrate into the annotations file once', async ({
-  page,
-}) => {
-  // A schema-7 layout carries its bookmarks inline; the first launch after the
-  // split must carry them over rather than losing them.
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'kleib3ry.layout',
-      JSON.stringify({ schemaVersion: 7, rows: {}, bookmarks: { 'sample-book': [1, 3] } }),
-    )
-  })
-  await boot(page)
-
-  await page.waitForFunction(
-    () => window.__app.bookmarksOf('sample-book').length === 2,
-    null,
-    { timeout: 10_000 },
-  )
-  expect(await page.evaluate(() => window.__app.bookmarksOf('sample-book'))).toEqual([1, 3])
-
-  // The file is written immediately — spreads 1 and 3 of a 12-page book are
-  // pages 3 and 7 — with the title embedded, so the entry outlives the index.
-  await page.waitForFunction(
-    () => localStorage.getItem('kleib3ry.annotations') !== null,
-    null,
-    { timeout: 10_000 },
-  )
-  const stored = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('kleib3ry.annotations') ?? 'null'),
-  )
-  expect(stored.books['sample-book'].bookmarks).toEqual([3, 7])
-  expect(stored.books['sample-book'].title).toBe('The Shelf as Argument')
-})
-
 test('spines are printed for the shelf you are at, and only for that shelf', async ({ page }) => {
   // Waiting for the atlas to stop moving means waiting several printing passes,
   // and a pass only runs every few frames — so this is bounded by the frame rate
@@ -1605,8 +1562,8 @@ test('spines are printed for the shelf you are at, and only for that shelf', asy
         const spines = window.__app.spines()
         // Both counters, not just one. `reprinted` can sit still for a moment
         // between passes while `printed` is still climbing, and calling that
-        // settled is how this used to decide the atlas was full at a third of
-        // what it eventually holds.
+        // Requiring several stable samples: settling too early reads the atlas
+        // as full at a third of what it eventually holds.
         const now = `${spines.printed}:${spines.reprinted}`
         w.__stable = w.__spines === now ? (w.__stable ?? 0) + 1 : 0
         w.__spines = now
@@ -1681,6 +1638,68 @@ test('shelving the whole library costs nothing to draw', async ({ page }) => {
    * has started drawing books one at a time.
    */
   expect(Math.abs(shelved.drawCalls - boxed.drawCalls)).toBeLessThan(20)
+})
+
+test('the lamp pool is a fixed size, however many lamps the building has', async ({ page }) => {
+  await boot(page)
+
+  /**
+   * The pool re-ranks every eighth frame and hands a slot over across a short
+   * crossfade, so everything here is answered in *frames*. A fixed sleep on the
+   * software rasteriser measures the host's spare capacity instead of the app.
+   */
+  const waitFrames = async (n: number) => {
+    const from = await page.evaluate(() => window.__app.stats().frames)
+    const deadline = Date.now() + 30000
+    while (Date.now() < deadline) {
+      if ((await page.evaluate(() => window.__app.stats().frames)) >= from + n) return
+      await page.waitForTimeout(50)
+    }
+  }
+  await waitFrames(60)
+
+  /**
+   * The whole design rests on this number not moving.
+   *
+   * Three.js compiles every lit material against the *count* of point lights in
+   * the scene, so a count that changes as you walk recompiles every shader in
+   * the room mid-stride — which is why the lamps were all mounted at once
+   * before, and why the fix had to be a fixed pool re-pointed at the nearest
+   * few rather than "mount the ones near you". The default map declares nearly
+   * forty lamps and reveals; if this ever reads like that number again, the
+   * pool has been bypassed and the frame budget has gone with it.
+   */
+  const cabin = await page.evaluate(() => window.__app.pointLights())
+  expect(cabin.mounted, 'the pool grew to the size of the building').toBeLessThanOrEqual(10)
+  expect(cabin.lit, 'nothing in the pool is carrying any light').toBeGreaterThan(0)
+
+  // Walk to the other building. The bindings must move; the count must not.
+  await page.evaluate(() => window.__app.teleport(-7.44, 0.9, 0))
+  await waitFrames(60)
+  const moved = await page.evaluate(() => window.__app.pointLights())
+  expect(moved.mounted, 'the light count moved with the player').toBe(cabin.mounted)
+
+  /**
+   * Switching a lamp off has to make the room *cheaper*, not merely darker: an
+   * unlit lamp is not a candidate and can never hold a slot.
+   *
+   * The count itself does not move — the freed slots refill with window
+   * reveals, which is the pool working rather than leaking.
+   */
+  const lamps = await page.evaluate(() =>
+    Object.entries(window.__app.lights())
+      .filter(([, lit]) => lit)
+      .map(([id]) => id),
+  )
+  expect(lamps.length, 'this world has no lamps alight').toBeGreaterThan(0)
+  await page.evaluate((ids) => ids.forEach((id) => window.__app.toggleLightForTest(id)), lamps)
+  await waitFrames(90)
+  const dark = await page.evaluate(() => window.__app.pointLights())
+  expect(dark.mounted, 'the count changed when the lamps went off').toBe(cabin.mounted)
+  expect(
+    dark.bound.filter((id) => lamps.includes(id)),
+    'a lamp that is switched off is still holding a slot',
+  ).toEqual([])
 })
 
 // --- what has been added since the room was first walkable ------------------

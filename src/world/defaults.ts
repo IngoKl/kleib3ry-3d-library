@@ -1,17 +1,15 @@
 /**
  * The world written into a library folder the first time it is opened.
  *
- * It is kept as *text*, not as an object, because this file is the thing you
- * will edit: the comments are the documentation, and generating them from a
- * structure would mean maintaining the prose somewhere it cannot be read next
- * to what it describes.
+ * Kept as *text* rather than an object because this is the file the user edits:
+ * the comments are its documentation, and they have to live next to what they
+ * describe.
  *
  * Positions inside a room are relative to that room's centre, in metres.
- * `facing` is degrees clockwise about Y, where 0 means the front points towards
- * +Z (south). Rooms are placed 0.24 m apart — twice the wall thickness — so
- * their walls sit flush and a door in each makes one short doorway. The porch
- * is the exception: it is placed flush against the cabin so the decking and the
- * floorboards meet with nothing to step over.
+ * `facing` is degrees clockwise about Y, 0 pointing the front towards +Z
+ * (south). Rooms sit 0.24 m apart — twice the wall thickness — so their walls
+ * are flush and a door in each makes one short doorway. The porch is the
+ * exception, placed flush so the decking meets the floorboards.
  */
 export const DEFAULT_WORLD_TEXT = `{
   // A cabin in the woods, with a lake through the north window — and a way out
@@ -22,15 +20,13 @@ export const DEFAULT_WORLD_TEXT = `{
   // room you are standing in keeps running and the problem is reported in the
   // panel, so you cannot break your library by mistyping in here. Nothing the
   // app does is ever written back over this file — where you shove the boxes,
-  // which lamps you switch off, what you write on a shelf label, all of that
-  // lives in books.json and ambience.json beside it.
+  // which lamps you switch off and what you write on a shelf label all live in
+  // books.json and ambience.json beside it.
   //
-  // Nothing here carries a "label". A bookcase is bare until you write on it
-  // with L, which is the point: the labels are yours, and a room that arrives
-  // pre-sorted into somebody else's categories is a room you have to undo.
+  // Nothing here carries a "label": a bookcase stays bare until you write on it
+  // with L, so the categories are yours.
   //
   // A full guide to building your own is in docs/custom-maps.md.
-  "schemaVersion": 2,
   "name": "The Cabin",
 
   // Standing in the great room, looking north at the lake. Note that "facing"
@@ -390,10 +386,8 @@ export const DEFAULT_WORLD_TEXT = `{
       "openings": [
         // World z = 2.1, matching the great room's east door.
         { "wall": "west", "at": 0.7, "width": 1.1, "height": 2.1, "sill": 0, "kind": "door" },
-        // The one window. The north wall used to have a second, and the bathroom
-        // is now built against it — so what that window showed was the back of
-        // the bathroom's plaster. The east wall is the only side of this room
-        // with the forest behind it, which is why the big one is there.
+        // The one window. The bathroom is built against the north wall, so the
+        // east wall is this room's only side with the forest behind it.
         { "wall": "east", "at": 0, "width": 1.6, "height": 1.2, "sill": 1.05, "kind": "window" },
         // Through to the bathroom, at world x = 6.19. The dining set was moved
         // east to keep this lane bare.
@@ -434,9 +428,8 @@ export const DEFAULT_WORLD_TEXT = `{
         // is not solid, so the lanes to both doors stay walkable.
         { "id": "kitchen-rug", "kind": "rug", "at": [0.0, -0.5], "facing": 0, "size": [1.7, 1.2] },
         { "id": "kitchen-clock", "kind": "clock", "at": [-0.6, 1.66], "facing": 180, "y": 2.1, "size": [0.3, 0.3] },
-        // On the east counter's north end, up out of the walkway — the floor
-        // spot it used to hold is the lane between the table and the fridge.
-        // The sink sits at the counter's other end, at about z = 0.14.
+        // On the east counter's north end, up out of the walkway between the
+        // table and the fridge. The sink is at the counter's other end, z ~ 0.14.
         { "id": "kitchen-plant", "kind": "plant", "at": [1.72, -1.0], "facing": 0, "y": 0.92, "height": 0.4 },
         { "id": "kitchen-pendant", "kind": "pendant", "at": [0.0, -0.6], "facing": 0 },
         // Flattened spares leaning on the east wall, south of the counter run.
@@ -462,9 +455,8 @@ export const DEFAULT_WORLD_TEXT = `{
         { "wall": "south", "at": -1.05, "width": 0.9, "height": 2.05, "sill": 0, "kind": "door" },
         // High and small, over the bath, looking north at the water.
         { "wall": "north", "at": 0, "width": 1.0, "height": 0.8, "sill": 1.35, "kind": "window" },
-        // North end of the east wall, over the basin. The picture has the other
-        // end of it — the two used to be centred on the same wall, one through
-        // the other.
+        // North end of the east wall, over the basin. The picture takes the
+        // other end, so the two do not overlap.
         { "wall": "east", "at": 0.7, "width": 0.9, "height": 0.9, "sill": 1.3, "kind": "window" }
       ],
 

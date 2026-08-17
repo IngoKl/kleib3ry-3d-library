@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DRIVER_LABELS, library } from '../services'
 import { composeAnnotationsMarkdown } from '../data/annotationsMarkdown'
-import { metrics, type RenderMetrics } from '../state/metrics'
+import { frameVerdict, metrics, type RenderMetrics } from '../state/metrics'
 import { useAppStore } from '../state/store'
 import { useLibraryStore } from '../state/library'
 import { annotationsDocument, useAnnotationsStore } from '../state/annotations'
@@ -16,6 +16,19 @@ import { floorAt, supportAt } from '../world/derive'
  * Settings, behind F2. Sections are ordered by how often they are opened:
  * display first, the library folder last.
  */
+
+const SHADOW_CHOICES = [
+  { value: 'off', label: 'Off' },
+  { value: 'low', label: 'Soft' },
+  { value: 'high', label: 'Sharp' },
+] as const
+
+/** Plain words for what the frame is waiting on. See `frameVerdict`. */
+const VERDICT_LABELS = {
+  vsync: 'Nothing — the display',
+  cpu: 'This machine’s processor',
+  gpu: 'This machine’s graphics',
+} as const
 
 function Toggle({
   label,
@@ -44,6 +57,42 @@ function Toggle({
       >
         {on ? 'On' : 'Off'}
       </button>
+    </div>
+  )
+}
+
+/** A small row of mutually exclusive buttons, for a setting with three states. */
+function Choice<T extends string>({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  hint?: string
+  value: T
+  options: readonly { value: T; label: string }[]
+  onChange: (next: T) => void
+}) {
+  return (
+    <div className="setting">
+      <div className="setting-text">
+        <span className="setting-label">{label}</span>
+        {hint && <span className="setting-hint">{hint}</span>}
+      </div>
+      <div className="row-controls">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            className={value === option.value ? 'on' : ''}
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -98,6 +147,11 @@ export function SettingsCard() {
     const id = setInterval(() => setRender({ ...metrics }), 250)
     return () => clearInterval(id)
   }, [open])
+  const verdict = frameVerdict(render)
+  /** The three dials say nothing while the one switch above them is holding them down. */
+  const overridden = useSettings((s) => s.lowPerformance)
+    ? 'Held at its cheapest by Low Performance Mode.'
+    : undefined
 
   // Give the mouse back: a panel of buttons under a captured pointer is unusable.
   // Clicking the room takes the lock again.
@@ -181,10 +235,43 @@ export function SettingsCard() {
       <p className="controls-heading">Display</p>
       <Toggle
         label="Low Performance Mode"
-        hint="No shadows, no window light, one pixel per pixel. For an older machine."
+        hint="Everything below, at its cheapest, in one switch. For an older machine."
         on={settings.lowPerformance}
         testId="low-performance"
         onChange={(next) => settings.set('lowPerformance', next)}
+      />
+      <Slider
+        label="Resolution"
+        hint={
+          overridden ??
+          'Pixels drawn per pixel of window. The most expensive number here — halve it before anything else.'
+        }
+        value={settings.resolutionScale}
+        min={0.5}
+        max={2}
+        step={0.25}
+        format={(value) => `${value.toFixed(2)}×`}
+        onChange={(next) => settings.set('resolutionScale', next)}
+      />
+      <Choice
+        label="Shadows"
+        hint={overridden ?? 'The sun’s shadow, and how finely it is drawn.'}
+        value={settings.shadowQuality}
+        options={SHADOW_CHOICES}
+        onChange={(next) => settings.set('shadowQuality', next)}
+      />
+      <Slider
+        label="Lamps At Once"
+        hint={
+          overridden ??
+          'How many lights may reach you. Every one of them costs every lit surface in view, so the nearest few is nearly always the whole picture.'
+        }
+        value={settings.lightBudget}
+        min={2}
+        max={16}
+        step={2}
+        format={(value) => value.toFixed(0)}
+        onChange={(next) => settings.set('lightBudget', next)}
       />
       <Toggle
         label="Show My Body"
@@ -387,6 +474,21 @@ export function SettingsCard() {
         <dd>
           {render.fps.toFixed(0)} <span className="dim">min {render.fpsMin.toFixed(0)}</span>
         </dd>
+        {/* Frame *time* is the number that means something. FPS cannot go above
+            the refresh rate, so 60 reads the same whether the frame had 2 ms of
+            work in it or 16. */}
+        <dt>Frame Time</dt>
+        <dd>
+          {render.frameMs.toFixed(1)} ms{' '}
+          <span className="dim">worst {render.worstMs.toFixed(0)}</span>
+        </dd>
+        <dt>Of Which</dt>
+        <dd>
+          <span className="dim">js</span> {render.cpuMs.toFixed(1)} ms{' '}
+          <span className="dim">draw</span> {render.renderMs.toFixed(1)} ms
+        </dd>
+        <dt>Limited By</dt>
+        <dd className={verdict === 'gpu' ? 'warn' : 'ok'}>{VERDICT_LABELS[verdict]}</dd>
         <dt>Draw Calls</dt>
         <dd>{render.drawCalls}</dd>
         <dt>Triangles</dt>

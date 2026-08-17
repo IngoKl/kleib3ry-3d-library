@@ -4,60 +4,32 @@ import { boxesIn } from './boxes'
 import type { DerivedWorld } from './derive'
 
 /**
- * Where books are when the room, or the index, changes underneath them.
+ * Where books go when the room or the index changes underneath them.
  *
- * Two rules, and the second is the reason the layout is keyed by shelf id.
+ * Two rules: a book the app was never told where to put goes in a box, and the
+ * app never moves a book that was placed by hand. Displacement is always
+ * visible — into the moving boxes — never silent.
  *
- * **A book the app has never been told where to put goes in a box.** A newly
- * indexed library is a stack of boxes and empty shelves, because that is what
- * arriving with a collection actually looks like — and because the app choosing
- * an arrangement for a thousand books is a decision it has no business making
- * on your behalf. Shelving them is yours to do, a handful at a time or a boxful
- * at a time (`emptyBoxOntoShelves`).
- *
- * **The app never moves a book you placed.** Editing `library.json` — moving a
- * bookcase, reordering the file, deleting one — must not shuffle a library you
- * have arranged by hand, and the failure mode to avoid is the *silent* one:
- * books quietly reappearing somewhere else.
- *
- *   - shelf still there, book still fits   -> it stays exactly where it was
- *   - shelf gone, renamed, or lost that row -> the book is displaced, to a box
- *   - the row no longer holds it (narrower
- *     case, fatter book after a re-index)   -> displaced, to a box
- *   - book is new since the last layout     -> to a box
- *   - the box it was in is gone             -> to whichever boxes remain
- *
- * "To a box" is the moving boxes on the floor: visible, in your way, and
- * waiting for you to shelve it. Losing an arrangement should look like a house
- * move, not like nothing happened.
+ *   - shelf still there, book still fits    -> stays where it was
+ *   - shelf gone, renamed, or lost that row -> displaced, to a box
+ *   - row no longer holds it (narrower case,
+ *     fatter book after a re-index)         -> displaced, to a box
+ *   - new since the last layout             -> to a box
+ *   - its box is gone                       -> to whichever boxes remain
  */
 
 export type BookLayout = {
-  schemaVersion: number
   /** `shelfId:row` -> ordered book ids. */
   rows: Record<RowKey, string[]>
   /** Furniture id of a box -> the books in it, bottom of the pile first. */
   boxes?: Record<string, string[]>
   /**
    * Books put down in the room rather than shelved or boxed. Only the ids
-   * matter here — where each one is lying is the layout's business, not
-   * reconciliation's. What reconciliation needs to know is that a book on the
-   * table has been placed, so a rescan must not sweep it into a box.
+   * matter here: a loose book counts as placed, so a rescan must not sweep it
+   * into a box. Where it lies is the layout's business.
    */
   loose?: Record<string, unknown>
 }
-
-/**
- * 2 rekeyed rows from shelf index to shelf id; 3 added bookmarks; 4 added which
- * box a book is in, and stopped shelving newly indexed books automatically; 5
- * added books put down in the room, reading progress, shelf labels, and where
- * the boxes have been shoved to; 6 added whiteboard drawings and the records
- * you have filed or set down; 7 added the boxes you have made up off the stack
- * or broken down; 8 moved bookmarks out to `.library/annotations.json`; 9 added
- * the small props — the cup, the cans and the takeaway boxes. Older documents
- * still load — every field added since has been optional.
- */
-export const LAYOUT_SCHEMA_VERSION = 9
 
 export type Reconciliation = {
   rows: Record<RowKey, string[]>
@@ -74,10 +46,8 @@ export type Reconciliation = {
 }
 
 /**
- * Spread books across the boxes, keeping them as level as possible.
- *
- * Not round robin: a box that is already fuller than the others should take
- * fewer, so emptying one box does not leave a lopsided pile next to it.
+ * Spread books across the boxes, keeping them level. Not round robin: an
+ * already-fuller box takes fewer, so emptying one leaves the rest even.
  */
 function distribute(
   boxes: Record<string, string[]>,
@@ -97,11 +67,10 @@ function distribute(
 /**
  * The folder a book file lives in, for packing a scan one folder per box.
  *
- * The top-level folder under `books/` when there is one — that is the level at
- * which people sort ("fiction", "papers"), and subfolders of it are shelving
- * within the same box-worth. With no `books/` segment in the path (a library
- * scanned as a bare folder), the file's own directory is the best available
- * grouping. Root-level files come back as '' and pack together.
+ * The top-level folder under `books/` when there is one, since that is the
+ * level people sort at; subfolders group with their parent. With no `books/`
+ * segment, the file's own directory is used. Root-level files return '' and
+ * pack together.
  */
 export function bookFolder(path: string): string {
   const parts = path.replaceAll('\\', '/').split('/')
@@ -113,12 +82,9 @@ export function bookFolder(path: string): string {
 }
 
 /**
- * Like `distribute`, but whole folders at a time: every book from one folder
- * lands in one box, so unpacking a box is unpacking a subject.
- *
- * Biggest folder first into the emptiest box — the same levelling rule as
- * `distribute`, at folder rather than book granularity. With more folders than
- * boxes, folders share; a folder is never split.
+ * Like `distribute`, but whole folders at a time, so unpacking a box is
+ * unpacking a subject. Biggest folder first into the emptiest box. With more
+ * folders than boxes, folders share; a folder is never split.
  */
 function distributeByFolder(
   boxes: Record<string, string[]>,
@@ -148,14 +114,11 @@ function distributeByFolder(
 /**
  * Reconcile a saved layout against the world and the index as they are now.
  *
- * `books` is the set of book ids the index currently holds — a book whose file
- * has been deleted is simply gone and is not reported as displaced, because
- * nothing about the room displaced it.
+ * `books` is what the index currently holds; a book whose file was deleted is
+ * gone rather than displaced, since nothing about the room moved it.
  *
- * `folderOf` turns "One Box per Folder" on: new arrivals are boxed a folder at
- * a time instead of levelled book by book, so a first scan (or a big drop of
- * files) comes out of the van pre-sorted. It only shapes *arrivals* — books
- * displaced from shelves are strays, not a folder, and still level out.
+ * `folderOf` turns "One Box per Folder" on, boxing new arrivals a folder at a
+ * time. It shapes arrivals only — books displaced from shelves still level out.
  */
 export function reconcile(
   world: DerivedWorld,
@@ -176,14 +139,11 @@ export function reconcile(
   const wasPlaced = new Set<string>()
 
   // A book is in exactly one place. A hand-edited or corrupt layout can list
-  // the same id in two rows; without this, both copies rendered — or worse,
-  // one copy shelved and one boxed. First mention wins.
+  // the same id twice; first mention wins, or it renders twice.
   const claimed = new Set<string>()
 
-  // A book lying out beats a row copy of the same id, for the same reason the
-  // loose entry beats a box below: "where you last put it down" is the
-  // placement a person made. Without this a layout listing an id in both
-  // rendered the book twice — once packed, once on the table.
+  // A loose book beats a row or box copy of the same id: where it was last put
+  // down is the most recent placement a person made.
   const loose = new Set(Object.keys(saved?.loose ?? {}))
 
   for (const [key, ids] of Object.entries(saved?.rows ?? {})) {
@@ -218,10 +178,8 @@ export function reconcile(
     if (kept.length) rows[key] = kept
   }
 
-  // A book lying on the table has been put somewhere, deliberately — so it
-  // counts as placed, and a rescan does not tidy the room. Marked before the
-  // boxes are read, so that if a document somehow claims both, where you last
-  // put it down wins over the box it is recorded in.
+  // A loose book counts as placed, so a rescan does not tidy it away. Marked
+  // before the boxes are read so loose wins if a document claims both.
   for (const id of Object.keys(saved?.loose ?? {})) wasPlaced.add(id)
 
   // Which books are in which box. A box that has been taken out of the document
@@ -232,8 +190,7 @@ export function reconcile(
   const orphaned: string[] = []
 
   for (const [boxId, ids] of Object.entries(saved?.boxes ?? {})) {
-    // A book that is on a shelf is not also in a box; the shelf wins, because
-    // that is the placement the person made most recently.
+    // A shelved book is not also in a box; the shelf is the later placement.
     const kept = ids.filter((id) => known.has(id) && !wasPlaced.has(id))
     for (const id of ids) wasPlaced.add(id)
     if (!kept.length) continue
@@ -241,15 +198,14 @@ export function reconcile(
     else orphaned.push(...kept)
   }
 
-  // Books the index knows that the layout never mentioned are new — from the
-  // first scan, or from the latest one — and new books arrive in the boxes.
+  // Books the layout never mentioned are new, and new books arrive in boxes.
   const fresh = books.filter((id) => !wasPlaced.has(id))
   distribute(boxes, boxIds, [...displaced, ...orphaned])
   if (folderOf) distributeByFolder(boxes, boxIds, fresh, folderOf)
   else distribute(boxes, boxIds, fresh)
 
-  // With no box furniture at all there is nowhere to show them, but they are
-  // still unshelved and still have to be counted.
+  // With no box furniture there is nowhere to show these, but they are still
+  // unshelved and still counted.
   const assigned = new Set(Object.values(boxes).flat())
   const homeless = [...displaced, ...orphaned, ...fresh].filter((id) => !assigned.has(id))
 

@@ -619,8 +619,7 @@ code {
 .menu-title {
   margin: 0;
   font-size: 26px;
-  letter-spacing: 0.16em;
-  text-transform: lowercase;
+  letter-spacing: 0.1em;
   font-weight: 500;
 }
 

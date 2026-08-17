@@ -2,20 +2,16 @@ import * as THREE from 'three'
 import { approach } from '../lib/ease'
 
 /**
- * Day fading into night rather than switching to it.
+ * Day fading into night rather than switching to it: two values easing towards
+ * whatever the ambience store says.
  *
- * `N` and `K` flip booleans in the ambience store, and everything that colours
- * the world — the sky, the fog, the lights, the lake — used to read them as
- * ternaries, so the whole valley changed in a single frame. This module holds
- * the *blended* position between those states: two values easing towards
- * whatever the store says, advanced once per frame by `Outside` (the one
- * component that is always mounted with the world) and read by everyone else in
- * their own `useFrame`. A reader being a frame behind the advance is invisible;
- * two writers advancing it would double the speed, which is why there is
- * exactly one.
+ * Advanced once per frame by `Outside`, the one component always mounted with
+ * the world, and read by everyone else in their own `useFrame`. A reader one
+ * frame behind is invisible; a second advancer would double the speed, so there
+ * is exactly one.
  *
- * It lives outside zustand for the same reason `state/player.ts` does: it
- * changes every frame of a transition and must not trigger React renders.
+ * Outside zustand for the reason `state/player.ts` is: it changes every frame
+ * of a transition and must not trigger React renders.
  */
 export const ambienceBlend = {
   /** 0 is day, 1 is night. */

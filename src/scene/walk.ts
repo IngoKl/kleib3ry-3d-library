@@ -3,33 +3,26 @@ import { STEP_UP, floorAt, type DerivedWorld, type Solid } from '../world/derive
 import { shelfColliders } from '../world/shelf'
 
 /**
- * Walking, once a library has more than one floor.
+ * Walking, in a building with more than one floor.
  *
- * The sliding maths is still the axis-separated AABB in `collision.ts` — no
- * physics engine, no wasm, and therefore no `wasm-unsafe-eval` in the desktop
- * CSP. What a loft adds is a third question on top of "did I hit something":
- * *what am I standing on now*, and is it near enough to the thing I was
- * standing on a moment ago to have stepped onto it.
+ * The sliding maths is the axis-separated AABB in `collision.ts` — no physics
+ * engine, no wasm, so no `wasm-unsafe-eval` in the desktop CSP. What a loft
+ * adds is a second question beyond "did I hit something": *what am I standing
+ * on*, and is it within a step of what I was standing on.
  *
- * That question is answered here rather than in the controller so it can be
- * tested without a browser, and so the two failure modes it exists to prevent
- * are written down in one place:
- *
- *   - walking off the loft into thin air, and
- *   - walking *up* a wall because the floor above happened to be in range.
- *
- * Both are the same check: a move is only allowed if the floor under where you
- * are going is within a step of the floor you are on. A staircase is what makes
- * a bigger climb possible, and it does it by being a floor that ramps.
+ * Answered here rather than in the controller so it can be tested without a
+ * browser. One check prevents both failure modes — walking off the loft into
+ * thin air, and walking *up* a wall because the floor above was in range. A
+ * staircase allows a bigger climb by being a floor that ramps.
  */
 export type Stance = Point & { floor: number }
 
 /**
  * Everything a body can hit: the derived walls and furniture, the bookcase
  * carcasses, and whichever doors are shut. Door state is ambience, which the
- * static derivation deliberately does not know — callers rebuild on it, and a
- * swing is an edit, so that is cheap. One list, so the player, a thrown book
- * and anything else that collides all agree about what is solid.
+ * static derivation does not know, so callers rebuild on a toggle — an edit,
+ * not a frame cost. One list, so the player, a thrown book and anything else
+ * that collides agree about what is solid.
  */
 export function worldSolids(world: DerivedWorld, ambienceOn: Record<string, boolean>): Solid[] {
   const doors = world.furniture

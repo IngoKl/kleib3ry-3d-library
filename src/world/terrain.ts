@@ -1,61 +1,41 @@
 /**
  * The site the building stands on: ground, water, and where the ground runs out.
  *
- * The outdoors is not scenery: you walk on it. It would be enough
- * for `Outside.tsx` to own the lake, since nothing but the camera could ever
- * reach it and the porch railing was the edge of the world. Now you can walk
- * out of the porch and round the water, which means two things that were one
- * thing have to agree: what the lake *looks* like and where the lake *is*. So
- * the geometry lives here, in the world layer, and the renderer reads it —
- * rather than the walk controller having to guess at numbers in a scene file.
+ * The outdoors is walkable, so the geometry lives in the world layer and both
+ * `Outside.tsx` and `floorAt` read it. A shoreline you can see in one place and
+ * stand in in another is the bug this arrangement prevents.
  *
- * Everything here is a constant rather than a field in `library.json`. The
- * document describes a *building*; the valley it sits in is not something you
- * lay out room by room, and inventing a terrain schema to hold four ellipse
- * radii would be a format to maintain for no decision anybody wants to make.
+ * Constants rather than fields in `library.json`: that document describes a
+ * building, not the valley it sits in.
  */
 
 /**
- * The three sheets, in the order they stack. Water above sand above grass,
- * centimetres apart, rather than a hole cut in the ground for a lake nobody
- * swims in — the same trick as before, but with the gaps closed up now that you
- * can stand at the shore and look down at them. At 1.5 cm they read as water
- * lapping a beach; at the old 6 cm they read as three floating discs.
+ * The three sheets, in stacking order: water above sand above grass, rather
+ * than a hole cut in the ground. Keep the gaps at ~1.5 cm — much more and they
+ * read as three floating discs when you stand at the shore.
  */
 export const GROUND_Y = -0.24
 export const SHORE_Y = -0.225
 export const WATER_Y = -0.21
 
 /**
- * The brook's own two sheets, four millimetres under the lake's — so that where
- * the one runs into the other there is a winner rather than a fight. Two
- * surfaces at exactly one height shimmer against each other, which is the whole
- * reason these numbers are written down in one place.
+ * The brook's two sheets, 4 mm under the lake's: coplanar surfaces z-fight
+ * where the one runs into the other.
  */
 export const BROOK_BED_Y = SHORE_Y - 0.004
 export const BROOK_WATER_Y = WATER_Y - 0.004
 
 /**
- * How far the ground reaches before the fog has swallowed it anyway, and how
- * far you are allowed to walk.
- *
- * The walkable radius is deliberately well inside the visible one. At 118 m the
- * fog is dense enough that the refusal reads as "the forest goes on" rather
- * than as a wall — which is the cheapest honest end to a world whose point is a
- * cabin, not a continent. Everything else out here is written in terms of these
- * two, so the valley can be grown by changing them and nothing is left behind:
- * the ground disc's rings, where the swell starts, the hills, how far the
- * forest is sown.
+ * How far the ground is drawn, and how far you may walk. The walkable radius
+ * sits well inside the visible one so the refusal happens where the fog is
+ * dense enough to hide it. Everything else outdoors is derived from these two.
  */
 export const GROUND_RADIUS = 176
 export const WALK_RADIUS = 118
 
 /**
- * The lake.
- *
- * `viewX` and `viewFrom` are the corridor of cleared ground running north from
- * the cabin. Without it the north window looks at the backs of forty trees and
- * the whole point of siting the cabin here is lost.
+ * The lake. `viewX` and `viewFrom` are the corridor of cleared ground running
+ * north from the cabin, so the north window looks at water and not at trees.
  */
 export const LAKE = {
   x: -4,
@@ -67,14 +47,10 @@ export const LAKE = {
 } as const
 
 /**
- * The wobble that turns the ellipse into a pond: a few low harmonics on the
- * shoreline, as [lobes, amplitude, phase].
- *
- * Three frequencies rather than noise because the outline has to be the same
- * function everywhere it is asked — walked to, drawn, and grown around — and a
- * closed sum of sines is trivially that. Amplitudes sum to ~0.12, small enough
- * that every ring derived in shoreline units (the beach, the path, the tree
- * line) deforms with it without ever folding over itself.
+ * The wobble that turns the ellipse into a pond: low harmonics on the
+ * shoreline, as [lobes, amplitude, phase]. A closed sum of sines rather than
+ * noise, so the outline is the same function wherever it is asked. Keep the
+ * amplitudes summing to ~0.12 — beyond that the derived rings fold over.
  */
 const WOBBLE: readonly (readonly [number, number, number])[] = [
   [2, 0.05, 1.7],
@@ -90,12 +66,8 @@ export function shoreShape(angle: number): number {
 }
 
 /**
- * How far a point is from the middle of the lake, in units of shoreline: below
- * 1 is water, 1 is the water's edge, above 1 is dry land.
- *
- * An ellipse with a slow wobble on it rather than a distance, because a perfect
- * ellipse reads as a compass drawing — and the whole reason this function
- * exists is that the shore you walk to has to be the shore you can see.
+ * How far a point is from the middle of the lake, in shoreline units: below 1
+ * is water, 1 is the water's edge, above 1 is dry land.
  */
 export function lakeRadius(x: number, z: number): number {
   const lx = (x - LAKE.x) / LAKE.radiusX
@@ -107,9 +79,8 @@ export function lakeRadius(x: number, z: number): number {
 
 /**
  * The point `r` shoreline units out from the lake's middle at `angle`, in world
- * metres. The renderer builds the water and the beach from this — the same
- * function the walk controller refuses steps with, which is the agreement that
- * keeps the shore you see and the shore you stand at the same shore.
+ * metres. The renderer builds the water and beach from this, and the walk
+ * controller refuses steps by it, so the two cannot disagree.
  */
 export function lakePoint(angle: number, r: number): [number, number] {
   const reach = r * shoreShape(angle)
@@ -126,10 +97,8 @@ export function lakePoint(angle: number, r: number): [number, number] {
 export const SHORE_EDGE = 1.078
 
 /**
- * What the ground underfoot is made of, for anything that wants to sound or
- * look like it — the beach ring and the brook's gravel banks are sand,
- * everything else out of doors is grass. Owned here so the shore you hear is
- * the shore you see.
+ * What the ground underfoot is made of, for footstep sounds and materials. The
+ * beach ring and the brook's banks are sand; everything else outdoors is grass.
  */
 export function groundSurface(x: number, z: number): 'sand' | 'grass' {
   if (lakeRadius(x, z) < SHORE_EDGE) return 'sand'
@@ -137,12 +106,9 @@ export function groundSurface(x: number, z: number): 'sand' | 'grass' {
 }
 
 /**
- * The path round the water: a ring of cleared ground just above the beach.
- *
- * It is defined in shoreline units rather than metres so that it follows the
- * lake round instead of cutting corners off it, and it is what the forest is
- * grown around — a walk round the pond is a walk the trees leave room for, not
- * a walk you win by weaving between trunks.
+ * The path round the water: a ring of cleared ground just above the beach. In
+ * shoreline units rather than metres so it follows the lake instead of cutting
+ * corners, and the forest is grown around it.
  */
 export const PATH = { from: SHORE_EDGE, to: 1.34 } as const
 
@@ -152,18 +118,10 @@ export const onPath = (x: number, z: number): boolean => {
 }
 
 /**
- * The one made path on the site: from the cabin's porch steps, round the back of
- * the reading corner and west along the slope to the lake house.
- *
- * A polyline rather than anything derived, for the same reason the lake is an
- * ellipse rather than a field in `library.json`: a second building is something
- * the document can describe, but the *route* between two of them is a fact about
- * this valley — which side of the reading corner you go round, where the ground
- * is walkable — and there is no decision in it anybody wants to restate.
- *
- * Read twice, like everything else out here: `Outside` draws it, and the forest
- * is grown around it. A trail with trees standing in it is a clearing you have
- * to weave through, which is not a trail.
+ * From the cabin's porch steps, round the reading corner and west to the lake
+ * house. Here rather than in `library.json` because a route between buildings
+ * is a fact about the valley, not about either building. Drawn by `Outside` and
+ * cleared of trees by `forest.ts`.
  */
 export const TRAIL: readonly (readonly [number, number])[] = [
   [2.6, 8.9],
@@ -176,10 +134,8 @@ export const TRAIL: readonly (readonly [number, number])[] = [
 ]
 
 /**
- * The spur down to the camp: a few trodden metres from the walk round the
- * water to the stone pad on the far shore. Its own polyline rather than more
- * points on `TRAIL` — joined up, the renderer would draw a leg from the lake
- * house straight across the water.
+ * The spur from the lakeside walk down to the camp. Its own polyline, not more
+ * points on `TRAIL`: joined up, the renderer draws a leg across the water.
  */
 export const CAMP_SPUR: readonly (readonly [number, number])[] = [
   [-4.0, -58.6],
@@ -193,18 +149,10 @@ export const TRAILS: readonly (readonly (readonly [number, number])[])[] = [TRAI
 export const TRAIL_WIDTH = 1.6
 
 /**
- * The brook.
- *
- * The valley had water on one side of the houses and nothing on the other. This
- * is the other: a stream out of the south-east forest, past the office's east
- * window, and down into the lake — which means the lake is no longer somewhere
- * you go, it is somewhere the ground you are standing on is going.
- *
- * A polyline like the trail, and here rather than in `Outside.tsx` for the same
- * reason the lake is: three things have to agree about where the water runs.
- * The renderer draws it, the forest is grown around it, and the walk controller
- * refuses to step into it — and a brook you can see in one place and walk
- * through in another is precisely the bug this module exists to prevent.
+ * The brook: out of the south-east forest, past the office's east window, down
+ * into the lake. Here rather than in `Outside.tsx` because three things must
+ * agree about where the water runs — the renderer draws it, the forest is grown
+ * around it, and the walk controller refuses to step into it.
  */
 export const STREAM: readonly (readonly [number, number])[] = [
   [92, 86],
@@ -263,25 +211,18 @@ export function alongStream(x: number, z: number, margin = 0): boolean {
 }
 
 /**
- * True where the brook is water you cannot walk in.
- *
- * Not the whole of it: across the shore the stream fans out over the sand and
- * runs ankle deep, so the last few metres are a ford. That is what a stream
- * does where it meets a beach, and it is also what keeps the walk round the
- * lake in one piece — a brook that blocked all the way to the waterline would
- * cut the ring path, and the crossing would be a bridge standing in a puddle.
+ * True where the brook is water you cannot walk in. The last few metres, where
+ * it fans out over the beach, are a ford — without that exception the brook
+ * would cut the ring path round the lake in two.
  */
 export function inStream(x: number, z: number): boolean {
   return alongStream(x, z) && lakeRadius(x, z) > PATH.to
 }
 
 /**
- * A plank crossing: where it is, which way the water runs under it, and how far
- * the deck reaches across.
- *
- * Written as "somewhere you would want to cross", snapped to the middle of the
- * brook and squared up to the flow, because the decision is the *where* and
- * the rest is arithmetic that must not be allowed to disagree with the water.
+ * A plank crossing. Authored as a rough point to cross at, then snapped to the
+ * middle of the brook and squared up to the flow, so the deck cannot drift out
+ * of agreement with the water.
  */
 export type Bridge = {
   x: number
@@ -382,20 +323,16 @@ export function onTrail(x: number, z: number, margin = TRAIL_WIDTH / 2): boolean
 }
 
 /**
- * The height of the ground under a point, or null where there is no ground to
- * stand on — in the water, or past the edge of the world.
- *
- * Null rather than a number is what `floorAt` needs to refuse a step, and it is
- * the same answer a stairwell gives: nothing here, do not walk into it.
+ * The height of the ground under a point, or null where there is nothing to
+ * stand on — in the water, or past the edge of the world. Null is what
+ * `floorAt` needs to refuse a step, the same answer a stairwell gives.
  */
 export function terrainAt(x: number, z: number): number | null {
   if (Math.hypot(x, z) > WALK_RADIUS) return null
-  // The beach is dry land and you walk on it; the water is not. Stopped a
-  // whisker short of the edge rather than exactly on it, so you finish standing
-  // on sand looking at the lake rather than ankle-deep in it.
+  // Stopped a whisker short of the water's edge, so you end up on sand looking
+  // at the lake rather than ankle-deep in it.
   if (lakeRadius(x, z) < 1.004) return null
-  // The plank over the brook is a floor like any other, and it is asked about
-  // before the water it crosses.
+  // The plank is a floor, so it is asked about before the water it crosses.
   const deck = bridgeAt(x, z)
   if (deck !== null) return deck
   if (inStream(x, z)) return null

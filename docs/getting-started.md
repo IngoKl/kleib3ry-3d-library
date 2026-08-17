@@ -70,9 +70,8 @@ few minutes and are read off disk instantly every launch after that.
 
 ## Your Library Arrives in Boxes
 
-The shelves start **empty**, and everything the scan found is stacked in the four
-moving boxes on the floor of the great room. Nothing shelves itself — a library
-you did not arrange is a warehouse.
+The shelves start **empty**, and everything the scan found is stacked in the
+four moving boxes on the floor of the great room. Nothing shelves itself.
 
 Unpacking is something you do:
 
@@ -87,13 +86,13 @@ holds far more than the pile on top can show.
 
 ## Finding Your Way Round
 
-The app opens on a menu: which library folder, and then **Go In**. The room is
-already loading behind it, so pressing the button is instant. **`F2`** is
-settings, from the menu or from the room — that is where **Low Performance Mode**
-lives if the room is stuttering.
+The app opens on a menu: which library folder, then **Go In**. The room is
+already loading behind it, so the button is instant. **`F2`** is settings, from
+the menu or the room — that is where **Low Performance Mode** lives if the room
+is stuttering.
 
 You start in the great room, looking north at the lake. Click to capture the
-mouse; `Esc` releases it. **`F1`** brings up every key, in the room.
+mouse; `Esc` releases it. **`F1`** brings up every key.
 
 The building is a cabin: a great room with a hearth, a clock and a loft up a
 flight of stairs, a reading corner with a bedroom above it, a kitchen, a bathroom
@@ -133,11 +132,10 @@ Things worth trying early:
 bookcases, furniture, lamps, roofs. Edit it in any editor and **the room reloads
 while you are standing in it**.
 
-If an edit is wrong, the room you are in keeps running and the mistake is
-reported in the panel with the path that is wrong — so you cannot break your
-library by mistyping. And the app never writes to that file: where you shoved the
-boxes and what you wrote on a shelf go to `books.json` beside it, so your comments
-and your formatting are never at the mercy of the app.
+If an edit is wrong, the room you are in keeps running and the panel names the
+path that is wrong, so you cannot break your library by mistyping. The app never
+writes to that file: where you shoved the boxes and what you wrote on a shelf go
+to `books.json` beside it, so your comments and formatting are safe.
 
 The full guide is [custom-maps.md](custom-maps.md). To start over, delete
 `library.json` and a fresh default is written the next time you open the library.
@@ -148,15 +146,13 @@ The panel is the first place to look. It shows which driver is live, which folde
 is open, which files this library is saved into, how many books are shelved and
 how many are still boxed, and any error from the last scan or the last edit.
 
-- **An empty library.** Check the panel's folder. The panel also says which of
-  the three drivers is live — in a browser tab without the desktop shell there
-  is no filesystem at all and the catalogue is a stand-in, which is the usual
-  answer to "why are these not my books".
-- **Books with no cover art.** They are still warming. PDFs have their first page
+- **An empty library.** Check the panel's folder, and which driver it says is
+  live: a browser tab without the desktop shell has no filesystem and shows a
+  stand-in catalogue, which is the usual answer to "why are these not my books".
+- **Books with no cover art.** They are still warming. A PDF's first page is
   rasterised once, ever, and cached in `.library/covers/`.
 - **A book that will not open.** Both formats open — a PDF through pdf.js, an
-  EPUB unzipped and set in type by the app itself. What an EPUB cannot do is
-  keep its own layout: it is re-set, so its page numbers are the app's rather
-  than the publisher's.
+  EPUB unzipped and set in type by the app. What an EPUB cannot keep is its own
+  layout: it is re-set, so page numbers are the app's, not the publisher's.
 - **A tape that will not play.** The container it is in has to be one the WebView
   can decode — roughly H.264 in MP4, VP8 or VP9 in WebM. The panel says why.

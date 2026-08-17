@@ -253,11 +253,10 @@ export function Handling() {
       const room = live?.rooms.find((candidate) => candidate.id === piece?.roomId)
       if (!piece || !room) return
 
-      // Stored room-local, because that is the frame the document is written
-      // in: a box recorded in world metres would jump the first time somebody
-      // moved the room it belongs to. The elevation rides along because the
-      // document room only knows its own storey — a box carried up to the
-      // loft used to derive at ground level, inside the loft floor.
+      // Stored room-local, the frame the document is written in: a box recorded
+      // in world metres would jump the first time its room moved. The elevation
+      // rides along because the document room only knows its own storey, and a
+      // box carried up to the loft would otherwise derive at ground level.
       useLibraryStore
         .getState()
         .moveFurniture(id, [x - room.origin[0], z - room.origin[1]], facing, player.floor)

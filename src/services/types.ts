@@ -1,11 +1,7 @@
 /**
- * The one seam between the app and the machine's files.
- *
- * Everything the UI knows about the filesystem goes through this interface, so
- * the hosted mode is a driver swap (HTTP against a server-side library folder)
- * rather than a rewrite — which is what it turned out to be: the container was
- * added without a change above this layer. Nothing above it may import
- * `@tauri-apps/*` directly.
+ * The only seam between the app and the filesystem. Nothing above
+ * `src/services/` may import `@tauri-apps/*` — swapping the driver is what lets
+ * hosted mode exist without changes above this layer.
  */
 
 export type BookFormat = 'pdf' | 'epub'
@@ -33,19 +29,13 @@ export type ScanSummary = {
 }
 
 /**
- * Which book sits on which shelf: `shelfId:row` -> ordered book ids. Opaque and
- * versioned; the front end owns its schema. Written by the app, not by hand.
+ * Which book sits where. Stored verbatim by Rust — the front end owns this
+ * schema. Written by the app, not by hand.
  */
 export type LayoutDocument = {
-  schemaVersion: number
   rows: Record<string, string[]>
   /** Box furniture id -> the books in that moving box, bottom of the pile first. */
   boxes?: Record<string, string[]>
-  /**
-   * Legacy (schema <= 7): bookmarks now live in `annotations.json`, and this
-   * field is read exactly once, to migrate them out. Never written back.
-   */
-  bookmarks?: Record<string, number[]>
   /** Book id -> the spread you had open when you last closed it. */
   progress?: Record<string, number>
   /** Books put down somewhere that is not a shelf or a box. */
@@ -53,9 +43,8 @@ export type LayoutDocument = {
   /** Where you have shoved the moving boxes, by furniture id. */
   furniture?: Record<string, { at: [number, number]; facing: number; elevation?: number }>
   /**
-   * Boxes made up off the stack in the kitchen: id -> which room's frame the
-   * position is written in, and where. The app's boxes, so they live here and
-   * never in `library.json`.
+   * Boxes made up off the kitchen stack: id -> which room's frame the position
+   * is written in, and where. The app's own boxes, never `library.json`'s.
    */
   spawnedBoxes?: Record<
     string,
@@ -76,15 +65,11 @@ export type LayoutDocument = {
 }
 
 /**
- * A small carryable thing: the coffee cup, a can from the fridge, a takeaway
- * box the delivery left. `full` is the one bit of state any of them has — a
- * drunk can and a cold one are the same cylinder.
+ * A small carryable thing. `full` is the only state any of them has.
  *
- * A real position, like a loose book, because "there, where I put it" is the
- * whole point of being able to put one down. There is exactly one cup (its id
- * is `cup`) and one headlamp (`headlamp` — worn rather than carried, and a
- * placed prop only while it is off your head); cans and boxes are minted as
- * they arrive and destroyed by the bin.
+ * Exactly one `cup` and one `headlamp` exist; the headlamp is stored only while
+ * off your head (worn is session state). Cans and takeaway boxes are minted on
+ * arrival and destroyed by the bin.
  */
 export type PropKind = 'cup' | 'can' | 'takeaway' | 'headlamp'
 
@@ -99,11 +84,8 @@ export type PlacedProp = {
 }
 
 /**
- * One line drawn on a whiteboard.
- *
- * The points are in board space — `u` across from the left edge, `v` up from the
- * bottom, both 0 to 1 — rather than in metres, so a board resized in
- * `library.json` keeps its drawing instead of scattering it.
+ * One line drawn on a whiteboard. Points are in board space — `u` across, `v`
+ * up, both 0 to 1 — so a resized board keeps its drawing.
  */
 export type BoardStroke = {
   /** Which pen, as an index into the marker inks. */
@@ -113,11 +95,9 @@ export type BoardStroke = {
 }
 
 /**
- * Where the records are, for the ones you have had an opinion about.
- *
- * Deliberately sparse. A record nobody has touched is dealt into a crate from
- * the `music/` folder's own order — see `Records.tsx` — so the common case is an
- * empty object, and only a record you carried somewhere is written down.
+ * Only the records that have been moved. Untouched records are dealt into
+ * crates from `music/` folder order (see `Records.tsx`), so this is usually
+ * empty.
  */
 export type RecordLayout = {
   /** Track id -> the crate you filed it in, when that is not where it was dealt. */
@@ -130,18 +110,12 @@ export type RecordLayout = {
 export type RecordPlacement = { x: number; y: number; z: number; yaw: number }
 
 /**
- * A sheet of paper stuck to a wall: a page copied out of a book, or a note.
+ * A sheet stuck to a wall: a page copied out of a book, or a note.
  *
- * "Torn out" is a lie the interface tells and this type keeps honest — a page
- * records which book and which *page number* it came from, and the book keeps
- * its page. Nothing is removed from anything; the sheet is a second view of a
- * page that is still where it was, which is also why a pin survives being taken
- * down and put up somewhere else.
- *
- * World coordinates and a yaw rather than a wall id, for the same reason a book
- * put down on a table stores a point: you stuck it *there*. A wall that goes
- * away should leave the sheet hanging in the air over where it was rather than
- * teleporting it to whichever wall inherited the id.
+ * A page is a copy — it records which book and page number, and the book keeps
+ * its own page. World coordinates rather than a wall id, so deleting a wall
+ * leaves the sheet where it was instead of teleporting it to whichever wall
+ * inherited the id.
  */
 export type PinnedSheet = {
   /** Unique within a library. Generated when the sheet is made. */
@@ -164,13 +138,9 @@ export type PinnedSheet = {
 }
 
 /**
- * A book lying somewhere in the room: on a table, or on the floor where you
- * dropped it.
- *
- * World coordinates rather than something-relative, because a book is put down
- * *there* — the table it happens to be over is not what you were thinking
- * about, and if the table goes away the book should stay on the floor under
- * where it was rather than teleport.
+ * A book lying on a table or the floor. World coordinates rather than
+ * relative to whatever it sits on, so removing that table drops the book to the
+ * floor beneath instead of moving it.
  */
 export type LoosePlacement = {
   x: number
@@ -197,12 +167,11 @@ export type BookNote = {
 }
 
 /**
- * Bookmarks and notes, in `.library/annotations.json` — a file meant to be
- * readable outside the app: 1-based page numbers, and each book carries its
- * title and author so an entry outlives the index.
+ * Bookmarks and notes, in `.library/annotations.json`. Readable outside the
+ * app: 1-based page numbers, and each book carries its title and author so an
+ * entry outlives the index.
  */
 export type AnnotationsDocument = {
-  schemaVersion: number
   books: Record<
     string,
     {
@@ -242,11 +211,8 @@ export type IndexedArtwork = {
 }
 
 /**
- * A tape in the library's `video/` folder.
- *
- * No duration and no thumbnail: reading either means demuxing a container, and
- * the whole reason `video/` is walked on demand rather than indexed is that a
- * tape needs no more describing than its filename gives it.
+ * A tape in the library's `video/` folder. No duration or thumbnail: both would
+ * mean demuxing the container, and `video/` is walked on demand, not indexed.
  */
 export type IndexedTape = {
   id: string
@@ -260,10 +226,8 @@ export type IndexedTape = {
 }
 
 /**
- * A game in the library's `roms/` folder, for the arcade machine.
- *
- * Not probed at all: a CHIP-8 image is a bare byte array with no header, so
- * the filename is all the label there is.
+ * A game in the library's `roms/` folder. Not probed: a CHIP-8 image is a bare
+ * byte array with no header, so the filename is the only label available.
  */
 export type IndexedRom = {
   id: string
@@ -277,33 +241,24 @@ export type IndexedRom = {
 }
 
 /**
- * How the room is right now: the lamps, the hour and the weather.
- *
- * Kept in its own small file rather than in the book layout, because it is
- * about the room rather than about the books — and a file you can delete to get
- * every light back on and a dry afternoon is a good thing to have.
+ * The lamps, the hour and the weather. Its own file rather than part of the
+ * book layout: it describes the room, not the books, and deleting it is the
+ * documented way to reset every light and the weather.
  */
 export type AmbienceState = {
-  schemaVersion: number
   /** Furniture id -> whether it is lit. Absent means "as the document says". */
   on: Record<string, boolean>
   /** Whether it is night outside. Absent means day. */
   night?: boolean
-  /**
-   * Whether it is raining. Here rather than in the app's own settings for the
-   * same reason `night` is: it is a fact about the room right now, and one
-   * deletion should bring back the daylight *and* the dry weather.
-   */
+  /** Whether it is raining. A room fact like `night`, not a machine setting. */
   rain?: boolean
 }
 
 /**
- * Which driver is live.
- *
- * `tauri` is the desktop app talking to the Rust core over IPC; `http` is a
- * browser talking to `kleib3ry-server` over the same seam; `browser` is a plain
- * tab with no filesystem at all and a generated stand-in library. The HUD shows
- * it, because a library that looks empty is nearly always the wrong one of these.
+ * `tauri` is the desktop app over IPC; `http` is a browser against
+ * `kleib3ry-server`; `browser` is a plain tab with no filesystem and a generated
+ * stand-in library. Shown in the HUD — an empty-looking library is usually the
+ * wrong one of these.
  */
 export type DriverKind = 'tauri' | 'http' | 'browser'
 
@@ -318,12 +273,9 @@ export interface LibraryService {
   readonly canIndex: boolean
 
   /**
-   * False when the host cannot fetch a paper into the library.
-   *
-   * The same split as `canIndex` in practice — both non-browser drivers have a
-   * real folder and a Rust core behind them — but a separate capability
-   * because it answers a separate question, and because a build with no
-   * network has every reason to turn this off and keep indexing.
+   * False when the host cannot fetch a paper into the library. Tracks `canIndex`
+   * in practice, but stays separate so an offline build can disable it and keep
+   * indexing.
    */
   readonly canFetchPapers: boolean
 
@@ -343,29 +295,21 @@ export interface LibraryService {
   saveRenderedCover(id: string, dataUrl: string): Promise<string>
 
   /**
-   * Download an arXiv paper into the library folder and index it, answering
-   * with the book it became.
+   * Download an arXiv paper into the library folder, index it, and return the
+   * book it became. Implemented in `core/src/paper.rs` rather than in the page:
+   * arxiv.org refuses cross-origin requests, and the result is a file in the
+   * library folder, which nothing above `src/services/` may write.
    *
-   * Below this seam rather than above it for two reasons, both in
-   * `core/src/paper.rs`: arxiv.org does not invite cross-origin requests, so a
-   * `fetch` from the page would fail in both shipped modes; and the result is a
-   * file in your library folder, which nothing above `src/services/` may make.
-   * `id` is whatever was typed — a bare id, an `arXiv:` citation, or the URL of
-   * either page — and the core is what decides whether that is an id at all.
+   * `id` is whatever was typed — a bare id, an `arXiv:` citation, or either
+   * page's URL; the core decides whether it is an id at all.
    */
   fetchPaper(id: string): Promise<IndexedBook>
 
-  /**
-   * The hand-edited world document, as text — comments and formatting intact,
-   * because the person who wrote them has to read them again.
-   */
+  /** The hand-edited world document, as text — comments and formatting intact. */
   loadWorld(): Promise<string | null>
   /** Write the starter document. Resolves false if one is already there. */
   writeDefaultWorld(text: string): Promise<boolean>
-  /**
-   * A cheap value that changes when the world file does, so the app can notice
-   * you saving an edit in your editor and reload the room.
-   */
+  /** A cheap value that changes when the world file does, for live reload. */
   worldStamp(): Promise<string | null>
   /** The files this library is saved into, for the panel to show. */
   savePaths(): Promise<SavePaths>
@@ -374,10 +318,8 @@ export interface LibraryService {
   saveLayout(layout: LayoutDocument): Promise<void>
 
   /**
-   * The rest of the library folder: records for the player, pictures for the
-   * walls, tapes for the television, ROMs for the arcade machine. All four
-   * resolve to an empty list on a host that cannot read files, so the scene
-   * simply has no records rather than failing to build.
+   * The rest of the library folder. All four resolve to an empty list on a host
+   * with no filesystem, so the scene builds without them rather than failing.
    */
   listTracks(): Promise<IndexedTrack[]>
   listArtwork(): Promise<IndexedArtwork[]>
@@ -401,9 +343,9 @@ export interface LibraryService {
   loadAnnotations(): Promise<AnnotationsDocument | null>
   saveAnnotations(doc: AnnotationsDocument): Promise<void>
   /**
-   * Land a Markdown digest of the annotations where this mode can. Resolves to
-   * the written path (desktop: `.library/annotations.md`), or null meaning
-   * "no filesystem here — offer it as a download instead".
+   * Write a Markdown digest of the annotations. Resolves to the written path
+   * (desktop: `.library/annotations.md`), or null when there is no filesystem,
+   * meaning the caller should offer it as a download.
    */
   exportAnnotationsMarkdown(markdown: string): Promise<string | null>
 

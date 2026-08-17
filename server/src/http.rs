@@ -1,16 +1,13 @@
 //! Just enough HTTP/1.1 to serve one library to one household.
 //!
-//! No web framework, for the reason this project hand-rolls its collision and
-//! reads ID3 tags without a crate: the whole surface is a dozen routes, a static
-//! directory and byte ranges, and a dependency tree with a TLS stack and an
-//! async runtime in it would be several hundred crates to avoid writing this
-//! file. It also keeps the container to a static binary and a `dist/` folder.
+//! No web framework: the whole surface is a dozen routes, a static directory
+//! and byte ranges, and avoiding a TLS stack and async runtime keeps the
+//! container to a static binary and a `dist/` folder.
 //!
-//! What it does *not* do, deliberately: TLS, chunked request bodies, HTTP/2,
-//! keep-alive. A connection serves one request and closes, which costs a
-//! handshake per asset and is invisible over a loopback or a LAN. If this ever
-//! wants to be on the open internet it wants a reverse proxy in front of it,
-//! which is what the compose file does.
+//! Deliberately absent: TLS, chunked request bodies, HTTP/2, keep-alive. A
+//! connection serves one request and closes, which costs a handshake per asset
+//! and is invisible over loopback or a LAN. Anything facing the open internet
+//! wants a reverse proxy in front, as the compose file sets up.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
