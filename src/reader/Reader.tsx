@@ -160,7 +160,9 @@ export function Reader() {
     return {
       position: new THREE.Vector3(
         player.x - Math.sin(yaw) * 0.62,
-        1.22,
+        // Above the floor you are on, not the ground plane: reading on the loft
+        // or the lookout deck must not dock the camera storeys below your feet.
+        player.floor + 1.22,
         player.z - Math.cos(yaw) * 0.62,
       ),
       yaw,

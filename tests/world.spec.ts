@@ -18,20 +18,29 @@ import {
 import {
   BRIDGES,
   BRIDGE_Y,
+  CABLE_CAR,
   GROUND_Y,
   LAKE,
+  MOUNTAIN_STEP,
   PATH,
+  PLATFORM,
   SHORE_EDGE,
   STREAM,
   WALK_RADIUS,
+  WATER_Y,
+  cabinAt,
   inStream,
   lakePoint,
   lakeRadius,
+  mountainHeight,
+  onPlatform,
   shoreShape,
   terrainAt,
+  underCable,
 } from '../src/world/terrain'
+import { cableRide, startRide, stepRide } from '../src/state/cableCar'
 import { occupied } from '../src/world/forest'
-import { parseWorldText, type WorldDocument } from '../src/world/schema'
+import { SITE_IDS, parseWorldText, type WorldDocument } from '../src/world/schema'
 import { DEFAULT_WORLD_TEXT } from '../src/world/defaults'
 import { bookFolder, reconcile } from '../src/world/reconcile'
 import { boxesIn, packBoxes } from '../src/world/boxes'
@@ -525,6 +534,186 @@ test.describe('outside', () => {
       blocked(here, { x: tree.x, z: tree.z }, 0.05),
     )
     expect(trunks.length).toBe(WORLD.trees.length)
+  })
+})
+
+test.describe('the mountains and the cable car', () => {
+  const solids = [...WORLD.solids, ...shelfColliders(WORLD.shelves)]
+
+  test('the mountainside is seen, not climbed: walkable toe, refused slope', () => {
+    // The heart of the range is not a floor, exactly as the lake is not.
+    expect(mountainHeight(-10, -101)).toBeGreaterThan(10)
+    expect(terrainAt(-10, -101)).toBeNull()
+
+    // Walking north from the camp, the ground rises under you and then the
+    // step is refused — a slope, not an invisible wall at the foot.
+    let stance: Stance = { x: 6, z: -70, floor: terrainAt(6, -70)! }
+    for (let i = 0; i < 300; i++) {
+      stance = stepPlayer(WORLD, solids, stance, { x: stance.x, z: stance.z - 0.05 }, 0.28)
+    }
+    const rise = mountainHeight(stance.x, stance.z)
+    expect(rise, 'never reached the toe of the range').toBeGreaterThan(0)
+    expect(rise).toBeLessThanOrEqual(MOUNTAIN_STEP + 0.01)
+    expect(stance.floor).toBeCloseTo(GROUND_Y + rise, 6)
+  })
+
+  test('the lookout is a floor high over the lake, and you cannot walk off it', () => {
+    expect(floorAt(WORLD, PLATFORM.x, PLATFORM.z, PLATFORM.y)).toBe(PLATFORM.y)
+    // High enough that the whole lake reads as below you.
+    expect(PLATFORM.y - WATER_Y).toBeGreaterThan(20)
+    // ...and standing a plank's rise over the knoll, not buried in it.
+    expect(PLATFORM.y - (GROUND_Y + mountainHeight(PLATFORM.x, PLATFORM.z))).toBeLessThan(1)
+
+    // Walked hard at every rail: the drop is refused, exactly like the loft's.
+    for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
+      let stance: Stance = { x: PLATFORM.x, z: PLATFORM.z, floor: PLATFORM.y }
+      for (let i = 0; i < 120; i++) {
+        stance = stepPlayer(
+          WORLD,
+          solids,
+          stance,
+          { x: stance.x + dx * 0.05, z: stance.z + dz * 0.05 },
+          0.28,
+        )
+      }
+      expect(onPlatform(stance.x, stance.z), `walked off the deck heading ${dx},${dz}`).toBe(true)
+      expect(stance.floor).toBe(PLATFORM.y)
+    }
+  })
+
+  test('the platform actually sees the lake', () => {
+    // Eye height on the deck down to the water in the lake's middle: the line
+    // must clear the range's own slopes the whole way.
+    const eye = { x: PLATFORM.x, y: PLATFORM.y + 1.5, z: PLATFORM.z + PLATFORM.halfZ }
+    for (let i = 1; i < 40; i++) {
+      const t = i / 40
+      const x = eye.x + (LAKE.x - eye.x) * t
+      const z = eye.z + (LAKE.z - eye.z) * t
+      const y = eye.y + (WATER_Y - eye.y) * t
+      expect(
+        y,
+        `the mountainside blocks the view at (${x.toFixed(1)}, ${z.toFixed(1)})`,
+      ).toBeGreaterThan(GROUND_Y + mountainHeight(x, z))
+    }
+    // And the far shore's trees are kept out of the sight-fan.
+    const between = WORLD.trees.filter(
+      (tree) => tree.z < -52 && tree.z > -78 && Math.abs(tree.x - PLATFORM.x) < 4,
+    )
+    expect(between).toEqual([])
+  })
+
+  test('the cabin path starts at the grass, ends at the deck, and clears the slope', () => {
+    const start = cabinAt(0)
+    expect(Math.abs(start.y - GROUND_Y)).toBeLessThan(STEP_UP)
+    expect(terrainAt(start.x, start.z + 1.6), 'no ground at the base stop').toBe(GROUND_Y)
+
+    const end = cabinAt(1)
+    expect(end.y).toBeCloseTo(PLATFORM.y, 6)
+    // Docked just off the deck's south edge, a scripted step from the landing.
+    expect(Math.abs(end.x - PLATFORM.x)).toBeLessThan(2)
+    expect(end.z - (PLATFORM.z + PLATFORM.halfZ)).toBeLessThan(1.5)
+
+    // The cabin floor never scrapes the mountainside it climbs.
+    for (let i = 2; i < 98; i++) {
+      const at = cabinAt(i / 100)
+      const ground = GROUND_Y + mountainHeight(at.x, at.z)
+      expect(at.y - ground, `scraping at t=${(i / 100).toFixed(2)}`).toBeGreaterThan(0.3)
+    }
+
+    // No tree grows up into the line.
+    for (const tree of WORLD.trees) {
+      expect(underCable(tree.x, tree.z, 2.5), `a tree under the cable at ${tree.x}, ${tree.z}`)
+        .toBe(false)
+    }
+  })
+
+  test('the stations and the deck furniture are ordinary pieces the site provides', () => {
+    const site = WORLD.furniture.filter((item) => item.roomId === 'site')
+    expect(site.map((item) => item.id).sort()).toEqual([...SITE_IDS].sort())
+
+    const base = site.find((item) => item.id === 'cablecar-base')!
+    const top = site.find((item) => item.id === 'cablecar-top')!
+    expect(base.kind).toBe('cablecar')
+    expect(base.y).toBe(GROUND_Y)
+    expect(top.y).toBe(PLATFORM.y)
+
+    // Everything on the deck actually stands on the deck.
+    for (const item of site) {
+      if (item.id === 'cablecar-base') continue
+      expect(onPlatform(item.x, item.z), `${item.id} hangs off the deck`).toBe(true)
+    }
+
+    // Seats to read in, a table to put a book on, and the string of lights is
+    // a real lamp — on the pool, but not on the house switch's circuit.
+    const chairs = site.filter((item) => SITTABLE.has(item.kind))
+    expect(chairs.length).toBeGreaterThanOrEqual(3)
+    expect(site.some((item) => item.surface)).toBe(true)
+
+    // The record deck stands on its own table's top, an appliance like any
+    // other — records ride up in hand, so the station is offered with one held.
+    const stand = site.find((item) => item.id === 'lookout-stand')!
+    const player = site.find((item) => item.id === 'lookout-player')!
+    expect(player.kind).toBe('recordplayer')
+    expect(player.y).toBeCloseTo(stand.y + stand.height, 6)
+    expect(player.x).toBeCloseTo(stand.x, 6)
+    expect(player.z).toBeCloseTo(stand.z, 6)
+    const string = WORLD.lights.find((lamp) => lamp.id === 'lookout-lights')
+    expect(string).toBeDefined()
+    expect(string!.roomId).toBe('site')
+    expect(string!.defaultOn).toBe(true)
+
+    // The armchairs face the water, which is what the deck is for.
+    for (const chair of site.filter((item) => item.kind === 'armchair')) {
+      const off = Math.min(chair.facing, 360 - chair.facing)
+      expect(off, `${chair.id} faces away from the lake`).toBeLessThan(30)
+    }
+
+    // Solid where they stand, like any other furniture — and the landing the
+    // ride sets you down on is clear of all of it.
+    expect(blocked(solidsAt(WORLD.solids, GROUND_Y), { x: base.x, z: base.z }, 0.05)).toBe(true)
+    expect(blocked(solidsAt(WORLD.solids, PLATFORM.y), { x: top.x, z: top.z }, 0.05)).toBe(true)
+    const landing = CABLE_CAR.landings.top
+    expect(blocked(solidsAt(WORLD.solids, PLATFORM.y), { x: landing.x, z: landing.z }, 0.28)).toBe(
+      false,
+    )
+
+    // And their ids are refused in a document, so a map cannot shadow them.
+    expect(() =>
+      parseWorldText(`{ "rooms": [{ "id": "a", "origin": [0, 0], "size": [4, 4], "furniture": [
+        { "id": "cablecar-base", "kind": "table", "at": [0, 0], "facing": 0 }
+      ] }] }`),
+    ).toThrow(/reserved/)
+  })
+
+  test('a ride carries you up, and the next one carries you back down', () => {
+    expect(cableRide.riding).toBe(false)
+    const stand = { ...CABLE_CAR.landings.base }
+    startRide('base', { x: stand.x, z: stand.z, floor: stand.y })
+
+    let pose = stepRide(1 / 60)!
+    let steps = 1
+    while (cableRide.riding && steps < 10_000) {
+      pose = stepRide(1 / 60)!
+      steps += 1
+    }
+    expect(cableRide.riding, 'the ride never ended').toBe(false)
+    expect(pose.x).toBeCloseTo(CABLE_CAR.landings.top.x, 6)
+    expect(pose.z).toBeCloseTo(CABLE_CAR.landings.top.z, 6)
+    expect(pose.floor).toBeCloseTo(PLATFORM.y, 6)
+    // Set down on the deck itself, where the floor agrees with the ride.
+    expect(floorAt(WORLD, pose.x, pose.z, pose.floor)).toBe(PLATFORM.y)
+    // The cabins swapped ends.
+    expect(cableRide.lineT).toBe(1)
+
+    // Back down: the cabin now waiting at the top is the one you board.
+    startRide('top', { x: pose.x, z: pose.z, floor: pose.floor })
+    while (cableRide.riding && steps < 20_000) {
+      pose = stepRide(1 / 60)!
+      steps += 1
+    }
+    expect(pose.floor).toBeCloseTo(GROUND_Y, 6)
+    expect(pose.z).toBeCloseTo(CABLE_CAR.landings.base.z, 6)
+    expect(cableRide.lineT).toBe(0)
   })
 })
 

@@ -98,6 +98,8 @@ type LibraryState = {
   loaded: boolean
   scanning: boolean
   progress: ScanProgress | null
+  /** When the running scan began, `performance.now()`, for the time-left estimate. */
+  scanStarted: number | null
   lastScan: ScanSummary | null
   error: string | null
 
@@ -312,6 +314,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     loaded: false,
     scanning: false,
     progress: null,
+    scanStarted: null,
     lastScan: null,
     error: null,
 
@@ -617,7 +620,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
     scan: async () => {
       if (get().scanning) return
-      set({ scanning: true, progress: null, error: null })
+      set({ scanning: true, progress: null, scanStarted: performance.now(), error: null })
       const stop = library.onScanProgress((progress) => set({ progress }))
       try {
         const lastScan = await library.scan()
@@ -635,7 +638,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         set({ error: e instanceof Error ? e.message : String(e) })
       } finally {
         stop()
-        set({ scanning: false, progress: null })
+        set({ scanning: false, progress: null, scanStarted: null })
       }
     },
 

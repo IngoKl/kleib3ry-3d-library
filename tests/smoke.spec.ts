@@ -217,6 +217,8 @@ declare global {
       wornLamp: () => string | null
       wearLampForTest: (id: string | null) => void
       deliverySpotForTest: () => { x: number; y: number; z: number; yaw: number } | null
+      /** The cable car: one flag from boarding to arrival, and where the cabins are. */
+      cableCar: () => { riding: boolean; lineT: number }
     }
   }
 }
@@ -1227,6 +1229,75 @@ test('you can sit in the armchair, read from it, and get up again', async ({ pag
   await page.waitForTimeout(600)
   expect(await page.evaluate(() => window.__app.seat())).toBeNull()
   await page.waitForFunction(() => window.__app.player().eye > 1.6, null, { timeout: 10_000 })
+})
+
+test('the cable car rides you up to the lookout, and the deck holds you', async ({ page }) => {
+  // The ride runs on its own clock — fourteen seconds plus stepping in and
+  // out — which SwiftShader pays out a clamped frame at a time: minutes of
+  // wall clock, the cat-crossing kind of budget.
+  test.slow()
+  await boot(page)
+
+  const base = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.id === 'cablecar-base',
+  )
+  expect(base, 'the site grew no base station').toBeDefined()
+  const deck = (await page.evaluate(() => window.__app.furniture())).find(
+    (item) => item.id === 'cablecar-top',
+  )!
+
+  // Aim at the station from a pace or two south of it. A few poses, because
+  // the crosshair reads on rendered frames and the post is narrow.
+  let fixture: string | null = null
+  for (const [away, pitch] of [
+    [1.9, -0.2],
+    [1.6, -0.35],
+    [2.2, 0],
+    [1.4, -0.55],
+  ]) {
+    await page.evaluate(
+      ([base, away, pitch]) => {
+        const at = base as { x: number; z: number }
+        window.__app.teleport(at.x, at.z + (away as number), 0)
+        window.__app.look(0, pitch as number)
+      },
+      [base, away, pitch] as const,
+    )
+    if (await settled(page, () => window.__app.stats().focusedFixture !== null)) {
+      fixture = await page.evaluate(() => window.__app.stats().focusedFixture)
+      if (fixture === 'cablecar-base') break
+    }
+  }
+  expect(fixture, 'the station was not under the crosshair from any pose').toBe('cablecar-base')
+  await expect(page.getByTestId('fixture-card')).toContainText(/ride up/i)
+
+  await page.keyboard.press('KeyE')
+  await page.waitForFunction(() => window.__app.cableCar().riding, null, { timeout: 15_000 })
+
+  // Carried the whole way up. Polled from this side — the render loop starves
+  // page timers under exactly the load this ride produces.
+  const deadline = Date.now() + 240_000
+  let riding = true
+  while (Date.now() < deadline) {
+    riding = await page.evaluate(() => window.__app.cableCar().riding)
+    if (!riding) break
+    await page.waitForTimeout(500)
+  }
+  expect(riding, 'the ride never arrived').toBe(false)
+
+  // Set down on the lookout's deck, at its height — beside the top station.
+  const up = await page.evaluate(() => window.__app.player())
+  expect(up.floor).toBeCloseTo(deck.y, 3)
+  expect(Math.hypot(up.x - deck.x, up.z - deck.z)).toBeLessThan(4)
+
+  // And the deck holds you: walking hard at the rail is refused like the
+  // loft's edge, thirty-odd metres over the water being a fall and not a step.
+  await page.keyboard.down('KeyW')
+  await page.waitForTimeout(2500)
+  await page.keyboard.up('KeyW')
+  const held = await page.evaluate(() => window.__app.player())
+  expect(held.floor).toBeCloseTo(deck.y, 3)
+  expect(Math.hypot(held.x - deck.x, held.z - deck.z)).toBeLessThan(5)
 })
 
 /**

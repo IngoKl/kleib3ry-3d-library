@@ -38,6 +38,7 @@ import {
 import { groundMottleTexture } from './materials'
 import { MOON_DIRECTION, radialGlowTexture } from './sky'
 import { CloudBank, MoonGlint, SunGlow } from './SkyDressing'
+import { Mountains } from './Mountains'
 import { Undergrowth } from './Undergrowth'
 import { Fireflies } from './Fireflies'
 import { FallingLeaves } from './FallingLeaves'
@@ -1392,6 +1393,9 @@ export function Outside() {
       <CloudBank />
       <MoonGlint />
       <Hills />
+      {/* The range across the north, the lookout and the cable car — drawn
+          from the same functions the walk controller refuses steps by. */}
+      <Mountains />
       <MistRing />
       <Birds />
 

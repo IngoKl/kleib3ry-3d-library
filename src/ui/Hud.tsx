@@ -20,6 +20,7 @@ import { SearchField } from './SearchField'
 import { PhoneCard } from './PhoneCard'
 import { ControlsCard } from './ControlsCard'
 import { SettingsCard } from './SettingsCard'
+import { ScanStatus } from './ScanStatus'
 import { MainMenu } from './MainMenu'
 
 /** What each pen in the whiteboard tray is called on the card. */
@@ -46,6 +47,7 @@ const FIXTURE_NAMES: Partial<Record<string, string>> = {
   rombox: 'The ROM Box',
   door: 'The Door',
   campfire: 'The Campfire',
+  cablecar: 'The Cable Car',
 }
 
 /** What the card calls whatever is in your arms, or offering to be. */
@@ -76,6 +78,7 @@ export function Hud() {
   const mode = useAppStore((s) => s.mode)
   const focusedId = useAppStore((s) => s.focusedBook)
   const heldId = useAppStore((s) => s.held)
+  const satchel = useAppStore((s) => s.satchel)
   const readingId = useAppStore((s) => s.reading)
   const shelfTarget = useAppStore((s) => s.shelfTarget)
   const focusedSeat = useAppStore((s) => s.focusedSeat)
@@ -119,7 +122,6 @@ export function Hud() {
   const boxes = useLibraryStore((s) => s.boxes)
   const reconciliation = useLibraryStore((s) => s.reconciliation)
   const scanning = useLibraryStore((s) => s.scanning)
-  const progress = useLibraryStore((s) => s.progress)
   const error = useLibraryStore((s) => s.error)
 
   const worldName = useWorldStore((s) => s.world?.doc.name ?? null)
@@ -230,11 +232,12 @@ export function Hud() {
     : undefined
   const fixtureLit = fixture ? (lightsOn[fixture.id] ?? (fixture.on ?? true)) : false
   // Only asked when a plate is under the crosshair, since it walks every lamp
-  // in the building. The campfire is not on the house circuit.
+  // in the building. The campfire and the lookout's string are not on the
+  // house circuit — the same filter the switch itself uses.
   const anyLightOn =
     fixture?.kind === 'lightswitch' &&
     (world?.lights ?? [])
-      .filter((lamp) => lamp.kind !== 'campfire')
+      .filter((lamp) => lamp.kind !== 'campfire' && lamp.roomId !== 'site')
       .some((lamp) => lightsOn[lamp.id] ?? lamp.defaultOn)
   const fixtureName = (fixture && FIXTURE_NAMES[fixture.kind]) ?? 'Lamp'
 
@@ -303,6 +306,10 @@ export function Hud() {
         return refuses('Nothing in your hands to throw away')
       case 'headlamp':
         return does('put it on')
+      // The one fixture still offered with a book in hand: riding up with the
+      // book you mean to read is what the lookout is for.
+      case 'cablecar':
+        return does(fixture.id === 'cablecar-base' ? 'ride up to the lookout' : 'ride back down')
       default:
         return does('')
     }
@@ -460,10 +467,12 @@ export function Hud() {
                   ` · ${(crateView.offset + 1).toLocaleString()} of ${crateView.total.toLocaleString()}`}
               </p>
               <p className="focus-key">
-                {/* Its place in the crate is still counted while it plays, but
-                    the sleeve is not in there to be taken. */}
+                {/* Its place in the crate is still counted while it plays or
+                    rides in the satchel, but the sleeve is not there to take. */}
                 {nowPlaying === shownRecord ? (
                   <span className="dim">It is on the deck</span>
+                ) : satchel.some((stowed) => stowed.id === shownRecord) ? (
+                  <span className="dim">It is in your satchel</span>
                 ) : (
                   <>
                     <kbd>E</kbd> Pick it up
@@ -490,7 +499,12 @@ export function Hud() {
               <p className="focus-key">
                 {focusedFixture ? (
                   <>
-                    <kbd>E</kbd> Put it on
+                    <kbd>E</kbd>{' '}
+                    {fixture?.kind === 'cablecar'
+                      ? fixture.id === 'cablecar-base'
+                        ? 'Ride up with it'
+                        : 'Ride down with it'
+                      : 'Put it on'}
                   </>
                 ) : crateTarget ? (
                   <>
@@ -504,7 +518,7 @@ export function Hud() {
                   <span className="warn">Aim at the deck, a crate or a table</span>
                 )}
                 {' · '}
-                <kbd>Q</kbd> File it back
+                <kbd>Q</kbd> File it back · <kbd>I</kbd> Into the satchel
               </p>
             </div>
           )}
@@ -718,6 +732,32 @@ export function Hud() {
             </div>
           )}
 
+          {/* The satchel, bottom left, only while it holds something: an empty
+              bag is not information. Both hands stay free, so it is a corner
+              note rather than a held card. */}
+          {walking && satchel.length > 0 && (
+            <div className="satchel-card" data-testid="satchel-card">
+              <p className="held-label">In the Satchel</p>
+              {satchel.map((item) => {
+                const sleeve =
+                  item.kind === 'record' ? tracks.find((track) => track.id === item.id) : undefined
+                const title =
+                  item.kind === 'book'
+                    ? (byId.get(item.id)?.title ?? 'A Book')
+                    : (sleeve?.album ?? sleeve?.title ?? 'A Record')
+                return (
+                  <p className="satchel-item" key={item.id}>
+                    <span className="dim">{item.kind === 'book' ? 'Book · ' : 'Record · '}</span>
+                    {title}
+                  </p>
+                )
+              })}
+              <p className="focus-key">
+                <kbd>I</kbd> Take one out
+              </p>
+            </div>
+          )}
+
           {/* The headlamp, while it is on your head. */}
           {walking && wornLamp && (
             <div className="held-card" data-testid="worn-lamp-card">
@@ -737,7 +777,7 @@ export function Hud() {
             </div>
           )}
 
-          {walking && focusedFixture && !held && !heldProp && !focusedRecord && !focusedTape && (
+          {walking && focusedFixture && (!held || fixture?.kind === 'cablecar') && !heldProp && !focusedRecord && !focusedTape && (
             <div className="focus-card" data-testid="fixture-card">
               <p className="focus-title">{fixtureName}</p>
               <p className="focus-key">
@@ -859,7 +899,7 @@ export function Hud() {
                 )}
                 {' · '}
                 <kbd>Q</kbd> {kneeling ? 'Lay it down' : 'Drop it'} · <kbd>O</kbd> Leave it open ·{' '}
-                <kbd>R</kbd> Read
+                <kbd>R</kbd> Read · <kbd>I</kbd> Into the satchel
               </p>
             </div>
           )}
@@ -946,11 +986,7 @@ export function Hud() {
               {boxed > 0 && ` · ${boxed.toLocaleString()} in boxes`}
             </p>
 
-            {scanning && progress && (
-              <p className="note" data-testid="scan-progress">
-                Scanning {progress.done} / {progress.total} — {progress.current}
-              </p>
-            )}
+            <ScanStatus />
 
             {notice && (
               <p className="note" data-testid="notice">

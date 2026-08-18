@@ -228,6 +228,22 @@ are solid. A library folder may describe **more than one building** — the defa
 map has the cabin and the lake house — which needs nothing in the format, because a
 building is rooms somewhere else.
 
+**The mountains are seen, not climbed; the cable car is the way up.**
+`mountainHeight` in `terrain.ts` is a function, not a mesh, and the drawn range
+([src/scene/Mountains.tsx](src/scene/Mountains.tsx)), the walk refusal (the toe is
+walkable ground, then `terrainAt` answers `null`, the lake's answer), the forest
+line and the cable car all read it. One line runs from a stop by the camp up to a
+lookout deck on the summit — a floor `terrainAt` returns like the plank bridge —
+with two counterweighted cabins riding `cabinAt`, the same curve the ride carries
+the player along (`state/cableCar.ts`, a per-frame mutable stepped by `Player.tsx`
+the way sitting is; a book in hand rides with you). The stations, the deck's
+armchairs, bench, record deck and fairy lights are **site furniture**: injected by `deriveWorld`
+under room id `site` (ids in `SITE_IDS`, refused in a document), so the crosshair,
+`E`, sitting and the lamps work up there through the ordinary machinery. The
+`cablecar` kind is deliberately not in `FURNITURE_KINDS` — a map can no more place
+a station than move the lake — and the site's lamps are off the house switch's
+circuit, like the campfire.
+
 **Book identity is content-based, not path-based.** `book_id` in
 [core/src/index.rs](core/src/index.rs) hashes file length plus the first 64 KiB, so
 moving or renaming a file keeps its shelf position and progress. A scan skips any
@@ -237,8 +253,9 @@ re-probes every older row once. Bump it whenever a probe learns to extract
 something new.
 
 **State is split by lifetime.** `state/store.ts` holds session/UI state (mode,
-crosshair focus, held book, held tape, held sheet, driver, whether you have gone in
-yet). `state/library.ts` holds the catalogue, shelving and pins, reconciles a saved
+crosshair focus, held book, held tape, held sheet, the satchel — `I`, one book and
+one record stowed with both hands free, a FIFO so one key reaches either
+(`state/satchel.ts`) — driver, whether you have gone in yet). `state/library.ts` holds the catalogue, shelving and pins, reconciles a saved
 layout against the latest scan on load, and debounces layout saves (600 ms).
 `state/annotations.ts` holds bookmarks (spreads in memory, pages in the file), page
 notes and page ink (`D` picks the pen up in the reader; strokes are
@@ -354,8 +371,8 @@ next time it is drawn. "Tear out" is the gesture, not the effect.
   sentence.
 - TS is strict with `noUncheckedIndexedAccess` and `noUnusedLocals`; `tsconfig.json`
   covers `src`, `tests`, `scripts`, and the config files.
-- `tests/collision.spec.ts`, `tests/world.spec.ts`, `tests/chip8.spec.ts` and
-  `tests/annotations.spec.ts` unit-test pure modules through the Playwright runner (no
+- `tests/collision.spec.ts`, `tests/world.spec.ts`, `tests/chip8.spec.ts`,
+  `tests/annotations.spec.ts` and `tests/satchel.spec.ts` unit-test pure modules through the Playwright runner (no
   browser); `tests/smoke.spec.ts` drives the real bundle. The browser tests reach the app
   through `window.__app` in [src/App.tsx](src/App.tsx) — a deliberate verification surface
   (teleport, look, stats, readForTest, the lamps, the pins, records, tapes, the arcade,

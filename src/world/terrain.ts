@@ -79,7 +79,8 @@ export function lakePoint(angle: number, r: number): [number, number] {
 export const SHORE_EDGE = 1.078
 
 /** What is underfoot, for footstep sounds: the beach and the brook's banks are sand. */
-export function groundSurface(x: number, z: number): 'sand' | 'grass' {
+export function groundSurface(x: number, z: number): 'sand' | 'grass' | 'wood' {
+  if (onPlatform(x, z) || bridgeAt(x, z) !== null) return 'wood'
   if (lakeRadius(x, z) < SHORE_EDGE) return 'sand'
   return alongStream(x, z, 0.7) ? 'sand' : 'grass'
 }
@@ -264,6 +265,169 @@ export function bridgeAt(x: number, z: number): number | null {
   return null
 }
 
+// ---- the mountains -------------------------------------------------------
+
+/**
+ * The range across the north, behind the lake, as [x, z, radius, height].
+ * Overlapping smoothstep mounds rather than noise, so the height under a point
+ * is the same wherever it is asked — the mesh, the walk refusal, the forest
+ * line and the cable car all read this one function.
+ */
+const PEAKS: readonly (readonly [number, number, number, number])[] = [
+  [-30, -95, 24, 17],
+  [-10, -101, 30, 26],
+  [10, -95, 27, 21],
+  [30, -86, 21, 12],
+]
+
+const smoothstep = (t: number) => t * t * (3 - 2 * t)
+
+/** How far the mountains rise above the ground plane at a point. 0 off the range. */
+export function mountainHeight(x: number, z: number): number {
+  let h = 0
+  for (const [px, pz, radius, height] of PEAKS) {
+    const t = 1 - Math.hypot(x - px, z - pz) / radius
+    if (t > 0) h += height * smoothstep(t)
+  }
+  return h
+}
+
+/**
+ * Where the walkable toe of the range ends. Below this the slope is ground you
+ * walk up; above it `terrainAt` refuses, the same answer the lake gives — the
+ * mountains are seen, not climbed, and the cable car is the way up.
+ */
+export const MOUNTAIN_STEP = 0.35
+
+/**
+ * The lookout: a deck on the saddle between the two big peaks, looking south
+ * over the whole lake. Its height is taken from the mountain under it, so
+ * re-shaping a peak can never leave the deck buried or hanging.
+ */
+const PLATFORM_AT = { x: 0, z: -98, halfX: 3.4, halfZ: 2.6 }
+
+/** The highest ground under the deck's rectangle, sampled — the knoll it stands on. */
+function platformFooting(): number {
+  let top = 0
+  for (let i = 0; i <= 8; i++) {
+    for (let j = 0; j <= 8; j++) {
+      const x = PLATFORM_AT.x + ((i / 8) * 2 - 1) * PLATFORM_AT.halfX
+      const z = PLATFORM_AT.z + ((j / 8) * 2 - 1) * PLATFORM_AT.halfZ
+      top = Math.max(top, mountainHeight(x, z))
+    }
+  }
+  return top
+}
+
+export const PLATFORM = {
+  ...PLATFORM_AT,
+  /** The deck's walking surface, a plank's rise above the knoll's highest point. */
+  y: GROUND_Y + platformFooting() + 0.15,
+} as const
+
+export function onPlatform(x: number, z: number): boolean {
+  return (
+    Math.abs(x - PLATFORM.x) <= PLATFORM.halfX && Math.abs(z - PLATFORM.z) <= PLATFORM.halfZ
+  )
+}
+
+/**
+ * The cable car: one line from a stop by the camp up to the lookout, two
+ * counterweighted cabins that swap ends. `path` is the *cabin floor's* course —
+ * boarding height at the base, deck height at the top — so the ride and the
+ * drawn cabins cannot disagree about where the floor is.
+ */
+const CABLE_BASE = { x: 1.5, z: -66 }
+const CABLE_TOP = { x: 0, z: PLATFORM.z + PLATFORM.halfZ + 0.8 }
+
+/** From the cable down to the cabin floor: the hanger arm plus the cabin. */
+export const CABLE_DROP = 2.6
+
+export type CablePoint = { x: number; y: number; z: number }
+
+export const CABLE_CAR = {
+  base: CABLE_BASE,
+  top: CABLE_TOP,
+  /** Board a step up from the grass, arrive level with the deck. */
+  path: [
+    { x: CABLE_BASE.x, y: GROUND_Y + 0.26, z: CABLE_BASE.z },
+    // The tower's kink, lifting the line clear of the slope it climbs.
+    { x: 1.2, y: GROUND_Y + 5.0, z: -71.5 },
+    { x: CABLE_TOP.x, y: PLATFORM.y, z: CABLE_TOP.z },
+  ] as readonly CablePoint[],
+  /** Where you stand once you have stepped off, at either end. */
+  landings: {
+    // A pace south of the base stop, on the grass towards the camp.
+    base: { x: CABLE_BASE.x, z: CABLE_BASE.z + 1.6, y: GROUND_Y },
+    // Through the rail gap, clear of the deck's chairs.
+    top: { x: PLATFORM.x + 0.4, z: PLATFORM.z + PLATFORM.halfZ - 0.9, y: PLATFORM.y },
+  },
+  seconds: 14,
+} as const
+
+/**
+ * The two track lines run a cabin's width apart, so the cabins pass mid-line
+ * rather than through each other. Cabin A rides `+CABLE_SIDE`, B the mirror —
+ * the renderer and the ride both apply it, or the rider floats beside the car.
+ */
+export const CABLE_SIDE = (() => {
+  const dx = CABLE_TOP.x - CABLE_BASE.x
+  const dz = CABLE_TOP.z - CABLE_BASE.z
+  const length = Math.hypot(dx, dz)
+  return { x: (dz / length) * 0.55, z: (-dx / length) * 0.55 }
+})()
+
+/** Along-the-line distances, so the cabin covers ground evenly through the kink. */
+const CABLE_LENGTHS = (() => {
+  const spans = [0]
+  for (let i = 1; i < CABLE_CAR.path.length; i++) {
+    const a = CABLE_CAR.path[i - 1]!
+    const b = CABLE_CAR.path[i]!
+    spans.push(spans[i - 1]! + Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z))
+  }
+  return spans
+})()
+
+/** Where a cabin's floor is, `t` from 0 at the base stop to 1 at the lookout. */
+export function cabinAt(t: number): CablePoint {
+  const total = CABLE_LENGTHS[CABLE_LENGTHS.length - 1]!
+  const along = Math.max(0, Math.min(1, t)) * total
+  for (let i = 1; i < CABLE_CAR.path.length; i++) {
+    if (along > CABLE_LENGTHS[i]! && i < CABLE_CAR.path.length - 1) continue
+    const a = CABLE_CAR.path[i - 1]!
+    const b = CABLE_CAR.path[i]!
+    const span = CABLE_LENGTHS[i]! - CABLE_LENGTHS[i - 1]!
+    const s = span === 0 ? 0 : (along - CABLE_LENGTHS[i - 1]!) / span
+    return {
+      x: a.x + (b.x - a.x) * s,
+      y: a.y + (b.y - a.y) * s,
+      z: a.z + (b.z - a.z) * s,
+    }
+  }
+  return CABLE_CAR.path[CABLE_CAR.path.length - 1]!
+}
+
+/**
+ * The cleared fan between the lookout and the water, cut through the far
+ * shore's band of forest. Without it a tall pine at the shore stands exactly
+ * in the one sight-line the platform exists for.
+ */
+export function inVista(x: number, z: number): boolean {
+  if (z > -50 || z < -80) return false
+  // 0 under the platform, 1 at the lake's middle; the fan widens on the way down.
+  const t = (z - PLATFORM.z) / (LAKE.z - PLATFORM.z)
+  const centreX = PLATFORM.x + (LAKE.x - PLATFORM.x) * t
+  return Math.abs(x - centreX) < 4 + 10 * t
+}
+
+/** True within `margin` of the cable's plan line — the corridor kept clear of trees. */
+export function underCable(x: number, z: number, margin: number): boolean {
+  return (
+    toSegment(x, z, CABLE_CAR.base.x, CABLE_CAR.base.z, CABLE_CAR.top.x, CABLE_CAR.top.z) <=
+    margin
+  )
+}
+
 /** Distance from a point to a segment, in plan. */
 function toSegment(
   x: number,
@@ -304,6 +468,11 @@ export function terrainAt(x: number, z: number): number | null {
   // The plank is a floor, so it is asked about before the water it crosses.
   const deck = bridgeAt(x, z)
   if (deck !== null) return deck
+  // The lookout is a floor too, asked before the mountainside it stands on.
+  if (onPlatform(x, z)) return PLATFORM.y
+  // Walkable up the toe of the range, then refused: the cable car is the way up.
+  const rise = mountainHeight(x, z)
+  if (rise > MOUNTAIN_STEP) return null
   if (inStream(x, z)) return null
-  return GROUND_Y
+  return GROUND_Y + rise
 }

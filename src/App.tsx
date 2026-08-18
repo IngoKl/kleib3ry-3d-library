@@ -46,6 +46,7 @@ import { inkAt } from './data/inks'
 import { Hud } from './ui/Hud'
 import { metrics } from './state/metrics'
 import { EYE_HEIGHT, player, teleport } from './state/player'
+import { cableRide } from './state/cableCar'
 import { useAppStore } from './state/store'
 import { useLibraryStore } from './state/library'
 import { useAnnotationsStore } from './state/annotations'
@@ -190,6 +191,8 @@ export default function App() {
         return { mounted, lit, bound: poolBindings.filter((id): id is string => id !== null) }
       },
       player: () => ({ ...player }),
+      /** The cable car's ride state, for waits: boarding to arrival is one flag. */
+      cableCar: () => ({ riding: cableRide.riding, lineT: cableRide.lineT }),
       /** Which room the player is standing in, by id. */
       room: () => {
         const world = useWorldStore.getState().world

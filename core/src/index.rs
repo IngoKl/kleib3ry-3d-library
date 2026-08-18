@@ -177,9 +177,26 @@ pub fn index_one(path: &Path, format: Format, covers_dir: &Path) -> Result<Book>
     })
 }
 
+/// How many files are probed at once. Probing is decompression and parsing —
+/// CPU work — so the cores set the ceiling; eight because past that a spinning
+/// disk seeks more than it reads.
+fn probe_workers(jobs: usize) -> usize {
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8).min(jobs)
+}
+
+fn name_of(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+}
+
 /// Walk the library folder and bring the index in line with it. `on_progress`
 /// fires per file, since a large collection takes minutes. Concurrent scans are
 /// refused a level up; across processes the loser's work is simply overwritten.
+///
+/// Two passes: a cheap sequential one — a stat and 64 KiB per file — decides
+/// what changed, then the expensive probes run across a small thread pool. The
+/// catalog is only ever touched from this thread; workers hand results back
+/// over a channel. `index.json` is a `BTreeMap`, so finish order cannot leak
+/// into the file.
 pub fn scan(
     root: &Path,
     index_path: &Path,
@@ -190,9 +207,59 @@ pub fn scan(
     let files = discover(root);
 
     let mut summary = ScanSummary { found: files.len() as u32, ..Default::default() };
+    let total = summary.found;
     let mut seen = Vec::with_capacity(files.len());
     // Found but unopenable — a lock, not a deletion. The prune spares these.
     let mut unreadable = Vec::new();
+    let mut done = 0u32;
+
+    struct Job {
+        path: PathBuf,
+        format: Format,
+        rel: String,
+        mtime: i64,
+    }
+    let mut jobs: Vec<Job> = Vec::new();
+    // Identical files share an id and one catalog entry between them. Only the
+    // first copy seen is compared and probed: judging a later twin against the
+    // entry too would find its own mtime missing and re-probe it every scan.
+    let mut seen_ids = std::collections::HashSet::new();
+
+    for (path, format) in files {
+        on_progress(ScanProgress { done, total, current: name_of(&path) });
+
+        let Ok(meta) = fs::metadata(&path) else {
+            summary.failed += 1;
+            done += 1;
+            unreadable.push(path.to_string_lossy().to_string());
+            continue;
+        };
+        let Ok(id) = book_id(&path) else {
+            summary.failed += 1;
+            done += 1;
+            unreadable.push(path.to_string_lossy().to_string());
+            continue;
+        };
+        seen.push(id.clone());
+        if !seen_ids.insert(id.clone()) {
+            summary.unchanged += 1;
+            done += 1;
+            continue;
+        }
+
+        let mtime = modified_millis(&meta);
+        let rel = relative_path(root, &path);
+        if catalog.is_current(&id, meta.len(), mtime) {
+            // Unchanged content can still have moved, and the stored path must
+            // follow or the book cannot be opened.
+            catalog.refresh_path(&id, &rel);
+            summary.unchanged += 1;
+            done += 1;
+            continue;
+        }
+
+        jobs.push(Job { path, format, rel, mtime });
+    }
 
     // Saving rewrites the whole file, so a flush per book is quadratic. A count
     // and an interval bound that while keeping a crash to seconds of lost work.
@@ -201,49 +268,48 @@ pub fn scan(
     let mut since_flush = 0u32;
     let mut last_flush = std::time::Instant::now();
 
-    for (i, (path, format)) in files.iter().enumerate() {
-        on_progress(ScanProgress {
-            done: i as u32,
-            total: summary.found,
-            current: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-        });
+    if !jobs.is_empty() {
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let (tx, rx) = std::sync::mpsc::channel();
 
-        let Ok(meta) = fs::metadata(path) else {
-            summary.failed += 1;
-            unreadable.push(path.to_string_lossy().to_string());
-            continue;
-        };
-        let Ok(id) = book_id(path) else {
-            summary.failed += 1;
-            unreadable.push(path.to_string_lossy().to_string());
-            continue;
-        };
-        seen.push(id.clone());
-
-        let mtime = modified_millis(&meta);
-        let rel = relative_path(root, path);
-        if catalog.is_current(&id, meta.len(), mtime) {
-            // Unchanged content can still have moved, and the stored path must
-            // follow or the book cannot be opened.
-            catalog.refresh_path(&id, &rel);
-            summary.unchanged += 1;
-            continue;
-        }
-
-        match guard(|| index_one(path, *format, covers_dir)) {
-            Some(Ok(book)) => {
-                catalog.upsert(&book, &rel, mtime);
-                summary.added += 1;
-                since_flush += 1;
-                if since_flush >= FLUSH_EVERY && last_flush.elapsed() >= FLUSH_INTERVAL {
-                    catalog.save(index_path)?;
-                    since_flush = 0;
-                    last_flush = std::time::Instant::now();
-                }
+        std::thread::scope(|s| -> Result<()> {
+            for _ in 0..probe_workers(jobs.len()) {
+                let tx = tx.clone();
+                let next = &next;
+                let jobs = &jobs;
+                s.spawn(move || loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(job) = jobs.get(i) else { break };
+                    let result = guard(|| index_one(&job.path, job.format, covers_dir));
+                    if tx.send((i, result)).is_err() {
+                        break;
+                    }
+                });
             }
-            // Either the probe returned an error or it panicked outright.
-            Some(Err(_)) | None => summary.failed += 1,
-        }
+            // The collector's own sender goes, so the loop ends with the workers.
+            drop(tx);
+
+            for (i, result) in rx {
+                let job = &jobs[i];
+                done += 1;
+                match result {
+                    Some(Ok(book)) => {
+                        catalog.upsert(&book, &job.rel, job.mtime);
+                        summary.added += 1;
+                        since_flush += 1;
+                        if since_flush >= FLUSH_EVERY && last_flush.elapsed() >= FLUSH_INTERVAL {
+                            catalog.save(index_path)?;
+                            since_flush = 0;
+                            last_flush = std::time::Instant::now();
+                        }
+                    }
+                    // Either the probe returned an error or it panicked outright.
+                    Some(Err(_)) | None => summary.failed += 1,
+                }
+                on_progress(ScanProgress { done, total, current: name_of(&job.path) });
+            }
+            Ok(())
+        })?;
     }
 
     let removed = catalog.prune_missing(&seen, &unreadable);
@@ -405,6 +471,33 @@ mod tests {
         // Nothing changed, so the save file must not have either — this is what
         // lets a library folder live in version control.
         assert_eq!(fs::read(&index_path).unwrap(), written);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Identical files collapse into one id, so one probe serves them all —
+    /// and a rescan must settle, not re-probe whichever twin's mtime the one
+    /// entry does not carry.
+    #[test]
+    fn identical_files_are_probed_once_and_a_rescan_settles() {
+        let dir = temp_dir("twins");
+        fs::write(dir.join("one.pdf"), b"the same bytes").unwrap();
+        fs::write(dir.join("copy of one.pdf"), b"the same bytes").unwrap();
+        // Twins in the wild rarely share an mtime; make sure these do not.
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(7);
+        fs::File::options()
+            .write(true)
+            .open(dir.join("copy of one.pdf"))
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+
+        let first = scan(&dir, &dir.join("index.json"), &dir.join("covers"), |_| {}).unwrap();
+        assert_eq!((first.found, first.added, first.unchanged), (2, 1, 1));
+        assert_eq!(Catalog::load(&dir.join("index.json")).unwrap().len(), 1);
+
+        let again = scan(&dir, &dir.join("index.json"), &dir.join("covers"), |_| {}).unwrap();
+        assert_eq!((again.found, again.added, again.unchanged), (2, 0, 2));
 
         let _ = fs::remove_dir_all(&dir);
     }

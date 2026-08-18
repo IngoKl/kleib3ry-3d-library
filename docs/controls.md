@@ -31,6 +31,10 @@ your hand.
   lands. A sheet of paper is thrown away; a record, a tape or the marker goes
   back where it came from.
 - **`O`** — put the book down open, at the page you were on.
+- **`I`** — the satchel. It holds one book and one record, so you can carry
+  both with your hands free: `I` stows what you are holding (swapping with a
+  stowed one of the same kind), and empty-handed takes one back out — what went
+  in first comes out first.
 - **`F`** — draw the book under the crosshair out to look at its cover.
 - **`R`** — read the book in your hand — PDF or EPUB.
 - **`G`** — empty the box you are looking at onto the shelves, nearest bookcase
@@ -122,6 +126,12 @@ your hand.
 - **`E`** — open and close the front door; light the campfire across the lake.
   A shut door really blocks the doorway, and which doors stand open comes back
   with the library.
+- **`E`** — at a cable car station, ride. The base stop is by the camp on the
+  far shore; the line climbs the mountain behind it to a lookout deck with
+  armchairs, a bench, a record player on its own stand and a string of lights,
+  the whole lake below. A book or a record in hand rides with you — reading to
+  music up there is what the deck is for — and `E` at the top station brings
+  you back down.
 - **`N`** — day to night, and back.
 - **`K`** — rain on and off. You hear it as well as see it: loud on the grass,
   muffled indoors.

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { library } from '../services'
 import { MARKER_INKS } from '../data/inks'
 import type { DriverKind, PropKind } from '../services/types'
+import type { SatchelItem } from './satchel'
 import { startDelivery } from './courier'
 // The library store, for a book that has just arrived: it does not import this
 // one, so the dependency runs one way and there is no cycle.
@@ -68,6 +69,11 @@ type AppState = {
   boxViews: Record<string, { offset: number; shown: number; total: number }>
   /** Book id in hand. */
   held: string | null
+  /**
+   * The satchel: at most one book and one record, stowed by `I` so both hands
+   * stay free. Session state like `held` — an unfinished carry, not layout.
+   */
+  satchel: SatchelItem[]
   /** Book id being read. */
   reading: string | null
   /** Furniture id currently sat in, or null when standing. */
@@ -199,6 +205,7 @@ type AppState = {
   /** Riffle through a box: `+1` deeper into it, `-1` back towards the top. */
   browseBox: (boxId: string, direction: 1 | -1) => void
   setHeld: (id: string | null) => void
+  setSatchel: (satchel: SatchelItem[]) => void
   setReading: (id: string | null) => void
   setPointerLocked: (locked: boolean) => void
   setFocusedFixture: (id: string | null) => void
@@ -337,6 +344,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   boxTrail: {},
   boxViews: {},
   held: null,
+  satchel: [],
   reading: null,
   seat: null,
   drawn: null,
@@ -643,6 +651,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setHeld: (held) => set({ held }),
+  setSatchel: (satchel) => set({ satchel }),
   setReading: (reading) => set({ reading }),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
 
@@ -652,8 +661,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   pickRoot: async () => {
+    const previous = get().libraryRoot
     const picked = await library.pickRoot()
-    if (picked) set({ libraryRoot: picked })
+    if (!picked) return
+    set({ libraryRoot: picked })
+    // A newly chosen folder has not been indexed yet — scan it straight away
+    // rather than leaving the Scan button as a second, missable step.
+    if (library.canIndex && picked !== previous) void useLibraryStore.getState().scan()
   },
 }))
 

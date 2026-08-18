@@ -22,6 +22,12 @@ serde_json = "1"
 # for hand-rolling its collision and its tag reading applies here: it keeps the
 # shipped licence surface where it is, and it keeps the image small.
 
+# `cargo run` during development: same reasoning as `src-tauri` — an
+# unoptimised probe turns a scan from minutes into hours, so dependencies (the
+# core crate included) are optimised while this crate rebuilds quick.
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 codegen-units = 1
 lto = true

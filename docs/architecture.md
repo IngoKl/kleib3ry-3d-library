@@ -158,6 +158,14 @@ Three decisions in `core/` worth knowing:
   improved probe would never reach a book already in the index, and no amount of
   rescanning would help. Bump it whenever a probe learns to extract something
   new; every older row is then re-probed once.
+- **Probing is parallel; the catalog is not.** A scan makes a cheap sequential
+  pass — a stat and 64 KiB per file — to decide what changed, then runs the
+  expensive probes (a full PDF parse, an EPUB decompressed to be measured)
+  across a small thread pool. Workers hand results back over a channel and only
+  the scanning thread touches the catalog; `index.json` is a `BTreeMap`, so
+  finish order cannot leak into the file. The dev profiles in `src-tauri` and
+  `server` build dependencies at `opt-level = 2` for the same reason: an
+  unoptimised parser turns a scan from minutes into hours.
 
 `server/` has no HTTP framework: a dozen routes, a static directory and byte
 ranges is a few hundred lines of `TcpListener`. Byte ranges are not optional —
@@ -271,6 +279,30 @@ the outline so it reads as a pond rather than a compass drawing. Everything
 defined in _shoreline units_ (the beach at `SHORE_EDGE`, the walk at `PATH`, the
 tree line) deforms with it for free, since they are rings of the same function,
 and the renderer builds the water and sand from `lakePoint`.
+
+The mountains stand across the north, behind the lake. `mountainHeight` in
+[src/world/terrain.ts](../src/world/terrain.ts) is a sum of smoothstep mounds —
+a function, not a mesh — and everything reads that one function: the displaced
+grid [src/scene/Mountains.tsx](../src/scene/Mountains.tsx) draws, the walk
+refusal (`terrainAt` climbs the toe of the range and then answers `null`, the
+lake's answer — the mountains are seen, not climbed), the forest line, and the
+cable car. The cable car is the way up: one line from a stop by the camp, two
+counterweighted cabins that swap ends, and a lookout deck on the summit saddle
+with armchairs, a bench, a record player on its own stand and a string of
+lights — a record rides up in hand the way a book does, so the crosshair offers
+the stations with either held. The cabins ride `cabinAt`, the
+same curve the ride carries the player along (`state/cableCar.ts`, a per-frame
+mutable like the player and the courier, stepped by `Player.tsx` the way
+sitting is). The deck is a floor `terrainAt` returns like the plank bridge, so
+stepping off its edge is refused exactly as the loft's is.
+
+The stations and the deck's furniture are **site furniture**: `deriveWorld`
+injects them as ordinary `DerivedFurniture` under the room id `site` (their ids
+are `SITE_IDS`, refused in a document). Injecting furniture rather than
+inventing a second interaction path is what makes the crosshair, `E`, sitting
+and the lamp machinery work on a mountain no document describes; the `cablecar`
+kind exists in the type but deliberately not in `FURNITURE_KINDS`, because a
+map can no more place a station than move the lake.
 
 Set dressing in [src/scene/Outside.tsx](../src/scene/Outside.tsx) — rocks,
 reeds, lily pads, boulders and stumps — and the forest floor in
@@ -415,7 +447,7 @@ than throwing, as the rain does. Its level has its own slider (**Small Sounds**)
 
 | module                 | holds                                                                               | notes                                     |
 | ---------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------- |
-| `state/store.ts`       | session and UI: mode, crosshair focus, what is in your hands                        | zustand                                   |
+| `state/store.ts`       | session and UI: mode, crosshair focus, what is in your hands and in the satchel     | zustand                                   |
 | `state/library.ts`     | the catalogue, the shelving, progress, pins, board drawings, records you have moved | zustand; debounces layout saves by 600 ms |
 | `state/annotations.ts` | bookmarks and page notes, in their own readable file                                | zustand; saves to `annotations.json`      |
 | `state/world.ts`       | the parsed document and the derived world                                           | zustand                                   |

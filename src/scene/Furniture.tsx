@@ -2299,6 +2299,47 @@ function Step({ width, depth, height }: { width: number; depth: number; height: 
 }
 
 /**
+ * A cable car station: two posts carrying a sheave wheel, a call board, and a
+ * plinth to stand it on. The cabins and the line itself are `Mountains.tsx` —
+ * this is only the thing the crosshair finds and E boards from.
+ */
+function CableCarStation({ width, height }: { width: number; height: number }) {
+  const parts = useMerged(
+    useMemo(() => {
+      const wheel = new THREE.CylinderGeometry(0.34, 0.34, 0.09, 14)
+      wheel.rotateX(Math.PI / 2)
+      wheel.translate(0, height - 0.56, 0)
+      const hub = new THREE.CylinderGeometry(0.07, 0.07, 0.15, 8)
+      hub.rotateX(Math.PI / 2)
+      hub.translate(0, height - 0.56, 0)
+      return {
+        timber: [
+          block(0.12, height - 0.2, 0.12, -(width - 0.14) / 2, (height - 0.2) / 2, 0),
+          block(0.12, height - 0.2, 0.12, (width - 0.14) / 2, (height - 0.2) / 2, 0),
+          block(width, 0.14, 0.14, 0, height - 0.13, 0),
+          block(width, 0.12, 0.55, 0, 0.06, 0),
+        ],
+        steel: [wheel, hub],
+        sign: [block(0.52, 0.3, 0.05, 0, 1.32, 0.06)],
+      }
+    }, [width, height]),
+  )
+  return (
+    <group>
+      <mesh geometry={parts.timber} castShadow receiveShadow>
+        <meshStandardMaterial color={MATERIALS.timber} roughness={0.92} map={woodGrainTexture()} />
+      </mesh>
+      <mesh geometry={parts.steel} castShadow>
+        <meshStandardMaterial color={STEEL} roughness={0.5} metalness={0.4} />
+      </mesh>
+      <mesh geometry={parts.sign}>
+        <meshStandardMaterial color={SHADE} roughness={0.9} />
+      </mesh>
+    </group>
+  )
+}
+
+/**
  * Whether anything in the library is lit, for the switch plates. Only asked when
  * a switch is on screen: it walks every lamp in the building.
  */
@@ -2504,6 +2545,8 @@ function Piece({ item, source }: { item: DerivedFurniture; source: string | null
         return <Stairs width={item.width} run={item.depth} rise={item.height} />
       case 'step':
         return <Step width={item.width} depth={item.depth} height={item.height} />
+      case 'cablecar':
+        return <CableCarStation width={item.width} height={item.height} />
     }
   })()
 

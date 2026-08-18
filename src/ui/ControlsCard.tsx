@@ -23,6 +23,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['R'], 'Read the book in your hand — PDF or EPUB'],
       [['G'], 'Empty the box you are looking at onto the nearest shelves'],
       [[',', '.', '[', ']'], 'Browse the pile in a box (the wheel works too)'],
+      [['I'], 'The satchel: stow the book or record in your hand — it holds one of each — or, empty-handed, take one back out'],
       [['X'], 'Carry a box, or the folding chair or table; again to set it down'],
       [['⌫'], 'Break down an empty box — spares wait on the stack in the kitchen, E takes one'],
       [['L'], 'Write a label on the bookcase you are aiming at'],
@@ -93,6 +94,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     title: 'The Room',
     rows: [
       [['E'], 'Open and close the front door; light the campfire across the lake'],
+      [['E'], 'Ride the cable car up the mountain, book or record in hand — the lookout has chairs, a record player and the whole lake below it'],
       [['N'], 'Day to night and back'],
       [['K'], 'Rain on and off — you can hear it, louder outside'],
       [['E'], 'At the office terminal, search the whole library for anything'],

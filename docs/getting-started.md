@@ -29,9 +29,10 @@ pictures, a tape and a Pong cartridge for the arcade machine, all freely
 licensed — the credits are in the folder's own
 [README](../demo-data/demo-library/README.md).
 
-Point the app at it like any other library folder: **Choose Folder…**, then
-**Scan**. It fills four boxes rather than a room, which is enough to unpack a
-shelf, put a record on and read something. The container can use it too:
+Point the app at it like any other library folder with **Choose Folder…** — the
+scan starts by itself. It fills four boxes rather than a room, which is enough
+to unpack a shelf, put a record on and read something. The container can use it
+too:
 
 ```bash
 docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/demo-data/demo-library:/library" kleib3ry
@@ -45,7 +46,10 @@ shipped: delete those two and `git restore demo-data/demo-library`.
 
 ## Point It at Your Books
 
-Press **Choose Folder…** in the panel and pick a folder. Then press **Scan**.
+Press **Choose Folder…** in the panel and pick a folder. The scan starts on its
+own — how far it has got, and roughly how long is left, shows where you are: in
+the menu, in the settings panel and in the status strip. **Scan** is still there
+for looking at the same folder again after its contents change.
 
 The folder wants to look like this. Only `books/` is needed; the rest is what
 turns a shelf of books into a room you want to be in.

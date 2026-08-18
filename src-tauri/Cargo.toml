@@ -34,6 +34,13 @@ base64 = "0.23.1"
 # Used by `tauri dev` to keep the devtools available in release-ish builds.
 custom-protocol = ["tauri/custom-protocol"]
 
+# `tauri dev` builds this profile, and an unoptimised lopdf parses a big PDF
+# tens of times slower than an optimised one — a scan that takes minutes in a
+# shipped build takes hours in dev without this. Dependencies only (the core
+# crate included), so this crate's own rebuilds stay quick.
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 codegen-units = 1
 lto = true

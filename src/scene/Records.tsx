@@ -98,6 +98,7 @@ export function Records() {
   // of its crate, and the instances must follow the moment either changes.
   const playing = useMediaStore((s) => s.playing)
   const heldRecord = useAppStore((s) => s.heldRecord)
+  const satchel = useAppStore((s) => s.satchel)
   const crateOffsets = useAppStore((s) => s.crateOffsets)
   const setCrateDeal = useAppStore((s) => s.setCrateDeal)
   const filedRecords = useLibraryStore((s) => s.filedRecords)
@@ -288,10 +289,11 @@ export function Records() {
 
     const amount = lift.current[i] ?? 0
     const drawn = drawnOut.current[i] ?? 0
-    // A record on the deck, or in your hand, is not in the crate.
+    // A record on the deck, in your hand or in the satchel is not in the crate.
     const away =
       useMediaStore.getState().playing === item.id ||
-      useAppStore.getState().heldRecord === item.id
+      useAppStore.getState().heldRecord === item.id ||
+      useAppStore.getState().satchel.some((stowed) => stowed.id === item.id)
     // The sleeve you have riffled to comes forward of the crate's front edge and
     // up clear of its rim, because the sleeves in front of it are what hide it.
     position.set(
@@ -412,7 +414,7 @@ export function Records() {
       sceneRefs.recordCrates = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capacity, filed, playing, heldRecord])
+  }, [capacity, filed, playing, heldRecord, satchel])
 
   useFrame((_, delta) => {
     const mesh = meshRef.current

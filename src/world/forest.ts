@@ -7,8 +7,11 @@ import {
   TRAIL_WIDTH,
   WALK_RADIUS,
   alongStream,
+  inVista,
   lakeRadius,
+  mountainHeight,
   onTrail,
+  underCable,
 } from './terrain'
 
 /**
@@ -62,6 +65,13 @@ export function occupied(x: number, z: number, keepOut: readonly Bounds[]): bool
   // The sight-line from the north windows, stopping at the lake so the tree
   // line closes behind the far shore rather than opening onto a plain.
   if (z < LAKE.viewFrom && z > LAKE.z && Math.abs(x - LAKE.x) < LAKE.viewX) return true
+  // The mountains: a tree planted at ground height on a slope floats or drowns.
+  if (mountainHeight(x, z) > 0.05) return true
+  // The cable car's corridor, so nothing grows up into the line.
+  if (underCable(x, z, 2.5)) return true
+  // The lookout's sight-fan down to the water, for the same reason as the
+  // north windows' corridor: a view somebody built a platform for stays open.
+  if (inVista(x, z)) return true
   for (const box of keepOut) {
     if (x > box.minX && x < box.maxX && z > box.minZ && z < box.maxZ) return true
   }

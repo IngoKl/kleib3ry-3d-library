@@ -11,6 +11,7 @@ import { useVideoStore } from '../state/video'
 import { useWorldStore } from '../state/world'
 import { eveningNow, useSettings } from '../state/settings'
 import { floorAt, supportAt } from '../world/derive'
+import { ScanStatus } from './ScanStatus'
 
 /**
  * Settings, behind F2. Sections are ordered by how often they are opened:
@@ -415,6 +416,7 @@ export function SettingsCard() {
           {exported}
         </p>
       )}
+      <ScanStatus />
       {!scanning && lastScan && (
         <p className="note">
           {lastScan.added} new · {lastScan.unchanged} unchanged · {lastScan.removed} gone

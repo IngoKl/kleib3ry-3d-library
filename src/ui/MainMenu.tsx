@@ -11,6 +11,7 @@ import { useWorldStore } from '../state/world'
 import { forgetCovers, warmCovers } from '../state/covers'
 import { teleport } from '../state/player'
 import { forgetLibrary, recentLibraries, rememberLibrary } from '../state/settings'
+import { ScanStatus } from './ScanStatus'
 
 /** A touch over the CSS fade, so the last frame painted is already transparent. */
 const LEAVE_MS = 340
@@ -95,6 +96,10 @@ export function MainMenu() {
       const world = useWorldStore.getState().world
       if (world) teleport(world.spawn.x, world.spawn.z, world.spawn.yaw, world.spawn.y)
       warmCovers(useLibraryStore.getState().books)
+      // A folder other than the one that was open has not been looked at yet:
+      // scan it now rather than sending anyone to find the button in settings.
+      // Fire and forget — the scan reports through the status lines above.
+      if (library.canIndex && chosen !== libraryRoot) void useLibraryStore.getState().scan()
       rememberLibrary(chosen)
       setRecent(recentLibraries())
     } catch (error) {
@@ -131,6 +136,7 @@ export function MainMenu() {
         {worldError && <p className="note warn">{worldError}</p>}
         {libraryError && <p className="note warn">{libraryError}</p>}
         {openError && <p className="note warn">{openError}</p>}
+        <ScanStatus />
 
         {/* Only where the driver can actually switch folders: in hosted mode the
             root is the mounted folder, and a list of buttons whose click can only

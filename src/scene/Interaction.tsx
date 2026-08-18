@@ -7,6 +7,7 @@ import { useShelfTransforms } from './transforms'
 import { insertionIndex, rowFits, rowKey } from './shelving'
 import { rowFromLocalY } from '../world/shelf'
 import { packedRow, useLibraryStore } from '../state/library'
+import { cableRide } from '../state/cableCar'
 import { useAppStore } from '../state/store'
 import { useWorldStore } from '../state/world'
 
@@ -94,7 +95,9 @@ export function Interaction() {
   useFrame(() => {
     const store = useAppStore.getState()
 
-    if (mode !== 'walk' || !world) {
+    // Mid-air in the cable car nothing is on offer, or the crosshair would
+    // raise cards for a forest passing thirty metres below.
+    if (mode !== 'walk' || !world || cableRide.riding) {
       store.setFocusedBook(null)
       store.setShelfTarget(null)
       store.setFocusedSeat(null)
@@ -175,7 +178,13 @@ export function Interaction() {
       if (operable) {
         const hit = raycaster.intersectObject(operable, true)[0]
         const id = furnitureIdOf(hit)
-        if (hit && id && kindOf(id) === 'recordplayer') deck = { distance: hit.distance, id }
+        const kind = kindOf(id)
+        // The cable car too: the deck on the lookout is fed by carrying a
+        // sleeve up, so the station must be offered with one in hand — E
+        // boards before the record branch can try to play it on a station.
+        if (hit && id && (kind === 'recordplayer' || kind === 'cablecar')) {
+          deck = { distance: hit.distance, id }
+        }
       }
 
       // Both come off the same hit, because a crate is a surface — which is
@@ -721,7 +730,16 @@ export function Interaction() {
     // count, so every group has to be tried and the nearest hit wins.
     store.setFocusedBook(null)
     store.setFocusedBox(null)
-    store.setFocusedFixture(null)
+
+    // One fixture is still offered with a book in hand: the cable car, because
+    // riding up with the book you mean to read is what the lookout is for.
+    {
+      const operable = sceneRefs.fixtures
+      const hit = operable ? raycaster.intersectObject(operable, true)[0] : undefined
+      const id = furnitureIdOf(hit)
+      const kind = id ? world.furniture.find((piece) => piece.id === id)?.kind : undefined
+      store.setFocusedFixture(kind === 'cablecar' ? id : null)
+    }
     store.setFocusedRecord(null)
     store.setFocusedCrate(null)
     store.setFocusedTape(null)

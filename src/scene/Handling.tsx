@@ -5,6 +5,7 @@ import { FURNITURE_SIZE, PORTABLE, supportAt } from '../world/derive'
 import { makeHand } from './hand'
 import { launchBody, throwFrom } from './drop'
 import { playOneShot } from './ambientSound'
+import { pressSatchel, type SatchelItem } from '../state/satchel'
 import { roomHasKeyboard, useAppStore } from '../state/store'
 import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useWorldStore } from '../state/world'
@@ -16,6 +17,7 @@ import { player } from '../state/player'
  *
  *   Q  drop what you are holding, on the floor, with gravity
  *   O  put it down open at the page you were on
+ *   I  the satchel — stow the book or record in your hand, or take one out
  *   L  write a label on the bookcase you are looking at
  *   T  write a note, to stick on a wall
  *   X  pick up or set down a box, a folding chair or a folding table
@@ -119,6 +121,38 @@ export function Handling() {
           spread: 0,
         })
         app.setHeld(null)
+        return
+      }
+
+      if (e.code === 'KeyI') {
+        e.preventDefault()
+        // Both arms round a box: nothing goes in or out of the bag.
+        if (app.carried) return
+        const hand: SatchelItem | null = app.held
+          ? { kind: 'book', id: app.held }
+          : app.heldRecord
+            ? { kind: 'record', id: app.heldRecord }
+            : null
+        // Taking out needs a free hand, and nothing else stows — a tape, a
+        // cartridge, the marker and the crockery all live somewhere already.
+        if (
+          hand === null &&
+          (app.heldTape || app.heldRom || app.heldProp || app.heldMarker || app.heldPin)
+        ) {
+          app.notify('Only a book or a record goes in the satchel.')
+          return
+        }
+        const press = pressSatchel(app.satchel, hand)
+        if (!press.moved) {
+          app.notify('The satchel is empty.')
+          return
+        }
+        app.setSatchel(press.satchel)
+        if (hand) (hand.kind === 'book' ? app.setHeld : app.setHeldRecord)(null)
+        if (press.taken) {
+          ;(press.taken.kind === 'book' ? app.setHeld : app.setHeldRecord)(press.taken.id)
+        }
+        playOneShot('rustle', 0.5, { rate: 0.95 + Math.random() * 0.1 })
         return
       }
 

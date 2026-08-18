@@ -7,6 +7,7 @@ import { floorAt, roomAt } from '../world/derive'
 import { groundSurface } from '../world/terrain'
 import { playOneShot } from './ambientSound'
 import { EYE_HEIGHT, KNEEL_HEIGHT, PLAYER_RADIUS, SEATED_EYE, player } from '../state/player'
+import { startRide, stepRide } from '../state/cableCar'
 import { roomHasKeyboard, useAppStore } from '../state/store'
 import { NEW_BOX, useLibraryStore } from '../state/library'
 import { useAmbienceStore } from '../state/ambience'
@@ -189,6 +190,24 @@ export function Player() {
         return
       }
 
+      // The cable car takes you as you are — the book still in hand is the
+      // point of riding up to the lookout. Only the boarding E lives here;
+      // the ride itself is `state/cableCar.ts`, stepped by the frame loop.
+      if (focusedFixture !== null) {
+        const piece = useWorldStore
+          .getState()
+          .world?.furniture.find((item) => item.id === focusedFixture)
+        if (piece?.kind === 'cablecar') {
+          startRide(piece.id === 'cablecar-base' ? 'base' : 'top', {
+            x: player.x,
+            z: player.z,
+            floor: player.floor,
+          })
+          playOneShot('click', 0.8)
+          return
+        }
+      }
+
       // The marker goes back on its tray. There is nowhere else for it to be —
       // it never left the office, it was only in your hand.
       if (state.heldMarker !== null) {
@@ -330,13 +349,15 @@ export function Player() {
         }
         // Aimed at the crate, E takes the sleeve you riffled to — the one
         // standing proud, which is what the card names — so browsing and
-        // picking up compose. Never the record on the deck: its sleeve is not
-        // in the crate, though the riffle still counts its place.
+        // picking up compose. Never the record on the deck or in the satchel:
+        // its sleeve is not in the crate, though the riffle still counts its place.
         const riffled = state.focusedCrate
           ? (state.crateViews[state.focusedCrate]?.record ?? null)
           : null
-        const takeable =
-          focusedRecord ?? (riffled !== useMediaStore.getState().playing ? riffled : null)
+        const elsewhere = (id: string | null) =>
+          id === useMediaStore.getState().playing ||
+          state.satchel.some((stowed) => stowed.id === id)
+        const takeable = focusedRecord ?? (!elsewhere(riffled) ? riffled : null)
         if (takeable) {
           setHeldRecord(takeable)
           return
@@ -427,10 +448,13 @@ export function Player() {
         return
       }
       // Every light together, off when anything is lit, so one press always
-      // darkens the house. Except the campfire, which is across the lake.
+      // darkens the house. Except the campfire, which is across the lake —
+      // and the lookout's string, which is up a mountain with it.
       if (item.kind === 'lightswitch' && world) {
         const lights = useAmbienceStore.getState()
-        const house = world.lights.filter((lamp) => lamp.kind !== 'campfire')
+        const house = world.lights.filter(
+          (lamp) => lamp.kind !== 'campfire' && lamp.roomId !== 'site',
+        )
         const anyOn = house.some((lamp) => lights.isOn(lamp.id, lamp.defaultOn))
         lights.setAll(
           house.map((lamp) => lamp.id),
@@ -926,6 +950,26 @@ export function Player() {
       player.fov = fov
     }
 
+    // Riding the cable car: the cabin has you. Looking and zooming stay yours
+    // — the view is the point — but position and floor are the ride's until it
+    // sets you down at the far end.
+    const ride = stepRide(delta)
+    if (ride) {
+      velocity.current.x = 0
+      velocity.current.z = 0
+      player.speed = 0
+      player.crouch = 0
+      player.x = ride.x
+      player.z = ride.z
+      player.floor = ride.floor
+      const rideEye = ride.floor + EYE_HEIGHT
+      player.eye += (rideEye - player.eye) * approach(10, delta)
+      if (Math.abs(rideEye - player.eye) < 0.002) player.eye = rideEye
+      bobWeight.current += (0 - bobWeight.current) * approach(6, delta)
+      place(player.x, player.eye, player.z, delta)
+      return
+    }
+
     const seatId = useAppStore.getState().seat
     const seat = seatId ? world?.furniture.find((item) => item.id === seatId) : undefined
 
@@ -1060,13 +1104,16 @@ export function Player() {
       if (sinceStep.current >= stride) {
         sinceStep.current = 0
         const room = world ? roomAt(world, player.x, player.z, player.floor) : null
+        const outdoors = groundSurface(player.x, player.z)
         const surface = room
           ? room.floor === 'stone'
             ? 'step-stone'
             : 'step-wood'
-          : groundSurface(player.x, player.z) === 'sand'
+          : outdoors === 'sand'
             ? 'step-sand'
-            : 'step-grass'
+            : outdoors === 'wood'
+              ? 'step-wood'
+              : 'step-grass'
         // No two footfalls alike: weight jittered, and pitch only slightly —
         // a wide rate swing on a resonant tap is what turns wood into tin.
         const base =

@@ -95,6 +95,10 @@ export type FurnitureKind =
   // structure
   | 'stairs'
   | 'step'
+  // site machinery, injected by `deriveWorld` and deliberately absent from
+  // FURNITURE_KINDS: the cable line is a fact about the valley, so a document
+  // cannot place a station any more than it can move the lake
+  | 'cablecar'
 
 export type FurnitureSpec = {
   id: string
@@ -303,6 +307,24 @@ function oneOf<T extends string>(
 const WALLS = ['north', 'south', 'east', 'west'] as const
 const FLOORS = ['boards', 'deck', 'stone'] as const
 const ROOFS = ['none', 'gable', 'shed', 'flat'] as const
+
+/**
+ * Ids the site's own furniture answers to — the cable car stations and the
+ * lookout deck's pieces, injected by `deriveWorld`. Refused in a document, or
+ * a map could put a second piece under an id E already boards a cabin by.
+ */
+export const SITE_IDS = [
+  'cablecar-base',
+  'cablecar-top',
+  'lookout-chair-a',
+  'lookout-chair-b',
+  'lookout-table',
+  'lookout-rug',
+  'lookout-bench',
+  'lookout-lights',
+  'lookout-stand',
+  'lookout-player',
+] as const
 
 export const FURNITURE_KINDS = [
   'armchair',
@@ -530,6 +552,9 @@ export function parseWorld(raw: unknown): WorldDocument {
     for (const item of room.furniture) {
       if (seenFurniture.has(item.id)) {
         fail(`rooms[${room.id}].furniture`, `the id "${item.id}" is used more than once`)
+      }
+      if ((SITE_IDS as readonly string[]).includes(item.id)) {
+        fail(`rooms[${room.id}].furniture`, `the id "${item.id}" is reserved for the site's cable car`)
       }
       seenFurniture.add(item.id)
     }

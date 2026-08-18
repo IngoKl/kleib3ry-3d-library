@@ -37,6 +37,13 @@ Nothing the app does is written back into this file. Where you shove the boxes,
 which lamps you switch off and what you write on a shelf label all live in
 `books.json` and `ambience.json` beside it.
 
+The document describes **buildings**. The site around them — the lake, the
+brook, the trails, the mountains across the north and the cable car up to the
+lookout — is fixed for every library, and the cable car's own pieces claim a
+few furniture ids (`cablecar-base`, `cablecar-top`, `lookout-…`; the parser
+names the exact list). Using one in a document is refused with an error rather
+than shadowing the piece `E` already boards a cabin by.
+
 ---
 
 ## Rooms

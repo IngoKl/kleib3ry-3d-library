@@ -1,6 +1,6 @@
 import { aabbFromCentre, type Aabb } from '../scene/collision'
 import { CLEARING, growForest, treeSolids, type Tree } from './forest'
-import { terrainAt } from './terrain'
+import { CABLE_CAR, CABLE_SIDE, GROUND_Y, PLATFORM, terrainAt } from './terrain'
 import type {
   FloorHole,
   FurnitureKind,
@@ -116,6 +116,9 @@ export const FURNITURE_SIZE: Record<
   // Not solid: the point is to walk down it, and the controller reads the
   // floor rather than the joinery — a 24 cm drop is inside `STEP_UP`.
   step: { width: 1.4, depth: 0.62, height: 0.24, solid: false, surface: false },
+  // A cable car station: posts, a wheel and a call board, standing beside the
+  // boarding spot. Site furniture — see `siteFurniture` below.
+  cablecar: { width: 1.15, depth: 0.7, height: 2.5, solid: true, surface: false },
 }
 
 /**
@@ -172,6 +175,7 @@ export const APPLIANCES = new Set<FurnitureKind>([
   'door',
   'arcade',
   'rombox',
+  'cablecar',
 ])
 
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -700,6 +704,72 @@ export type BoxEdits = {
   removed?: readonly string[]
 }
 
+/**
+ * The furniture the site itself provides, in world coordinates and with the
+ * `site` room id, since no document room owns the mountainside. Ordinary
+ * furniture in every other respect: the stations are appliances E operates,
+ * the chairs and bench are seats, the fairy lights are a lamp on the pool —
+ * which is what makes the lookout a place to read rather than scenery.
+ */
+function siteFurniture(): DerivedFurniture[] {
+  const piece = (
+    id: string,
+    kind: FurnitureKind,
+    x: number,
+    y: number,
+    z: number,
+    facing: number,
+    extra: Partial<Pick<FurnitureSpec, 'size' | 'on'>> = {},
+  ): DerivedFurniture => {
+    const base = FURNITURE_SIZE[kind]
+    return {
+      id,
+      kind,
+      at: [x, z],
+      facing,
+      ...extra,
+      roomId: 'site',
+      x,
+      y,
+      z,
+      rotationY: radians(facing),
+      width: extra.size?.[0] ?? base.width,
+      depth: base.depth,
+      height: base.height,
+      surface: base.surface,
+    }
+  }
+
+  const deckX = PLATFORM.x
+  const deckZ = PLATFORM.z
+  return [
+    // The stations stand beside their boarding spots, wheels facing them.
+    piece('cablecar-base', 'cablecar', CABLE_CAR.base.x + 1.4, GROUND_Y, CABLE_CAR.base.z - 0.2, 270),
+    piece('cablecar-top', 'cablecar', deckX + 2.4, PLATFORM.y, deckZ + 1.9, 270),
+    // Two armchairs at the south rail, angled a little towards each other, a
+    // table between them and a rug underneath: the reading corner, moved up
+    // the mountain. All facing the water, which is what the deck is for.
+    piece('lookout-chair-a', 'armchair', deckX - 1.9, PLATFORM.y, deckZ + 1.4, 8),
+    piece('lookout-chair-b', 'armchair', deckX - 0.55, PLATFORM.y, deckZ + 1.5, 352),
+    piece('lookout-table', 'sidetable', deckX - 1.2, PLATFORM.y, deckZ + 0.45, 0),
+    piece('lookout-rug', 'rug', deckX - 1.2, PLATFORM.y, deckZ + 1.2, 90),
+    // The bench along the west rail, for company — or for the books.
+    piece('lookout-bench', 'bench', deckX - 2.9, PLATFORM.y, deckZ - 0.4, 90),
+    // A deck in the north-west corner, on its own stand: records ride up the
+    // way books do, in hand — the cable car is offered with a sleeve held.
+    piece('lookout-stand', 'sidetable', deckX - 2.9, PLATFORM.y, deckZ - 1.9, 0),
+    piece('lookout-player', 'recordplayer', deckX - 2.9, PLATFORM.y + 0.56, deckZ - 1.9, 135),
+    // Swooping between the two light-posts on the north rail's corners —
+    // `Mountains.tsx` raises the posts to exactly this height, so the string's
+    // ends are tied to something rather than to the sky. Lit by default: dusk
+    // on the deck is the whole point of staying up here past it.
+    piece('lookout-lights', 'fairylights', deckX, PLATFORM.y + 1.74, deckZ - PLATFORM.halfZ + 0.06, 0, {
+      size: [(PLATFORM.halfX - 0.06) * 2, 0.22],
+      on: true,
+    }),
+  ]
+}
+
 export function deriveWorld(
   doc: WorldDocument,
   overrides: Record<string, FurnitureOverride> = {},
@@ -860,6 +930,49 @@ export function deriveWorld(
         })
       }
     }
+  }
+
+  // The site's own furniture: the cable car stations and the lookout's deck.
+  // Injected here rather than written into the document, because the cable line
+  // is a fact about the valley — a map can no more move a station than the lake
+  // — and injecting *furniture* is what makes the crosshair, E, sitting and the
+  // lamps work on the mountain without a second interaction path.
+  for (const piece of siteFurniture()) {
+    furniture.push(piece)
+    if (FURNITURE_SIZE[piece.kind].solid) {
+      solids.push(
+        solidFrom(
+          aabbFromCentre(piece.x, piece.z, piece.width, piece.depth, piece.rotationY),
+          piece.y,
+          piece.y + piece.height,
+        ),
+      )
+    }
+    if (LAMPS.has(piece.kind)) {
+      lights.push({
+        id: piece.id,
+        kind: piece.kind,
+        roomId: 'site',
+        x: piece.x,
+        // The string's bulbs hang just under where it is strung, as indoors.
+        y: piece.y - 0.06,
+        z: piece.z,
+        defaultOn: piece.on ?? true,
+      })
+    }
+  }
+
+  // The cable tower stands on walkable ground at the range's toe, so its legs
+  // are solid the way a trunk is; the cabins pass well over head height.
+  const kink = CABLE_CAR.path[1]!
+  for (const side of [-1, 1]) {
+    solids.push(
+      solidFrom(
+        aabbFromCentre(kink.x + CABLE_SIDE.x * side, kink.z + CABLE_SIDE.z * side, 0.16, 0.16),
+        GROUND_Y,
+        kink.y + 2.6,
+      ),
+    )
   }
 
   // The forest keeps out of every room's footprint plus a margin to walk in,
