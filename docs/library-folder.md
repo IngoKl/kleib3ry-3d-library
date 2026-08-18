@@ -478,9 +478,11 @@ Also written by the app, and deliberately tiny:
 ```
 
 `on` is keyed by the `id` of a piece of furniture that gives light. A lamp
-missing from here starts however `library.json` says. **Delete the file and
-every light comes back on** — a repair anybody can perform, and the reason this
-is its own file rather than four more lines in `books.json`.
+missing from here starts however `library.json` says, so **deleting the file
+puts every light back the way the document has it** — a repair anybody can
+perform, and the reason this is its own file rather than four more lines in
+`books.json`. That is not the same as all on: the default document starts four
+of its lamps dark.
 
 `night` and `rain` are here for the same reason as the lamps: they are facts
 about the room right now rather than settings about the app, so they travel with

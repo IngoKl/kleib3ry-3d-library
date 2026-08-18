@@ -33,14 +33,15 @@ in `docs/`.
 
 ```bash
 npm install
-npm run assets         # copy pdf.js standard_fonts + cmaps into public/ — gitignored, so needed after a fresh clone
+npm run assets         # pdf.js standard_fonts + cmaps, the sample book and the demo ROM into public/ — gitignored, so needed after a fresh clone
 npm run tauri:dev      # desktop app (native folder picker, real indexer)
 npm run dev            # browser only, placeholder catalogue, no filesystem
 npm run dev:http       # browser against a running kleib3ry-server
 
-npm run verify         # the gate before calling work done: lint, typecheck, build,
-                       # Playwright, clippy, cargo test
+npm run verify         # the gate before calling work done: lint, format, typecheck,
+                       # build, Playwright, clippy, cargo test
 npm run lint           # oxlint (.oxlintrc.json); lint:fix applies what it can
+npm run format         # Prettier then markdownlint over the Markdown; format:check verifies
 npm run lint:rust      # cargo clippy -D warnings, all three crates
 npm run typecheck
 npm test               # Playwright, headless Chromium against the production bundle

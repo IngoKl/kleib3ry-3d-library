@@ -19,9 +19,11 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "lint:rust": "cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path server/Cargo.toml --all-targets -- -D warnings",
+    "format": "prettier --write \"**/*.md\" && markdownlint-cli2 --fix \"**/*.md\"",
+    "format:check": "prettier --check \"**/*.md\" && markdownlint-cli2 \"**/*.md\"",
     "test:rust": "cargo test --manifest-path core/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path server/Cargo.toml",
     "scan": "cargo run --release --manifest-path src-tauri/Cargo.toml --bin scan --",
-    "verify": "npm run lint && npm run typecheck && npm run build && npm run test && npm run lint:rust && npm run test:rust",
+    "verify": "npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test && npm run lint:rust && npm run test:rust",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
@@ -58,7 +60,9 @@
     "@types/react-dom": "^19.2.4",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "markdownlint-cli2": "0.20.0",
     "oxlint": "^1.78.0",
+    "prettier": "3.9.6",
     "typescript": "^7.0.2",
     "vite": "^8.2.1"
   }

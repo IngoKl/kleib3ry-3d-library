@@ -52,7 +52,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
     title: 'Food, Drink and the Dark',
     rows: [
       [['E'], 'Take the coffee when the pot is full; a cold can from the fridge; the headlamp off the porch table'],
-      [['E'], 'On the telephone, order a food delivery — a courier walks it to the foot of the porch steps'],
+      [['E'], 'On the telephone, order a takeaway or an arXiv paper by id — a courier walks it out of the trees to the foot of the porch steps'],
       [['F'], 'Drink or eat what is in your hand — the coffee makes you quicker for a while'],
       [['E'], 'Set what you are holding down on any table; wearing the headlamp, an empty tabletop takes it off'],
       [['E'], 'Throw empties in the kitchen bin'],

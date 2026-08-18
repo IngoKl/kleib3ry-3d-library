@@ -1744,7 +1744,19 @@ test('a cartridge boots the arcade machine and the game draws on its screen', as
   const walked = await settled(page, () => window.__app.stats().mode === 'walk', 10_000)
   expect(walked, 'Esc did not step away from the machine').toBe(true)
 
-  // F takes the cartridge back out, and the screen goes dark with it.
+  // F takes the cartridge back out, and the screen goes dark with it. Stepping
+  // away leaves the crosshair to the next raycast, so the machine has to be
+  // back under it before F means anything — pressing on the mode flip alone
+  // races that, and eats the key on a loaded rasteriser.
+  const refocused = await settled(
+    page,
+    () =>
+      window.__app
+        .furniture()
+        .some((f) => f.kind === 'arcade' && f.id === window.__app.stats().focusedFixture),
+    10_000,
+  )
+  expect(refocused, 'the crosshair never came back to the machine').toBe(true)
   await page.keyboard.press('KeyF')
   const ejected = await settled(
     page,

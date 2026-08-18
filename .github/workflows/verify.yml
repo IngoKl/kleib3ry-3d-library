@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   front-end:
-    name: lint, typecheck, build
+    name: lint, format, typecheck, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +27,7 @@ jobs:
       # pdf.js fonts and cmaps, the sample book, the demo ROM — none committed.
       - run: npm run assets
       - run: npm run lint
+      - run: npm run format:check
       - run: npm run typecheck
       - run: npm run build
 

@@ -166,14 +166,16 @@ fn file_name(id: &str, title: Option<&str>) -> String {
             .collect::<String>()
     };
     let stem = safe(&id.replace('/', "-"));
-    match title {
+    let cleaned = title.map(|text| {
+        let text = tidy(&safe(text));
+        text.chars().take(110).collect::<String>().trim().to_string()
+    });
+    match cleaned {
         // Title first — it is what a spine has room for; the id keeps two
         // papers of the same name distinct.
-        Some(title) if !title.is_empty() => {
-            let title = tidy(&safe(title));
-            let title: String = title.chars().take(110).collect();
-            format!("{} ({stem}).pdf", title.trim())
-        }
+        Some(title) if !title.is_empty() => format!("{title} ({stem}).pdf"),
+        // Tested after sanitising, not before: a title in a script none of this
+        // survives leaves nothing, and the bare id beats an empty bracket.
         _ => format!("{stem}.pdf"),
     }
 }
@@ -309,6 +311,10 @@ mod tests {
         assert!(name.contains("hep-th-9711200"));
         // No title is still a file, named for the paper.
         assert_eq!(file_name("2401.12345", None), "2401.12345.pdf");
+        // A title none of the sanitiser keeps falls back to the id rather than
+        // to a leading space and an empty bracket.
+        assert_eq!(file_name("2401.12345", Some("量子力学")), "2401.12345.pdf");
+        assert_eq!(file_name("2401.12345", Some("   ")), "2401.12345.pdf");
     }
 
     /// Ignored so the rest of the suite stays offline. Run this module's changes

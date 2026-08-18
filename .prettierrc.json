@@ -1,4 +1,5 @@
 {
   "proseWrap": "preserve",
-  "endOfLine": "auto"
+  "endOfLine": "auto",
+  "embeddedLanguageFormatting": "off"
 }

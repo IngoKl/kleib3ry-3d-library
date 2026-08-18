@@ -104,11 +104,13 @@ The reasoning behind all three is in
 
 ## What the Browser Has to Be
 
-The bundle is built for `chrome110`, and the EPUB reader unzips books with the
-platform's own `DecompressionStream('deflate-raw')` rather than shipping a zip
-library. That sets the floor: **Chrome 103+, Edge 103+, Safari 16.4+, Firefox
-113+**. Anything older loads the room and then cannot open an EPUB — a PDF still
-reads, since pdf.js does its own decompression.
+Two things set the floor, and the higher of them wins. The bundle is built for
+`chrome110`; and the EPUB reader unzips books with the platform's own
+`DecompressionStream('deflate-raw')` rather than shipping a zip library, which
+arrived in Chrome 103, Safari 16.4 and Firefox 113. So: **Chrome 110+, Edge
+110+, Safari 16.4+, Firefox 113+**. Below the reader's bar the room still loads
+and only EPUBs fail — a PDF reads either way, since pdf.js does its own
+decompression.
 
 One thing that is not a browser requirement but looks like one: an EPUB is set in
 type against the fonts that machine has, so the same book paginates slightly
@@ -145,15 +147,16 @@ by side.
 | `GET /api/books`                               | the index                                              |
 | `GET /api/book/<id>`                           | a book's bytes, for pdf.js                             |
 | `POST /api/cover/<id>`                         | cache a cover the browser rasterised                   |
+| `POST /api/paper`                              | download an arXiv paper, index it, return the book     |
 | `GET`/`POST` `/api/world`                      | the room document, as text                             |
 | `GET /api/world/stamp`                         | cheap changed-ness, for live reload                    |
 | `GET /api/paths`                               | which files this library is saved into                 |
 | `GET`/`PUT` `/api/layout`                      | which book is where                                    |
-| `GET`/`PUT` `/api/annotations`                 | bookmarks, page notes and page ink                     |
 | `GET /api/music`, `/api/artwork`, `/api/video` | the media folders                                      |
 | `GET /api/roms`                                | the games for the arcade machine                       |
 | `GET /api/rom/<id>`                            | one ROM's bytes, by listing id — like a book's         |
 | `GET`/`PUT` `/api/ambience`                    | which lamps are on, and whether it is night or raining |
+| `GET`/`PUT` `/api/annotations`                 | bookmarks, page notes and page ink                     |
 | `GET /media/<path>`                            | a media file, with byte ranges                         |
 | anything else                                  | the built front end, falling back to `index.html`      |
 

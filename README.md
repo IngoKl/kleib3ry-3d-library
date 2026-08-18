@@ -15,12 +15,12 @@ Please be aware that this is a fun little side project – a (tech) demo for som
 - Libraries (or savegames) are purely text-based and can be put under version control.
 - Maps can be defined and hence designed by changing the `library.json` in the `.library` folder within a library. The default map is a lakeside cabin in the woods, and the room reloads while you are standing in it.
 - Nothing shelves itself. A scan stacks your books in moving boxes on the floor; unpacking and sorting is something for you to do.
-- There is a cat and a delivery person; they can deliver food (not real), random books as well as arXiv papers freshly downloaded from the internet.
+- There is a cat and a delivery person; they can deliver food (not real), random books, as well as arXiv papers freshly downloaded from the internet.
 - It is not only about books: Records (audio files) for the record player, pictures for the frames, tapes (video files) for the television, and an arcade machine that is a real CHIP-8 interpreter.
 
 ## Getting Your Own Library
 
-### There are Two Ways to Run It
+### There Are Two Ways to Run It
 
 Both are the same program over the same library folder — see [docs/modes.md](docs/modes.md).
 The desktop app is built and released for **Windows**; on macOS and Linux the
@@ -58,7 +58,7 @@ TLS, so it is bound to this machine above; opening it to the rest of the house i
 `-p 8080:8080`, and a decision worth making deliberately
 ([docs/docker.md](docs/docker.md)).
 
-### There is a Demo Library
+### There Is a Demo Library
 
 [`demo-data/demo-library/`](demo-data/demo-library/) is a complete, freely-licensed
 library folder: ten [Standard Ebooks](https://standardebooks.org/) titles, two

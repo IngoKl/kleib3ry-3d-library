@@ -33,25 +33,26 @@ third rows are modes anyone runs. See [modes.md](modes.md).
 ## The Gate
 
 ```bash
-npm run verify         # lint + typecheck + build + Playwright + clippy + cargo test
+npm run verify         # lint + format + typecheck + build + Playwright + clippy + cargo test
 ```
 
 That is what "done" means. Individually:
 
-| command             | proves                                                                                                                                        |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run lint`      | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can                                 |
-| `npm run typecheck` | the front end type-checks                                                                                                                     |
-| `npm run build`     | the production bundle builds from the CLI                                                                                                     |
-| `npm test`          | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
-| `npm run lint:rust` | `cargo clippy -D warnings` over all three crates                                                                                              |
-| `npm run test:rust` | all three crates: core, the desktop shell, the server                                                                                         |
+| command                | proves                                                                                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint`         | oxlint over `src`, `tests` and `scripts` — config in `.oxlintrc.json`; `npm run lint:fix` applies what it can                                 |
+| `npm run format:check` | the Markdown is as Prettier and markdownlint would leave it; `npm run format` writes it                                                       |
+| `npm run typecheck`    | the front end type-checks                                                                                                                     |
+| `npm run build`        | the production bundle builds from the CLI                                                                                                     |
+| `npm test`             | headless Chromium boots the bundle, WebGL comes up, the room rasterises geometry, a real PDF opens and turns a page, and the console is clean |
+| `npm run lint:rust`    | `cargo clippy -D warnings` over all three crates                                                                                              |
+| `npm run test:rust`    | all three crates: core, the desktop shell, the server                                                                                         |
 
 Not part of the gate but useful beside it: `npm run scan -- <folder>` indexes a
 library folder's `books/` from the command line, with no app running — see
 [library-folder.md](library-folder.md#scanning-from-the-command-line).
 
-CI runs the same six things on every push and pull request, in
+CI runs the same seven things on every push and pull request, in
 [.github/workflows/verify.yml](../.github/workflows/verify.yml), split so the
 half-hour Playwright job runs _beside_ the two-minute one rather than behind it.
 The desktop shell is clippy'd and tested on a Windows runner, since `src-tauri`
@@ -218,6 +219,13 @@ frame had 2 ms of work in it or 16.
 - **Auto-repeat moves you; it does not act for you.** Any key handler that does
   something once takes `if (e.repeat) return`, or holding the key repeats the
   action thirty times a second.
+- **Prettier owns the Markdown and nothing else.** TypeScript and Rust here are
+  laid out by hand and gated by oxlint and clippy, so Prettier is never the
+  default formatter — see [../.vscode/settings.json](../.vscode/settings.json).
+  `embeddedLanguageFormatting` is **off** because the `jsonc` examples in these
+  docs are hand-aligned, and Prettier 3 would otherwise put a trailing comma
+  after the last property of each one, which is not JSON any more. markdownlint
+  runs after Prettier and is configured to agree with it.
 - TypeScript is strict, with `noUncheckedIndexedAccess`, `noUnusedLocals` and
   `noUnusedParameters`. `tsconfig.json` covers `src`, `tests`, `scripts` and the
   config files, so a test or a script that does not type-check fails the build.

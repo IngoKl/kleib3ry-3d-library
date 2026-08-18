@@ -123,18 +123,19 @@ probing would make a slow server come up as an empty stand-in library.
 ## The Three Rust Crates
 
 ```text
-core/        indexing, the JSON index, format probes, the media folders.  No GUI.
+core/        indexing, the JSON index, format probes, the media folders, arXiv. No GUI.
 src-tauri/   the desktop shell: IPC commands, settings, asset scope, picker.
 server/      HTTP: the same core, one route per LibraryService method.
 ```
 
-Four modules: `index` walks the folder and reconciles what it finds, `catalog`
-is the index file itself, `probe` reads PDFs, EPUBs and audio tags, and `media`
-walks the four folders that are not indexed. The index is JSON rather than a
-database because **the library folder is the save file**: plain text diffs
-cleanly in version control, reads without the app, and leaves no side files for
-a sync client to copy half of. Paths in it are relative to the library root, so
-copying a folder to another machine or OS strands nothing.
+Five modules: `index` walks the folder and reconciles what it finds, `catalog`
+is the index file itself, `probe` reads PDFs, EPUBs and audio tags, `media`
+walks the four folders that are not indexed, and `paper` fetches an arXiv PDF
+into `books/` and indexes it. The index is JSON rather than a database because
+**the library folder is the save file**: plain text diffs cleanly in version
+control, reads without the app, and leaves no side files for a sync client to
+copy half of. Paths in it are relative to the library root, so copying a folder
+to another machine or OS strands nothing.
 
 Keeping `core/` free of a GUI is what buys a server image that is a binary and a
 folder of files, instead of a Linux box carrying a browser engine in order to

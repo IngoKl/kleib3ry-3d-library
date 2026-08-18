@@ -155,7 +155,11 @@ mounted — so the button is off; see [modes.md](modes.md).
 Settings are `F2`, from the menu or the room. Most are about your machine rather
 than your library:
 
-- **Low Performance Mode** — no shadows, no window light, one pixel per pixel.
+- **Low Performance Mode** — one switch over the three dials under it: shadows
+  off, one pixel drawn per pixel of window, and at most four lamps lit at once.
+  It is a floor rather than a branch, so the switch always wins.
+- **Resolution**, **Shadows** and **Lamps At Once** — those three dials on their
+  own, for tuning rather than surrendering.
 - **Show My Body**, **Interface**, **Mouse Sensitivity**, **Volume**.
 - **Books Lean** — a row with room left settles back against the side panel;
   off stands every book plumb.
