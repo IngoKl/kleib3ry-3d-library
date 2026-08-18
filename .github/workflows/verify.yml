@@ -1,0 +1,90 @@
+# The same gate as `npm run verify`, split so the half-hour Playwright job runs
+# beside the two-minute checks rather than behind them.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first; nobody needs the older answer.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  front-end:
+    name: lint, format, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # pdf.js fonts and cmaps, the sample book, the demo ROM — none committed.
+      - run: npm run assets
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+
+  rust:
+    name: clippy and cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Only core and server; src-tauri needs GTK and WebKit, so it runs on the
+      # Windows job below.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core -> target
+      - run: cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path server/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path core/Cargo.toml
+      - run: cargo test --manifest-path server/Cargo.toml
+
+  desktop-shell:
+    name: clippy and cargo test (desktop shell)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  smoke:
+    name: playwright
+    runs-on: ubuntu-latest
+    # Thirty-odd minutes on a software rasteriser, and slower on a busy runner.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run assets
+      - run: npx playwright install --with-deps chromium
+      # The suite serves the production bundle, so it has to exist first.
+      - run: npm run build
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
+  container:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Not pushed anywhere; this only proves the three-stage build still assembles.
+      - run: docker build -t kleib3ry .

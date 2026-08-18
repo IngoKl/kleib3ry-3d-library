@@ -1,0 +1,41 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Rust — one build directory per crate
+core/target/
+server/target/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+tests/screenshots/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Written by `npm run assets` — the generator is the source, so a committed
+# copy would only shadow a fresh one.
+public/standard_fonts/
+public/cmaps/
+public/sample-book.pdf
+public/sample-book.epub
+public/roms/
+
+# Docker build context leftovers
+.docker-build/
+
+# Demo data. The index, cover cache and layout are committed so the demo arrives
+# shelved; what the app writes at runtime is not, or playing would dirty the tree.
+demo-data/demo-library/.library/ambience.json
+demo-data/demo-library/.library/library.json
+demo-data/demo-library/.library/annotations.json

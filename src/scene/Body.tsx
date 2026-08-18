@@ -1,0 +1,186 @@
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+import { block, join } from './geometry'
+import { EYE_HEIGHT, player } from '../state/player'
+import { approach, shortestTurn } from '../lib/ease'
+import { useAppStore } from '../state/store'
+import { useSettings } from '../state/settings'
+
+/**
+ * Your own body, seen from inside it — a setting, since it makes some people
+ * queasy. Four decisions keep it out of trouble: it stops below the collar,
+ * because a head modelled round the camera is a face seen from inside; it hangs
+ * off eye height, so crouching and stairs move it for free; it stands a hand's
+ * width behind the eyes, or the torso front clips the near plane; and the legs
+ * swing off distance travelled rather than a clock, so they never skate.
+ *
+ * Nothing raycasts it: a body you could point at is one you could take a book
+ * out of. Four merged geometries rather than fourteen meshes.
+ */
+
+const CLOTH = '#4a4f57'
+const CLOTH_DARK = '#3a3f46'
+const SKIN = '#b98d6c'
+
+/** How far below your eyes the shoulders are, and how far behind them. */
+const SHOULDER = 0.28
+const BEHIND = 0.16
+/** How far the legs swing, in radians, at a full walk. */
+const STRIDE = 0.55
+/** How far your head can turn before your shoulders follow it. */
+const NECK = 0.7
+
+export function Body() {
+  const show = useSettings((s) => s.showBody)
+  const mode = useAppStore((s) => s.mode)
+  const seated = useAppStore((s) => s.seat !== null)
+
+  const group = useRef<THREE.Group>(null)
+  const left = useRef<THREE.Group>(null)
+  const right = useRef<THREE.Group>(null)
+  const phase = useRef(0)
+  /**
+   * Not which way you are looking: pinned to the camera, the torso whips past
+   * the bottom of the screen at every glance. A real body turns its head first
+   * and its shoulders only once the head has gone far enough or the feet have
+   * started, which is most of what makes a body read as worn rather than carried.
+   */
+  const shoulders = useRef(0)
+
+  /** Three geometries plus one leg, which both legs share: the mirror is a scale. */
+  const parts = useMemo(() => {
+    const cloth = [
+      // Chest, stopping at the collarbone.
+      block(0.36, 0.34, 0.21, 0, -0.16, 0),
+      // Upper arms.
+      block(0.11, 0.3, 0.12, -0.23, -0.31, 0.02),
+      block(0.11, 0.3, 0.12, 0.23, -0.31, 0.02),
+    ]
+    const dark = [block(0.33, 0.24, 0.2, 0, -0.44, 0)]
+    // Forearms, angled in towards where a hand would rest.
+    for (const side of [-1, 1]) {
+      const arm = new THREE.BoxGeometry(0.095, 0.3, 0.1)
+      arm.rotateX(-0.5)
+      arm.translate(side * 0.23, -0.56, 0.06)
+      dark.push(arm)
+    }
+    const skin = [
+      block(0.085, 0.11, 0.07, -0.23, -0.7, 0.18),
+      block(0.085, 0.11, 0.07, 0.23, -0.7, 0.18),
+    ]
+    /**
+     * Hung from a hip at the group's origin, so a swing is a rotation. The
+     * lengths add up rather than being chosen — thigh, shin and sole have
+     * exactly 0.88 between them, and eight centimetres out is a foot through
+     * the floorboards.
+     */
+    const leg = [
+      block(0.15, 0.44, 0.16, 0, -0.22, 0),
+      block(0.13, 0.38, 0.14, 0, -0.63, 0),
+    ]
+    const foot = [block(0.13, 0.06, 0.26, 0, -0.85, 0.05)]
+
+    return {
+      cloth: join(cloth),
+      dark: join(dark),
+      skin: join(skin),
+      leg: join(leg),
+      foot: join(foot),
+    }
+  }, [])
+
+  useEffect(
+    () => () => {
+      for (const part of Object.values(parts)) part?.dispose()
+    },
+    [parts],
+  )
+
+  useFrame((_, rawDelta) => {
+    const node = group.current
+    if (!node) return
+    const delta = Math.min(rawDelta, 1 / 20)
+
+    // Late. Walking drags them round quickly, since you go where you are
+    // pointed; standing still lets the neck take up to NECK radians first.
+    const lead = shortestTurn(player.yaw - shoulders.current)
+    const walking = Math.min(1, player.speed / 0.6)
+    const slack = Math.max(0, Math.abs(lead) - NECK * (1 - walking))
+    if (slack > 0 || walking > 0) {
+      shoulders.current += lead * approach(2 + walking * 8, delta)
+    }
+
+    // Behind the eyes, not around them: stepping back along the way you are
+    // looking is what puts a chest under a face while the shoulders catch up.
+    node.position.set(
+      player.x + Math.sin(player.yaw) * BEHIND,
+      player.eye - SHOULDER,
+      player.z + Math.cos(player.yaw) * BEHIND,
+    )
+    node.rotation.y = shoulders.current
+
+    // Crouching brings the shoulders down and must not leave the feet
+    // underground, so the legs scale by what is left of a standing height.
+    // Sitting is exempt: the legs genuinely fold there.
+    const standing = EYE_HEIGHT - SHOULDER
+    const height = Math.max(0.35, player.eye - SHOULDER - player.floor)
+    node.scale.setScalar(seated ? 1 : Math.min(1, height / standing))
+
+    // Distance, not time: a leg that swings while you stand at a shelf is the
+    // most obviously wrong thing a body can do. Sideways counts, because
+    // `player.speed` is how fast you moved rather than how far forward.
+    phase.current += player.speed * delta * 4.6
+    const swing = Math.sin(phase.current) * STRIDE * Math.min(1, player.speed / 1.6)
+    // Sitting folds them forward instead, which is enough at the angle you see
+    // your own knees from in an armchair.
+    if (left.current) left.current.rotation.x = seated ? -1.35 : swing
+    if (right.current) right.current.rotation.x = seated ? -1.35 : -swing
+  })
+
+  // Nothing to see in read mode: the camera is docked on a page, and a torso
+  // hanging in the middle of the spread is not a feature.
+  if (!show || mode !== 'walk') return null
+
+  return (
+    <group ref={group}>
+      {/* Chest and upper arms. The arms do not swing: at this angle you see your
+          forearms and almost nothing else, and a swinging forearm with no
+          shoulder to hinge from reads as an arm coming loose. */}
+      {parts.cloth && (
+        <mesh geometry={parts.cloth} castShadow>
+          <meshStandardMaterial color={CLOTH} roughness={0.95} />
+        </mesh>
+      )}
+      {parts.dark && (
+        <mesh geometry={parts.dark} castShadow>
+          <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} />
+        </mesh>
+      )}
+      {parts.skin && (
+        <mesh geometry={parts.skin} castShadow>
+          <meshStandardMaterial color={SKIN} roughness={1} />
+        </mesh>
+      )}
+
+      {/* Legs, hinged at the hip so a swing is a rotation rather than a slide. */}
+      {[
+        { ref: left, side: -1 },
+        { ref: right, side: 1 },
+      ].map(({ ref, side }) => (
+        <group key={side} ref={ref} position={[side * 0.1, -0.52, 0]}>
+          {parts.leg && (
+            <mesh geometry={parts.leg} castShadow>
+              <meshStandardMaterial color={CLOTH_DARK} roughness={0.95} />
+            </mesh>
+          )}
+          {parts.foot && (
+            <mesh geometry={parts.foot} castShadow>
+              <meshStandardMaterial color="#2c2a28" roughness={0.9} />
+            </mesh>
+          )}
+        </group>
+      ))}
+    </group>
+  )
+}

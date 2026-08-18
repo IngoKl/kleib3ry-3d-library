@@ -1,0 +1,533 @@
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
+
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use walkdir::WalkDir;
+
+use crate::catalog::{relative_path, Book, Catalog, Format, COVER_EXTENSIONS};
+use crate::probe;
+use crate::Error;
+
+type Result<T> = std::result::Result<T, Error>;
+
+/// How much of a file feeds the identity hash. Enough to separate two different
+/// books of the same length, cheap enough to run over thousands of files.
+const ID_SAMPLE_BYTES: usize = 64 * 1024;
+
+/// Never a user's library, and often enormous. `.library` is ours: a scan must
+/// not look inside its own save folder.
+const SKIP_DIRS: [&str; 7] = [
+    ".library",
+    "node_modules",
+    ".git",
+    ".svn",
+    "$RECYCLE.BIN",
+    "System Volume Information",
+    ".cache",
+];
+
+/// Where books live inside a library folder.
+const BOOKS_DIR: &str = "books";
+
+/// The media folders, reserved at the top level of a library folder. None of
+/// them is ever indexed as books.
+const RESERVED_DIRS: [&str; 4] = ["music", "artwork", "video", "roms"];
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    pub done: u32,
+    pub total: u32,
+    pub current: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanSummary {
+    pub found: u32,
+    pub added: u32,
+    pub unchanged: u32,
+    pub removed: u32,
+    pub failed: u32,
+}
+
+/// Stable identity: length plus opening bytes, not the path, so moving a book
+/// keeps its shelf position and progress. Identical files collapse into one.
+pub fn book_id(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)?;
+    let len = file.metadata()?.len();
+
+    let mut head = vec![0u8; ID_SAMPLE_BYTES];
+    let read = read_up_to(&mut file, &mut head)?;
+    head.truncate(read);
+
+    let mut hasher = Sha256::new();
+    hasher.update(len.to_le_bytes());
+    hasher.update(&head);
+    Ok(hex16(&hasher.finalize()))
+}
+
+fn read_up_to(file: &mut fs::File, buf: &mut [u8]) -> Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..])? {
+            0 => break,
+            n => filled += n,
+        }
+    }
+    Ok(filled)
+}
+
+fn hex16(bytes: &[u8]) -> String {
+    bytes.iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
+/// Milliseconds, matching `stamp_of`: whole seconds miss a same-length rewrite
+/// inside one clock second. Shared with `paper`, which dates its own entries.
+pub(crate) fn modified_millis(meta: &fs::Metadata) -> i64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// The folder a scan will read, or `None` for the library folder itself.
+/// Confined to `books/` once it exists, so media folders are never mistaken for
+/// books; without one, the whole folder minus the reserved names.
+pub fn books_root(root: &Path) -> Option<PathBuf> {
+    let books = root.join(BOOKS_DIR);
+    books.is_dir().then_some(books)
+}
+
+/// Every readable book file under `root`, depth-limited so a mis-click on `C:\`
+/// does not walk the entire disk.
+pub fn discover(root: &Path) -> Vec<(PathBuf, Format)> {
+    let books = books_root(root);
+    let start = books.as_deref().unwrap_or(root);
+    // Only worth filtering when reading the library folder whole. Inside
+    // `books/`, a folder called `music` is books about music.
+    let guard_reserved = books.is_none();
+
+    WalkDir::new(start)
+        .max_depth(12)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            let Some(name) = entry.file_name().to_str() else { return true };
+            if SKIP_DIRS.contains(&name) {
+                return false;
+            }
+            !(guard_reserved && entry.depth() == 1 && RESERVED_DIRS.contains(&name))
+        })
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
+        .filter_map(|entry| {
+            let path = entry.into_path();
+            let format = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .and_then(Format::from_extension)?;
+            Some((path, format))
+        })
+        .collect()
+}
+
+/// Run a parser with a net under it. `lopdf` and `zip` panic on malformed
+/// files rather than returning an error, and one bad book must not end a scan.
+/// This is why the release profile is not `panic = "abort"`.
+fn guard<T>(what: impl FnOnce() -> T) -> Option<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(what)).ok()
+}
+
+/// Probe one file and write its cover into the cache. Never panics on a bad
+/// file: a book that fails to parse still gets an entry from its filename.
+pub fn index_one(path: &Path, format: Format, covers_dir: &Path) -> Result<Book> {
+    let meta = fs::metadata(path)?;
+    let id = book_id(path)?;
+
+    let probed = guard(|| match format {
+        Format::Epub => match fs::read(path) {
+            Ok(bytes) => probe::epub::probe(&bytes),
+            Err(_) => probe::Probed::default(),
+        },
+        Format::Pdf => probe::pdf::probe(path),
+    })
+    .unwrap_or_default();
+
+    let cover = probed.cover.and_then(|image| {
+        let name = format!("{id}.{}", image.ext);
+        fs::create_dir_all(covers_dir).ok()?;
+        fs::write(covers_dir.join(&name), &image.bytes).ok()?;
+        Some(name)
+    });
+
+    Ok(Book {
+        id,
+        path: path.to_string_lossy().to_string(),
+        format,
+        title: probed.title.unwrap_or_else(|| probe::title_from_filename(path)),
+        author: probed.author,
+        cover,
+        page_count: probed.page_count,
+        size_bytes: meta.len(),
+    })
+}
+
+/// Walk the library folder and bring the index in line with it. `on_progress`
+/// fires per file, since a large collection takes minutes. Concurrent scans are
+/// refused a level up; across processes the loser's work is simply overwritten.
+pub fn scan(
+    root: &Path,
+    index_path: &Path,
+    covers_dir: &Path,
+    mut on_progress: impl FnMut(ScanProgress),
+) -> Result<ScanSummary> {
+    let mut catalog = Catalog::load(index_path)?;
+    let files = discover(root);
+
+    let mut summary = ScanSummary { found: files.len() as u32, ..Default::default() };
+    let mut seen = Vec::with_capacity(files.len());
+    // Found but unopenable — a lock, not a deletion. The prune spares these.
+    let mut unreadable = Vec::new();
+
+    // Saving rewrites the whole file, so a flush per book is quadratic. A count
+    // and an interval bound that while keeping a crash to seconds of lost work.
+    const FLUSH_EVERY: u32 = 64;
+    const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut since_flush = 0u32;
+    let mut last_flush = std::time::Instant::now();
+
+    for (i, (path, format)) in files.iter().enumerate() {
+        on_progress(ScanProgress {
+            done: i as u32,
+            total: summary.found,
+            current: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        });
+
+        let Ok(meta) = fs::metadata(path) else {
+            summary.failed += 1;
+            unreadable.push(path.to_string_lossy().to_string());
+            continue;
+        };
+        let Ok(id) = book_id(path) else {
+            summary.failed += 1;
+            unreadable.push(path.to_string_lossy().to_string());
+            continue;
+        };
+        seen.push(id.clone());
+
+        let mtime = modified_millis(&meta);
+        let rel = relative_path(root, path);
+        if catalog.is_current(&id, meta.len(), mtime) {
+            // Unchanged content can still have moved, and the stored path must
+            // follow or the book cannot be opened.
+            catalog.refresh_path(&id, &rel);
+            summary.unchanged += 1;
+            continue;
+        }
+
+        match guard(|| index_one(path, *format, covers_dir)) {
+            Some(Ok(book)) => {
+                catalog.upsert(&book, &rel, mtime);
+                summary.added += 1;
+                since_flush += 1;
+                if since_flush >= FLUSH_EVERY && last_flush.elapsed() >= FLUSH_INTERVAL {
+                    catalog.save(index_path)?;
+                    since_flush = 0;
+                    last_flush = std::time::Instant::now();
+                }
+            }
+            // Either the probe returned an error or it panicked outright.
+            Some(Err(_)) | None => summary.failed += 1,
+        }
+    }
+
+    let removed = catalog.prune_missing(&seen, &unreadable);
+    catalog.save(index_path)?;
+    for id in &removed {
+        // Best effort: a leftover cover is harmless, a failed scan is not.
+        for ext in COVER_EXTENSIONS {
+            fs::remove_file(covers_dir.join(format!("{id}.{ext}"))).ok();
+        }
+    }
+    summary.removed = removed.len() as u32;
+
+    on_progress(ScanProgress {
+        done: summary.found,
+        total: summary.found,
+        current: String::new(),
+    });
+
+    Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("kleib3ry-index-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn identity_follows_content_not_path() {
+        let dir = temp_dir("identity");
+        let a = dir.join("a.pdf");
+        let b = dir.join("renamed.pdf");
+        fs::write(&a, b"the same bytes").unwrap();
+        fs::write(&b, b"the same bytes").unwrap();
+        let c = dir.join("c.pdf");
+        fs::write(&c, b"different bytes").unwrap();
+
+        assert_eq!(book_id(&a).unwrap(), book_id(&b).unwrap());
+        assert_ne!(book_id(&a).unwrap(), book_id(&c).unwrap());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discover_finds_books_and_ignores_everything_else() {
+        let dir = temp_dir("discover");
+        fs::create_dir_all(dir.join("sub/node_modules")).unwrap();
+        // The app's own save folder, which must never be scanned as content.
+        fs::create_dir_all(dir.join(".library")).unwrap();
+        fs::write(dir.join("one.pdf"), b"x").unwrap();
+        fs::write(dir.join("sub/two.EPUB"), b"x").unwrap();
+        fs::write(dir.join("notes.txt"), b"x").unwrap();
+        fs::write(dir.join("sub/node_modules/three.pdf"), b"x").unwrap();
+        fs::write(dir.join(".library/four.pdf"), b"x").unwrap();
+
+        let mut found: Vec<String> = discover(&dir)
+            .into_iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        found.sort();
+
+        assert_eq!(found, vec!["one.pdf", "two.EPUB"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_books_folder_confines_the_scan_to_itself() {
+        let dir = temp_dir("books-folder");
+        fs::create_dir_all(dir.join("books/essays")).unwrap();
+        fs::create_dir_all(dir.join("music")).unwrap();
+        fs::create_dir_all(dir.join("artwork")).unwrap();
+        fs::write(dir.join("books/one.pdf"), b"x").unwrap();
+        fs::write(dir.join("books/essays/two.epub"), b"x").unwrap();
+        // Everything outside `books/` belongs to something else, or is unfiled.
+        fs::write(dir.join("music/sleeve-notes.pdf"), b"x").unwrap();
+        fs::write(dir.join("artwork/catalogue.pdf"), b"x").unwrap();
+        fs::write(dir.join("loose.pdf"), b"x").unwrap();
+
+        let mut found: Vec<String> = discover(&dir)
+            .into_iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        found.sort();
+
+        assert_eq!(found, vec!["one.pdf", "two.epub"]);
+        assert_eq!(books_root(&dir), Some(dir.join("books")));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A `music` folder inside `books/` is books about music.
+    #[test]
+    fn the_reserved_names_only_apply_at_the_top_level() {
+        let dir = temp_dir("reserved-nested");
+        fs::create_dir_all(dir.join("books/music")).unwrap();
+        fs::write(dir.join("books/music/on_bach.pdf"), b"x").unwrap();
+
+        let found: Vec<String> = discover(&dir)
+            .into_iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(found, vec!["on_bach.pdf"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_folder_with_no_books_directory_is_still_read_whole() {
+        let dir = temp_dir("no-books-folder");
+        fs::create_dir_all(dir.join("essays")).unwrap();
+        fs::create_dir_all(dir.join("music")).unwrap();
+        fs::create_dir_all(dir.join("roms")).unwrap();
+        fs::write(dir.join("one.pdf"), b"x").unwrap();
+        fs::write(dir.join("essays/two.epub"), b"x").unwrap();
+        fs::write(dir.join("music/sleeve-notes.pdf"), b"x").unwrap();
+        fs::write(dir.join("roms/manual.pdf"), b"x").unwrap();
+
+        let mut found: Vec<String> = discover(&dir)
+            .into_iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        found.sort();
+
+        assert_eq!(found, vec!["one.pdf", "two.epub"]);
+        assert_eq!(books_root(&dir), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_parsed_still_gets_a_title() {
+        let dir = temp_dir("unparseable");
+        let path = dir.join("the_hobbit_(1937).pdf");
+        fs::write(&path, b"not really a pdf").unwrap();
+
+        let book = index_one(&path, Format::Pdf, &dir.join("covers")).unwrap();
+        assert_eq!(book.title, "The Hobbit 1937");
+        assert_eq!(book.cover, None);
+        assert_eq!(book.page_count, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scanning_twice_reports_everything_unchanged() {
+        let dir = temp_dir("rescan");
+        let covers = dir.join("covers");
+        let index_path = dir.join("index.json");
+        fs::write(dir.join("one.pdf"), b"pretend pdf").unwrap();
+        fs::write(dir.join("two.epub"), b"pretend epub").unwrap();
+
+        let first = scan(&dir, &index_path, &covers, |_| {}).unwrap();
+        assert_eq!((first.found, first.added, first.unchanged), (2, 2, 0));
+        let written = fs::read(&index_path).unwrap();
+
+        let second = scan(&dir, &index_path, &covers, |_| {}).unwrap();
+        assert_eq!((second.found, second.added, second.unchanged), (2, 0, 2));
+        // Nothing changed, so the save file must not have either — this is what
+        // lets a library folder live in version control.
+        assert_eq!(fs::read(&index_path).unwrap(), written);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_deleted_file_is_pruned_on_the_next_scan() {
+        let dir = temp_dir("prune");
+        let covers = dir.join("covers");
+        let index_path = dir.join("index.json");
+        fs::write(dir.join("keep.pdf"), b"keep me").unwrap();
+        fs::write(dir.join("drop.pdf"), b"drop me").unwrap();
+
+        scan(&dir, &index_path, &covers, |_| {}).unwrap();
+        fs::remove_file(dir.join("drop.pdf")).unwrap();
+
+        let after = scan(&dir, &index_path, &covers, |_| {}).unwrap();
+        assert_eq!(after.removed, 1);
+        assert_eq!(Catalog::load(&index_path).unwrap().len(), 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Indexing only ever writes where the caller points it.
+    #[test]
+    fn scanning_never_modifies_the_library_folder() {
+        let library = temp_dir("readonly-library");
+        let appdata = temp_dir("readonly-appdata");
+
+        fs::create_dir_all(library.join("essays")).unwrap();
+        fs::write(library.join("one.pdf"), b"pretend pdf").unwrap();
+        fs::write(library.join("essays/two.epub"), b"pretend epub").unwrap();
+        fs::write(library.join("notes.txt"), b"leave me alone").unwrap();
+
+        let snapshot = |root: &Path| -> Vec<(String, u64, i64)> {
+            let mut entries: Vec<_> = WalkDir::new(root)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+                .map(|e| {
+                    let meta = e.metadata().unwrap();
+                    (
+                        e.path().strip_prefix(root).unwrap().to_string_lossy().to_string(),
+                        meta.len(),
+                        modified_millis(&meta),
+                    )
+                })
+                .collect();
+            entries.sort();
+            entries
+        };
+
+        let before = snapshot(&library);
+        scan(&library, &appdata.join("index.json"), &appdata.join("covers"), |_| {}).unwrap();
+        // A second pass exercises the prune, the only path that deletes.
+        scan(&library, &appdata.join("index.json"), &appdata.join("covers"), |_| {}).unwrap();
+        let after = snapshot(&library);
+
+        assert_eq!(before, after, "the scan changed files in the library folder");
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&appdata);
+    }
+
+    #[test]
+    fn a_panicking_parser_is_contained() {
+        // Silence the default hook so the expected panic does not look like a
+        // test failure in the output.
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let caught = guard(|| -> u32 { panic!("malformed book") });
+        std::panic::set_hook(previous);
+
+        assert_eq!(caught, None);
+        assert_eq!(guard(|| 7), Some(7));
+    }
+
+    #[test]
+    fn progress_runs_from_zero_to_the_total() {
+        let dir = temp_dir("progress");
+        fs::write(dir.join("a.pdf"), b"a").unwrap();
+        fs::write(dir.join("b.pdf"), b"b").unwrap();
+
+        let mut seen = Vec::new();
+        scan(&dir, &dir.join("index.json"), &dir.join("covers"), |p| {
+            seen.push((p.done, p.total))
+        })
+        .unwrap();
+
+        assert_eq!(seen.first(), Some(&(0, 2)));
+        assert_eq!(seen.last(), Some(&(2, 2)));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_cover_cache_inside_the_library_folder_stays_inside_dot_library() {
+        let library = temp_dir("covers-in-library");
+        fs::create_dir_all(library.join("essays")).unwrap();
+        fs::write(library.join("one.pdf"), b"pretend pdf").unwrap();
+        fs::write(library.join("essays/two.epub"), b"pretend epub").unwrap();
+        fs::write(library.join("notes.txt"), b"leave me alone").unwrap();
+
+        let books = |root: &Path| -> Vec<String> {
+            let mut found: Vec<String> = WalkDir::new(root)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+                .map(|e| e.path().strip_prefix(root).unwrap().to_string_lossy().to_string())
+                .filter(|p| !p.replace(std::path::MAIN_SEPARATOR, "/").starts_with(".library/"))
+                .collect();
+            found.sort();
+            found
+        };
+
+        let before = books(&library);
+        // Everything the app writes must stay under `.library/`.
+        let save = library.join(".library");
+        let covers = save.join("covers");
+        let index_path = save.join("index.json");
+        scan(&library, &index_path, &covers, |_| {}).unwrap();
+        scan(&library, &index_path, &covers, |_| {}).unwrap();
+
+        assert_eq!(books(&library), before, "the scan touched the user's own files");
+        assert!(library.join(".library").exists(), "expected the save folder to be created");
+        let _ = fs::remove_dir_all(&library);
+    }
+}

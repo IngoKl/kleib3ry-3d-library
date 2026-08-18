@@ -1,0 +1,31 @@
+# The whole deployment: one process, one folder, one port.
+#
+#   LIBRARY=/srv/books docker compose up --build
+#
+# Then open http://localhost:8080 and scan once. See docs/docker.md.
+services:
+  kleib3ry:
+    build: .
+    image: kleib3ry
+    # Defaulted so a fresh clone runs without editing anything.
+    volumes:
+      - ${LIBRARY:-./library}:/library
+    # Localhost-only: there is no auth and no TLS, and Docker publishes ports by
+    # writing its own firewall rules. To open it up, drop the address.
+    ports:
+      - '127.0.0.1:${PORT:-8080}:8080'
+    environment:
+      # The mount point. The server reads this when no --root is passed.
+      KLEIB3RY_LIBRARY: /library
+    # Your own uid, so what the server writes into <library>/.library/ belongs to
+    # you rather than to root. Set UID/GID in a .env file beside this one.
+    user: '${UID:-0}:${GID:-0}'
+    restart: unless-stopped
+    # No health endpoint: a route existing only to be polled earns nothing, and
+    # the front end being served is the same signal.
+    healthcheck:
+      test: ['CMD-SHELL', 'exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e "GET /api/root HTTP/1.0\\r\\n\\r\\n" >&3 && head -1 <&3 | grep -q 200']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

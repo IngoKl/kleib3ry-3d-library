@@ -1,0 +1,31 @@
+# Everything the build does not need. The target directories matter most: a local
+# `cargo build` leaves gigabytes there, and it all goes to the daemon as context.
+node_modules
+dist
+core/target
+server/target
+src-tauri/target
+src-tauri/gen
+
+# Generated inside the image; a local copy would only shadow the fresh one.
+public/standard_fonts
+public/cmaps
+public/sample-book.pdf
+
+test-results
+playwright-report
+blob-report
+tests/screenshots
+
+.git
+.github
+.vscode
+.idea
+docs
+assets
+# 28 MB no build stage reads — a library folder is mounted, not baked in.
+demo-data
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore

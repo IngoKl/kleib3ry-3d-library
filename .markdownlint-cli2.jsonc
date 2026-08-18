@@ -1,0 +1,34 @@
+// Read by both the VS Code markdownlint extension and markdownlint-cli2, so the
+// editor and any command-line run agree — including on what not to look at.
+{
+  "ignores": [
+    "node_modules/",
+    "dist/",
+    "test-results/",
+    "playwright-report/",
+    "blob-report/",
+    "core/target/",
+    "server/target/",
+    "src-tauri/target/"
+  ],
+  "config": {
+    // Prose here is hand-wrapped and the tables are wide by design.
+    "MD013": false,
+    // <kbd> in the controls docs, and the odd raw tag in a table cell.
+    "MD033": false,
+
+    // Rules Prettier also has an opinion about, set to agree with it rather
+    // than disabled, so saving a file doesn't leave the two undoing each other.
+    "MD004": { "style": "dash" },
+    "MD029": { "style": "one_or_ordered" },
+    "MD035": { "style": "---" },
+    "MD048": { "style": "backtick" },
+    "MD049": { "style": "underscore" },
+    "MD050": { "style": "asterisk" },
+    // List indentation is Prettier's call — it indents to the parent marker.
+    "MD007": false,
+
+    // The same subheading under different parents is normal in these docs.
+    "MD024": { "siblings_only": true }
+  }
+}

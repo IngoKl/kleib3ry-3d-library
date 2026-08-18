@@ -1,0 +1,69 @@
+{
+  "name": "kleib3ry",
+  "version": "0.1.0",
+  "description": "kleib3ry — a 3D personal library: read your own PDFs and EPUBs in a room you design.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IngoKl/library.git"
+  },
+  "homepage": "https://github.com/IngoKl/library#readme",
+  "bugs": {
+    "url": "https://github.com/IngoKl/library/issues"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "lint:rust": "cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path server/Cargo.toml --all-targets -- -D warnings",
+    "format": "prettier --write \"**/*.md\" && markdownlint-cli2 --fix \"**/*.md\"",
+    "format:check": "prettier --check \"**/*.md\" && markdownlint-cli2 \"**/*.md\"",
+    "test:rust": "cargo test --manifest-path core/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path server/Cargo.toml",
+    "scan": "cargo run --release --manifest-path src-tauri/Cargo.toml --bin scan --",
+    "verify": "npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test && npm run lint:rust && npm run test:rust",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:exe": "tauri build --no-bundle",
+    "icon": "node scripts/make-icon.mjs && tauri icon assets/icon-source.png",
+    "test:desktop": "node scripts/probe-desktop.mjs",
+    "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/make-sample-book.mjs && node scripts/make-pong-rom.mjs",
+    "build:http": "tsc --noEmit && vite build --mode http",
+    "dev:http": "vite --mode http",
+    "serve": "cargo run --release --manifest-path server/Cargo.toml --bin kleib3ry-server --",
+    "docker:build": "docker build -t kleib3ry ."
+  },
+  "keywords": [],
+  "author": "Ingo Kleiber",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "markdownlint-cli2": "0.20.0",
+    "oxlint": "^1.78.0",
+    "prettier": "3.9.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
+}

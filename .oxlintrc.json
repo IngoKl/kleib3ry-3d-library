@@ -1,0 +1,46 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "oxc", "import"],
+  "env": { "browser": true, "es2024": true },
+  "categories": {
+    "correctness": "error",
+    "perf": "warn"
+  },
+  "rules": {
+    "eqeqeq": ["error", "smart"],
+    "no-var": "error",
+    "no-console": "warn",
+    "no-debugger": "error",
+    "no-alert": "error",
+    "no-eval": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+
+    "react/react-in-jsx-scope": "off",
+    "react/no-array-index-key": "off",
+    "react-perf/jsx-no-new-array-as-prop": "off",
+    "react-perf/jsx-no-new-object-as-prop": "off",
+    "react-perf/jsx-no-new-function-as-prop": "off",
+    "oxc/no-map-spread": "off",
+    "no-await-in-loop": "off",
+    "import/default": "off",
+    "import/no-unassigned-import": "off"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**", "scripts/**"],
+      "rules": { "no-console": "off" }
+    }
+  ],
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "public",
+    "test-results",
+    "src-tauri/target",
+    "demo-data"
+  ]
+}

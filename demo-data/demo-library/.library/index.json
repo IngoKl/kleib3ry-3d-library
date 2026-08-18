@@ -1,0 +1,104 @@
+{
+  "books": {
+    "239516aa5c3083e3": {
+      "path": "books/virginia-woolf_to-the-lighthouse.epub",
+      "format": "epub",
+      "title": "To the Lighthouse",
+      "author": "Virginia Woolf",
+      "pageCount": 383,
+      "sizeBytes": 1116110,
+      "mtime": 1786480893771,
+      "probeVersion": 1
+    },
+    "4e0561b47503cc3d": {
+      "path": "books/h-g-wells_the-time-machine.epub",
+      "format": "epub",
+      "title": "The Time Machine",
+      "author": "H. G. Wells",
+      "pageCount": 171,
+      "sizeBytes": 535571,
+      "mtime": 1786480992831,
+      "probeVersion": 1
+    },
+    "94dfa57d97920d2d": {
+      "path": "books/f-scott-fitzgerald_the-great-gatsby.epub",
+      "format": "epub",
+      "title": "The Great Gatsby",
+      "author": "F. Scott Fitzgerald",
+      "pageCount": 269,
+      "sizeBytes": 442470,
+      "mtime": 1786480872371,
+      "probeVersion": 1
+    },
+    "96e0d61ccfea2a7c": {
+      "path": "books/noel-loomis_short-science-fiction.epub",
+      "format": "epub",
+      "title": "Short Science Fiction",
+      "author": "Noel Loomis",
+      "pageCount": 249,
+      "sizeBytes": 631339,
+      "mtime": 1786480982056,
+      "probeVersion": 1
+    },
+    "97787651002ab249": {
+      "path": "books/jane-austen_pride-and-prejudice.epub",
+      "format": "epub",
+      "title": "Pride and Prejudice",
+      "author": "Jane Austen",
+      "pageCount": 688,
+      "sizeBytes": 831946,
+      "mtime": 1786480954281,
+      "probeVersion": 1
+    },
+    "9b21e71419b48081": {
+      "path": "books/edith-wharton_the-house-of-mirth.epub",
+      "format": "epub",
+      "title": "The House of Mirth",
+      "author": "Edith Wharton",
+      "pageCount": 691,
+      "sizeBytes": 744496,
+      "mtime": 1786480921735,
+      "probeVersion": 1
+    },
+    "c6e4856105a0f858": {
+      "path": "books/james-joyce_ulysses.epub",
+      "format": "epub",
+      "title": "Ulysses",
+      "author": "James Joyce",
+      "pageCount": 1816,
+      "sizeBytes": 1434052,
+      "mtime": 1786480804804,
+      "probeVersion": 1
+    },
+    "c99da44ef49cb6eb": {
+      "path": "books/marcus-aurelius_meditations_george-long.epub",
+      "format": "epub",
+      "title": "Meditations",
+      "author": "Marcus Aurelius",
+      "pageCount": 291,
+      "sizeBytes": 733302,
+      "mtime": 1786480956310,
+      "probeVersion": 1
+    },
+    "d7e18f9f15bce077": {
+      "path": "books/james-joyce_a-portrait-of-the-artist-as-a-young-man.epub",
+      "format": "epub",
+      "title": "A Portrait of the Artist as a Young Man",
+      "author": "James Joyce",
+      "pageCount": 437,
+      "sizeBytes": 588943,
+      "mtime": 1786480881270,
+      "probeVersion": 1
+    },
+    "ebb657745cd8dd17": {
+      "path": "books/fyodor-dostoevsky_crime-and-punishment_constance-garnett.epub",
+      "format": "epub",
+      "title": "Crime and Punishment",
+      "author": "Fyodor Dostoevsky",
+      "pageCount": 1061,
+      "sizeBytes": 1217908,
+      "mtime": 1786480980542,
+      "probeVersion": 1
+    }
+  }
+}

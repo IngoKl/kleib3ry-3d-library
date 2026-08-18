@@ -1,0 +1,412 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+import { sceneRefs } from './refs'
+import { playOneShot } from './ambientSound'
+import { falloff } from './audioRig'
+import { shove, stepBody, supportFrom, takeLaunchedBody, type Body } from './drop'
+import { worldSolids } from './walk'
+import type { Solid } from '../world/derive'
+import { useAmbienceStore } from '../state/ambience'
+import { peekPage, pageTexture, releaseBook } from '../state/pages'
+import { coverImageFor, onCoverReady, peekCoverImage } from '../state/covers'
+import { useLibraryStore } from '../state/library'
+import { useAppStore } from '../state/store'
+import { useWorldStore } from '../state/world'
+import { PLAYER_RADIUS, player } from '../state/player'
+import type { LoosePlacement } from '../services/types'
+
+/**
+ * Books neither shelved nor boxed: put down on a table, or dropped on the floor.
+ * The simulation is here rather than in the store because a settling book must
+ * not re-render React thirty times a second — the store is told once, when it
+ * rests, which is also why a saved placement is where a book stopped.
+ */
+
+/** How close you have to be to kick one out of the way. */
+const KICK_RADIUS = PLAYER_RADIUS + 0.12
+const HIGHLIGHT = new THREE.Color('#e6d3a6')
+const Y_AXIS = new THREE.Vector3(0, 1, 0)
+
+/** A book left open, drawn as a spread rather than as a closed block. */
+function OpenBook({ id, at }: { id: string; at: LoosePlacement }) {
+  const size = useLibraryStore((s) => s.dims.get(id))
+  const [, redraw] = useState(0)
+
+  // Leaf `spread` shows pages 2s and 2s+1, exactly as the reader numbers them.
+  const left = 2 * at.spread
+  const right = 2 * at.spread + 1
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([pageTexture(id, left), pageTexture(id, right)]).then(() => {
+      if (!cancelled) redraw((n) => n + 1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [id, left, right])
+
+  // The pages are only worth keeping while the book is still lying open.
+  useEffect(() => () => releaseBook(id), [id])
+
+  if (!size) return null
+  const page = size.depth
+  const height = size.height
+  const board = size.thickness / 2
+
+  const faces = [
+    { map: peekPage(id, left), x: -page / 2 },
+    { map: peekPage(id, right), x: page / 2 },
+  ]
+
+  return (
+    <group position={[at.x, at.y, at.z]} rotation-y={at.yaw} userData={{ bookId: id }}>
+      {/* The two halves of the block, laid flat and open. */}
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[(side * page) / 2, board / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[page, board, height]} />
+          <meshStandardMaterial color={size.colour} roughness={0.7} />
+        </mesh>
+      ))}
+      {faces.map((face, i) => (
+        <mesh key={i} position={[face.x, board + 0.0015, 0]} rotation-x={-Math.PI / 2}>
+          <planeGeometry args={[page * 0.96, height * 0.96]} />
+          {/* Keyed: a map swapped into a live material keeps the map-less
+              shader and renders the page black. A fresh material compiles
+              with the page in place. */}
+          {face.map ? (
+            <meshStandardMaterial key="page" map={face.map} roughness={0.95} />
+          ) : (
+            <meshStandardMaterial key="paper" color="#efe8d8" roughness={1} />
+          )}
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/**
+ * The block is an instance and cannot carry its own texture. There are only ever
+ * a handful of loose books, so each cover is its own small plane.
+ */
+function LooseCover({
+  id,
+  register,
+}: {
+  id: string
+  register: (id: string, node: THREE.Group | null) => void
+}) {
+  const book = useLibraryStore((s) => s.byId.get(id))
+  const size = useLibraryStore((s) => s.dims.get(id))
+  const [cover, setCover] = useState<THREE.Texture | null>(null)
+
+  useEffect(() => {
+    if (!book) return
+    let cancelled = false
+
+    const adopt = () => {
+      const image = peekCoverImage(book.id)
+      if (!image || cancelled) return
+      const texture = new THREE.Texture(image)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.needsUpdate = true
+      setCover(texture)
+    }
+
+    adopt()
+    if (!peekCoverImage(book.id)) coverImageFor(book)
+    const listener = (ready: string) => {
+      if (ready === book.id) adopt()
+    }
+    onCoverReady.add(listener)
+    return () => {
+      cancelled = true
+      onCoverReady.delete(listener)
+    }
+  }, [book])
+  useEffect(() => () => cover?.dispose(), [cover])
+
+  if (!size) return null
+  return (
+    // The group mounts even before the artwork arrives, so the pose-writer can
+    // register it; an unposed cover appearing at the origin is the alternative.
+    <group ref={(node) => register(id, node)}>
+      {cover && (
+        <mesh rotation-x={-Math.PI / 2} position={[0, 0.0012, 0]}>
+          <planeGeometry args={[size.depth * 0.96, size.height * 0.96]} />
+          <meshStandardMaterial map={cover} roughness={0.7} />
+        </mesh>
+      )}
+    </group>
+  )
+}
+
+export function LooseBooks() {
+  const meshRef = useRef<THREE.InstancedMesh>(null)
+  const openGroup = useRef<THREE.Group>(null)
+  const world = useWorldStore((s) => s.world)
+  const loose = useLibraryStore((s) => s.loose)
+  const dims = useLibraryStore((s) => s.dims)
+  const held = useAppStore((s) => s.held)
+
+  /** Closed books go in the instanced mesh; open ones are their own group. */
+  const closed = useMemo(
+    () => Object.entries(loose).filter(([id, at]) => !at.open && dims.has(id)),
+    [loose, dims],
+  )
+  const opened = useMemo(
+    () => Object.entries(loose).filter(([, at]) => at.open),
+    [loose],
+  )
+
+  // Rounded up to a block: growing the mesh for every book put down would
+  // rebuild it constantly.
+  const blocks = Math.ceil((closed.length + 16) / 32)
+  const capacity = useMemo(() => Math.max(32, blocks * 32), [blocks])
+
+  /**
+   * Seeded from the saved placement, which is always a resting one, so a book on
+   * the table at shutdown is on the table at startup rather than falling again.
+   */
+  const bodies = useRef(new Map<string, Body>())
+  const support = useMemo(() => (world ? supportFrom(world) : null), [world])
+
+  // The same solids the walker hits, bucketed into a coarse grid so a substep
+  // tests a handful of boxes rather than the whole forest.
+  const ambienceOn = useAmbienceStore((s) => s.on)
+  const blocked = useMemo(() => {
+    if (!world) return undefined
+    const CELL = 2
+    const key = (ix: number, iz: number) => (ix + 2048) * 4096 + (iz + 2048)
+    const cells = new Map<number, Solid[]>()
+    for (const solid of worldSolids(world, ambienceOn)) {
+      for (let ix = Math.floor(solid.minX / CELL); ix <= Math.floor(solid.maxX / CELL); ix++) {
+        for (let iz = Math.floor(solid.minZ / CELL); iz <= Math.floor(solid.maxZ / CELL); iz++) {
+          const at = key(ix, iz)
+          const cell = cells.get(at)
+          if (cell) cell.push(solid)
+          else cells.set(at, [solid])
+        }
+      }
+    }
+    return (x: number, y: number, z: number) => {
+      const cell = cells.get(key(Math.floor(x / CELL), Math.floor(z / CELL)))
+      if (!cell) return false
+      return cell.some(
+        (s) =>
+          x > s.minX && x < s.maxX && z > s.minZ && z < s.maxZ && y > s.bottom && y < s.top,
+      )
+    }
+  }, [world, ambienceOn])
+
+  /**
+   * Called from the layout effect before the matrices are written, not from an
+   * effect of its own: a book put down on a table is seeded at rest, and the
+   * frame loop never touches a resting body — so an unwritten matrix stays that
+   * way and the book is never drawn.
+   */
+  const reseed = () => {
+    const live = bodies.current
+    for (const [id, at] of closed) {
+      // A drop hands over its whole body, velocity and all: a placement alone
+      // cannot say "falling", so the book would freeze where your hand was.
+      const thrown = takeLaunchedBody(id)
+      if (thrown) {
+        live.set(id, thrown)
+        continue
+      }
+      const existing = live.get(id)
+      // A placement that moved under us — a reload, or a book put down
+      // somewhere else — wins over whatever the simulation thought.
+      if (!existing || Math.hypot(existing.x - at.x, existing.z - at.z) > 0.5) {
+        // A save written mid-throw records a book in the air; seed those
+        // falling, so a reload lands them rather than hanging them there.
+        const size = dims.get(id)
+        const rest =
+          support && size ? support(at.x, at.z, at.y + size.thickness) + size.thickness / 2 : at.y
+        const floating = at.y > rest + 0.02
+        live.set(id, {
+          x: at.x,
+          y: at.y,
+          z: at.z,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          yaw: at.yaw,
+          spin: 0,
+          resting: !floating,
+        })
+      }
+    }
+    for (const id of [...live.keys()]) {
+      if (!closed.some(([other]) => other === id)) live.delete(id)
+    }
+  }
+
+  const scratch = useMemo(
+    () => ({
+      matrix: new THREE.Matrix4(),
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      scale: new THREE.Vector3(),
+      colour: new THREE.Color(),
+      hidden: new THREE.Vector3(0, 0, 0),
+    }),
+    [],
+  )
+
+  /** The book whose instance colour currently carries the crosshair tint. */
+  const lastFocused = useRef<string | null>(null)
+
+  /** Cover planes, keyed by book id, posed alongside the instance matrices. */
+  const covers = useRef(new Map<string, THREE.Group>())
+  const registerCover = useCallback((id: string, node: THREE.Group | null) => {
+    if (node) covers.current.set(id, node)
+    else covers.current.delete(id)
+  }, [])
+
+  const write = (mesh: THREE.InstancedMesh, i: number) => {
+    const entry = closed[i]
+    const { matrix, position, quaternion, scale, colour, hidden } = scratch
+    if (!entry) {
+      matrix.compose(position.set(0, -100, 0), quaternion.identity(), hidden)
+      mesh.setMatrixAt(i, matrix)
+      return
+    }
+
+    const [id] = entry
+    const size = dims.get(id)!
+    const body = bodies.current.get(id)
+    if (!body) return
+
+    position.set(body.x, body.y, body.z)
+    quaternion.setFromAxisAngle(Y_AXIS, body.yaw)
+    // Lying flat: cover up, spine along Z, thickness the short axis.
+    scale.set(size.depth, size.thickness, size.height)
+    matrix.compose(position, quaternion, held === id ? hidden : scale)
+    mesh.setMatrixAt(i, matrix)
+
+    const cover = covers.current.get(id)
+    if (cover) {
+      cover.visible = held !== id
+      cover.position.set(body.x, body.y + size.thickness / 2, body.z)
+      cover.rotation.y = body.yaw
+    }
+
+    colour.set(size.colour)
+    if (useAppStore.getState().focusedBook === id) colour.lerp(HIGHLIGHT, 0.45)
+    mesh.setColorAt(i, colour)
+  }
+
+  useLayoutEffect(() => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    reseed()
+    for (let i = 0; i < capacity; i++) write(mesh, i)
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    mesh.computeBoundingSphere()
+
+    sceneRefs.looseBooks = mesh
+    sceneRefs.looseIds = closed.map(([id]) => id)
+    sceneRefs.openBooks = openGroup.current
+    return () => {
+      sceneRefs.looseBooks = null
+      sceneRefs.looseIds = []
+      sceneRefs.openBooks = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capacity, closed, held, dims])
+
+  useFrame((_, delta) => {
+    const mesh = meshRef.current
+    if (!mesh || !support || closed.length === 0) return
+
+    const nudge = useLibraryStore.getState().nudge
+    let dirty = false
+
+    // The tint is baked into the instance colour by `write`, and the loop below
+    // skips resting bodies — which is every book you can point at. So the ones
+    // gaining and losing focus are repainted explicitly.
+    const focused = useAppStore.getState().focusedBook
+    if (focused !== lastFocused.current) {
+      for (let i = 0; i < closed.length; i++) {
+        const id = closed[i]![0]
+        if (id === focused || id === lastFocused.current) {
+          write(mesh, i)
+          dirty = true
+        }
+      }
+      lastFocused.current = focused
+    }
+
+    for (let i = 0; i < closed.length; i++) {
+      const [id] = closed[i]!
+      const size = dims.get(id)
+      const body = bodies.current.get(id)
+      if (!size || !body) continue
+
+      // Kicked out of the way if you stand on it. Only at rest — one in flight
+      // has somewhere it is going — and only on the floor, since leaning on a
+      // stool must not punt the book off it.
+      let current = body
+      if (current.resting && held !== id) {
+        const feet = Math.abs(current.y - player.floor)
+        if (feet < 0.15) current = shove(current, player, KICK_RADIUS, player.speed)
+      }
+
+      const wasResting = current.resting
+      const fall = Math.max(0, -current.vy)
+      current = stepBody(current, size.thickness, delta, support, blocked)
+      bodies.current.set(id, current)
+
+      if (!wasResting || current !== body) {
+        write(mesh, i)
+        dirty = true
+      }
+      // Write down where it stopped, once, rather than every frame of the fall.
+      if (!wasResting && current.resting) {
+        // Only when it actually fell: a shoved book settling under your feet
+        // re-crosses this every frame, and that is a shuffle, not a landing.
+        if (fall > 0.3) {
+          const away = Math.hypot(current.x - player.x, current.y - player.eye, current.z - player.z)
+          playOneShot('thud', Math.min(1, 0.15 + fall * 0.3) * falloff(away))
+        }
+        nudge(id, { x: current.x, y: current.y, z: current.z, yaw: current.yaw, open: false, spread: 0 })
+      }
+    }
+
+    if (dirty) {
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    }
+  })
+
+  return (
+    <group>
+      <instancedMesh
+        key={capacity}
+        ref={meshRef}
+        args={[undefined, undefined, capacity]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial roughness={0.72} metalness={0} />
+      </instancedMesh>
+
+      {closed.map(([id]) => (
+        <LooseCover key={id} id={id} register={registerCover} />
+      ))}
+
+      {/* Open books are their own meshes rather than instances, so they get
+          their own group for the crosshair to find them in. */}
+      <group ref={openGroup}>
+        {opened.map(([id, at]) => (
+          <OpenBook key={id} id={id} at={at} />
+        ))}
+      </group>
+    </group>
+  )
+}

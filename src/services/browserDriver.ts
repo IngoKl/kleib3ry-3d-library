@@ -1,0 +1,338 @@
+import { buildCatalogue } from '../data/catalogue'
+import {
+  UnsupportedOperation,
+  type AnnotationsDocument,
+  type IndexedArtwork,
+  type IndexedBook,
+  type IndexedRom,
+  type IndexedTape,
+  type IndexedTrack,
+  type LayoutDocument,
+  type LibraryService,
+  type AmbienceState,
+} from './types'
+
+const ROOT_KEY = 'kleib3ry.root'
+const LAYOUT_KEY = 'kleib3ry.layout'
+const WORLD_KEY = 'kleib3ry.world'
+const WORLD_STAMP_KEY = 'kleib3ry.world.stamp'
+const AMBIENCE_KEY = 'kleib3ry.ambience'
+const ANNOTATIONS_KEY = 'kleib3ry.annotations'
+
+/**
+ * Plain-browser driver: no filesystem, a generated stand-in library. It exists
+ * so the scene can be developed and smoke tested headlessly without the desktop
+ * shell, and the books are openly fake — the HUD says so — rather than
+ * pretending an empty index is your collection.
+ */
+
+/** Enough to fill the shelves: roughly 14 cases x 5 rows at typical spine widths. */
+const PLACEHOLDER_COUNT = 1700
+
+/**
+ * The two real files here, one per format, served from `public/` — which is what
+ * lets read mode run under the headless smoke tests rather than only under
+ * `test:desktop`.
+ */
+export const SAMPLE_BOOK_ID = 'sample-book'
+export const SAMPLE_EPUB_ID = 'sample-epub'
+const SAMPLE_FILES: Record<string, string> = {
+  [SAMPLE_BOOK_ID]: 'sample-book.pdf',
+  [SAMPLE_EPUB_ID]: 'sample-book.epub',
+}
+
+const SAMPLE: IndexedBook = {
+  id: SAMPLE_BOOK_ID,
+  path: SAMPLE_FILES[SAMPLE_BOOK_ID]!,
+  format: 'pdf',
+  title: 'The Shelf as Argument',
+  author: 'A. Sample',
+  cover: null,
+  pageCount: 12,
+  sizeBytes: 24_000,
+}
+
+const SAMPLE_EPUB: IndexedBook = {
+  id: SAMPLE_EPUB_ID,
+  path: SAMPLE_FILES[SAMPLE_EPUB_ID]!,
+  format: 'epub',
+  title: 'The Shelf as Argument, unbound',
+  author: 'A. Sample',
+  cover: null,
+  // An EPUB has no page count until it is set in type — see `epubPages.ts` —
+  // so the index leaves this null for them.
+  pageCount: null,
+  sizeBytes: 11_000,
+}
+
+const PLACEHOLDERS: IndexedBook[] = buildCatalogue(PLACEHOLDER_COUNT).map((book, i) => ({
+  id: book.id,
+  path: `placeholder://${book.id}`,
+  format: i % 4 === 0 ? 'epub' : 'pdf',
+  title: book.title,
+  author: book.author,
+  cover: null,
+  pageCount: 80 + ((i * 37) % 400),
+  sizeBytes: 1024 * (200 + ((i * 13) % 4000)),
+}))
+
+/**
+ * Stand-ins, so the record shelf and the frames are furnished rather than
+ * conspicuously empty. The records' paths point at nothing, which costs nothing
+ * until one is played; the pictures are SVG data URLs generated here.
+ */
+const RECORD_TITLES: [string, string][] = [
+  ['Wild Is the Wind', 'Nina Simone'],
+  ['Kind of Blue', 'Miles Davis'],
+  ['Music for Airports', 'Brian Eno'],
+  ['The Köln Concert', 'Keith Jarrett'],
+  ['Blue', 'Joni Mitchell'],
+  ['A Love Supreme', 'John Coltrane'],
+  ['Spiegel im Spiegel', 'Arvo Pärt'],
+  ['Selected Ambient Works', 'Aphex Twin'],
+]
+
+const PLACEHOLDER_TRACKS: IndexedTrack[] = RECORD_TITLES.map(([title, artist], i) => ({
+  id: `record-${i}`,
+  path: `placeholder://${title}`,
+  title,
+  artist,
+  album: title,
+  format: i % 3 === 0 ? 'flac' : 'mp3',
+  sizeBytes: 8_000_000 + i * 400_000,
+}))
+
+/** A flat abstract print, as a data URL. Deterministic, so screenshots match. */
+function placeholderPicture(index: number): string {
+  const palettes = [
+    ['#2f4257', '#7d3b32', '#d8c9a8'],
+    ['#3f5a4a', '#8a7350', '#e2ddcb'],
+    ['#5a3a55', '#b08d57', '#efe6d5'],
+  ]
+  const [ink, accent, paper] = palettes[index % palettes.length]!
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
+    <rect width="400" height="300" fill="${paper}"/>
+    <circle cx="${120 + index * 37}" cy="130" r="72" fill="${accent}" opacity="0.85"/>
+    <rect x="40" y="196" width="320" height="10" fill="${ink}"/>
+    <rect x="40" y="216" width="${180 + index * 20}" height="6" fill="${ink}" opacity="0.6"/>
+  </svg>`
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
+const PLACEHOLDER_ARTWORK: IndexedArtwork[] = Array.from({ length: 3 }, (_, i) => ({
+  id: `artwork-${i}`,
+  path: placeholderPicture(i),
+  title: ['Lake, morning', 'Pines', 'Study in ochre'][i]!,
+}))
+
+/**
+ * Their paths point at nothing, like the records': loading one works, playback
+ * fails, the panel says why. That is the same failure a real `.mkv` gives a
+ * WebView that cannot decode it, so it is worth walking into on purpose.
+ */
+const TAPE_TITLES: [string, string][] = [
+  ['Holidays, 1998', 'Home'],
+  ['The Lake, Spring', 'Home'],
+  ['Stalker', 'Tarkovsky'],
+  ['Solaris', 'Tarkovsky'],
+  ['Le Samourai', 'Melville'],
+  ['Wings of Desire', 'Wenders'],
+  ['Paris, Texas', 'Wenders'],
+  ['La Jetee', 'Marker'],
+  ['Sans Soleil', 'Marker'],
+  ['Koyaanisqatsi', 'Reggio'],
+  ['Dersu Uzala', 'Kurosawa'],
+  ['Ran', 'Kurosawa'],
+]
+
+const PLACEHOLDER_TAPES: IndexedTape[] = TAPE_TITLES.map(([title, series], i) => ({
+  id: `tape-${i}`,
+  path: `placeholder://${title}`,
+  title,
+  series,
+  format: i % 4 === 0 ? 'webm' : 'mp4',
+  sizeBytes: 700_000_000 + i * 11_000_000,
+}))
+
+/**
+ * One real ROM, the Pong `npm run assets` writes into `public/`, so the whole
+ * arcade path runs under the headless smoke tests.
+ */
+export const SAMPLE_ROM_ID = 'sample-rom'
+const SAMPLE_ROM_FILE = 'roms/pong.ch8'
+
+const SAMPLE_ROMS: IndexedRom[] = [
+  {
+    id: SAMPLE_ROM_ID,
+    path: SAMPLE_ROM_FILE,
+    title: 'Pong',
+    series: 'ch8',
+    format: 'ch8',
+    sizeBytes: 400,
+  },
+]
+
+/**
+ * Stands in for editing `library.json` and saving it. There is no file to watch
+ * here, so the world lives in localStorage and the stamp is bumped by hand —
+ * which is what lets the smoke tests cover live reload and reconciliation.
+ */
+export function setWorldText(text: string) {
+  localStorage.setItem(WORLD_KEY, text)
+  localStorage.setItem(WORLD_STAMP_KEY, `${text.length}:${nextStamp()}`)
+}
+
+let stampCounter = 0
+const nextStamp = () => (stampCounter += 1)
+
+export const browserDriver: LibraryService = {
+  kind: 'browser',
+  canPickFolder: false,
+  canIndex: false,
+  canFetchPapers: false,
+
+  async getRoot() {
+    return localStorage.getItem(ROOT_KEY)
+  },
+
+  async setRoot(path) {
+    localStorage.setItem(ROOT_KEY, path)
+  },
+
+  async pickRoot() {
+    return null
+  },
+
+  async scan() {
+    return { found: PLACEHOLDERS.length, added: 0, unchanged: PLACEHOLDERS.length, removed: 0, failed: 0 }
+  },
+
+  onScanProgress() {
+    return () => {}
+  },
+
+  async listBooks() {
+    return [SAMPLE, SAMPLE_EPUB, ...PLACEHOLDERS]
+  },
+
+  async readBook(id) {
+    const file = SAMPLE_FILES[id]
+    if (!file) throw new UnsupportedOperation(`reading ${id}`, 'browser')
+    const response = await fetch(file)
+    // A missing sample means `npm run assets` has not run; say so rather than
+    // handing pdf.js an HTML 404 page and letting it fail obscurely.
+    if (!response.ok) throw new Error(`${file} is missing — run \`npm run assets\``)
+    return new Uint8Array(await response.arrayBuffer())
+  },
+
+  async saveRenderedCover(id) {
+    throw new UnsupportedOperation(`caching a cover for ${id}`, 'browser')
+  },
+
+  async fetchPaper(id) {
+    // Not a network limit — a filesystem one. There is nowhere to put it.
+    throw new UnsupportedOperation(`fetching ${id}`, 'browser')
+  },
+
+  async loadWorld() {
+    return localStorage.getItem(WORLD_KEY)
+  },
+
+  async writeDefaultWorld(text) {
+    if (localStorage.getItem(WORLD_KEY) !== null) return false
+    setWorldText(text)
+    return true
+  },
+
+  async worldStamp() {
+    return localStorage.getItem(WORLD_STAMP_KEY)
+  },
+
+  async savePaths() {
+    // No filesystem here, so name the storage rather than invent a path.
+    return {
+      world: 'localStorage: kleib3ry.world',
+      layout: 'localStorage: kleib3ry.layout',
+      annotations: 'localStorage: kleib3ry.annotations',
+    }
+  },
+
+  async loadLayout() {
+    const stored = localStorage.getItem(LAYOUT_KEY)
+    if (!stored) return null
+    try {
+      return JSON.parse(stored) as LayoutDocument
+    } catch {
+      // A corrupt value would otherwise fail every launch from here on. An
+      // unpacked library beats a permanently empty room.
+      localStorage.removeItem(LAYOUT_KEY)
+      return null
+    }
+  },
+
+  async saveLayout(layout) {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
+  },
+
+  async listTracks() {
+    return PLACEHOLDER_TRACKS
+  },
+
+  async listArtwork() {
+    return PLACEHOLDER_ARTWORK
+  },
+
+  async listTapes() {
+    return PLACEHOLDER_TAPES
+  },
+
+  async listRoms() {
+    return SAMPLE_ROMS
+  },
+
+  async readRom(id) {
+    if (id !== SAMPLE_ROM_ID) throw new UnsupportedOperation(`reading ${id}`, 'browser')
+    const response = await fetch(SAMPLE_ROM_FILE)
+    if (!response.ok) throw new Error(`${SAMPLE_ROM_FILE} is missing — run \`npm run assets\``)
+    return new Uint8Array(await response.arrayBuffer())
+  },
+
+  async loadAmbience() {
+    const stored = localStorage.getItem(AMBIENCE_KEY)
+    if (!stored) return null
+    try {
+      return JSON.parse(stored) as AmbienceState
+    } catch {
+      localStorage.removeItem(AMBIENCE_KEY)
+      return null
+    }
+  },
+
+  async saveAmbience(state) {
+    localStorage.setItem(AMBIENCE_KEY, JSON.stringify(state))
+  },
+
+  async loadAnnotations() {
+    const stored = localStorage.getItem(ANNOTATIONS_KEY)
+    if (!stored) return null
+    try {
+      return JSON.parse(stored) as AnnotationsDocument
+    } catch {
+      localStorage.removeItem(ANNOTATIONS_KEY)
+      return null
+    }
+  },
+
+  async saveAnnotations(doc) {
+    localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(doc))
+  },
+
+  // No filesystem; the settings card offers the digest as a download.
+  async exportAnnotationsMarkdown() {
+    return null
+  },
+
+  assetUrl(path) {
+    return path
+  },
+}
