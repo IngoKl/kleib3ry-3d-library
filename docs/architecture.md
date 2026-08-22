@@ -587,6 +587,19 @@ A newly indexed book goes into a moving box, not onto a shelf
 full boxes and empty shelves. Arrivals are levelled across the boxes book by
 book, or a folder at a time with **One Box per Folder** on in settings
 (`bookFolder` in `reconcile.ts` names the group; a folder is never split).
+With the option on, `rebuild`/`packEverything` in
+[src/state/library.ts](../src/state/library.ts) first run a dry `reconcile` to
+count the folders arriving, and if there are more of them than there are _free_
+boxes — one still holding earlier books is not free — `planFolderBoxSpots`
+(`reconcile.ts`) spawns enough to give each folder its own, through the same
+`spawnedBoxes` mechanism `X` uses. The spots are a grid grown out of the
+existing pile: rows along X, wrapping a step toward the middle of the room,
+clamped to the room's walls, so a delivery of forty subjects stacks up indoors
+rather than marching out through a wall. A box that a folder had entirely to
+itself is then labelled with that folder's name, unless a label is already
+written down by hand — `reconcile`'s `folderLabels` says which boxes qualify,
+and a box short on room and holding two folders is left unlabelled rather than
+mislabelled.
 
 Unpacking is an interaction: `G` on a box runs `emptyBoxOntoShelves`, which
 fills empty rows **nearest case first** (`nearestRowsFirst`, with the climb to

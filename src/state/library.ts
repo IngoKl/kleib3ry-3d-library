@@ -36,6 +36,7 @@ import { boxesIn } from '../world/boxes'
 import {
   bookFolder,
   describeReconciliation,
+  planFolderBoxSpots,
   reconcile,
   type Reconciliation,
 } from '../world/reconcile'
@@ -172,6 +173,12 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined
 let runSave: (() => Promise<void>) | null = null
 
 /**
+ * True while `rebuild` or `packEverything` is mid-run, so a box spawned for
+ * One Box per Folder does not re-enter through the world revision subscriber.
+ */
+let rebuilding = false
+
+/**
  * Write any pending layout save now. Callers about to read the file or lose the
  * page flush first, so the debounce cannot swallow the last edit.
  */
@@ -260,6 +267,43 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       saveTimer = undefined
       void saveNow()
     }, SAVE_DEBOUNCE_MS)
+  }
+
+  /**
+   * Spawns `needed` boxes where `planFolderBoxSpots` puts them and hands back
+   * the world they stand in. `setBoxEdits` bumps the world's revision, which
+   * re-enters `rebuild` through the subscription below — harmless, since
+   * `rebuilding` makes that re-entry a no-op, but the reason this lives beside
+   * `rebuild` rather than further out.
+   */
+  const growFolderBoxes = (world: DerivedWorld, needed: number): DerivedWorld => {
+    const made = planFolderBoxSpots(world, get().spawnedBoxes, get().removedBoxes, needed)
+    if (!made) return world
+    set({ spawnedBoxes: made })
+    useWorldStore.getState().setBoxEdits({ spawned: made, removed: get().removedBoxes })
+    scheduleSave()
+    return currentWorld() ?? world
+  }
+
+  /**
+   * Boxes One Box per Folder filled from exactly one subject get that subject
+   * as their label. On a scan a label already written down — hand-picked or
+   * rubbed out — wins over a guess from a folder name; a full repack
+   * (`overwrite`) renames instead, because the box no longer holds whatever
+   * the old label named.
+   */
+  const applyFolderLabels = (folderLabels: Record<string, string>, overwrite = false) => {
+    const current = get().labels
+    let labels: Record<string, string> | null = null
+    for (const [boxId, name] of Object.entries(folderLabels)) {
+      if (current[boxId] === name) continue
+      if (current[boxId] !== undefined && !overwrite) continue
+      labels ??= { ...current }
+      labels[boxId] = name
+    }
+    if (!labels) return
+    set({ labels })
+    scheduleSave()
   }
 
   /**
@@ -491,36 +535,59 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     rebuild: () => {
+      if (rebuilding) return
       const { books, dims, savedRows, savedBoxes, hasSavedLayout, loaded, loose } = get()
       if (!loaded) return
-      const world = currentWorld()
+      let world = currentWorld()
       // Nothing to stand books on yet. `load` runs after the world in practice,
       // and the world store's subscription calls back here if it does not.
       if (!world) return
 
-      const result = reconcile(
-        world,
-        hasSavedLayout
-          ? { rows: savedRows, boxes: savedBoxes, loose }
-          : null,
-        books.map((b) => b.id),
-        (id) => dims.get(id),
-        // One Box per Folder: arrivals are packed a folder at a time, so the
-        // boxes come out of the van pre-sorted.
-        useSettings.getState().boxPerFolder
-          ? (id) => bookFolder(get().byId.get(id)?.path ?? '')
-          : undefined,
-      )
-      set(project(world, result, dims))
+      rebuilding = true
+      try {
+        const saved = hasSavedLayout ? { rows: savedRows, boxes: savedBoxes, loose } : null
+        const folderOf = useSettings.getState().boxPerFolder
+          ? (id: string) => bookFolder(get().byId.get(id)?.path ?? '')
+          : undefined
 
-      if (!hasSavedLayout) {
-        // First run in this folder: everything is in a box, and which box is
-        // written down so the piles are the same on the second launch.
-        set({ savedRows: result.rows, savedBoxes: result.boxes, hasSavedLayout: true })
-        scheduleSave()
+        if (folderOf) {
+          // A dry run to see what is arriving fresh this time, so there is a
+          // box for every subject among it before packing for real. A box
+          // still holding earlier books is not free — a folder put into one
+          // would share it, and a shared box gets no label.
+          const ids = books.map((b) => b.id)
+          const probe = reconcile(world, saved, ids, (id) => dims.get(id), folderOf)
+          const freshSet = new Set(probe.fresh)
+          const folders = new Set(probe.fresh.map(folderOf)).size
+          const free = boxesIn(world).filter(
+            (box) => !(probe.boxes[box.id] ?? []).some((id) => !freshSet.has(id)),
+          ).length
+          world = growFolderBoxes(world, folders - free)
+        }
+
+        const result = reconcile(
+          world,
+          saved,
+          books.map((b) => b.id),
+          (id) => dims.get(id),
+          // One Box per Folder: arrivals are packed a folder at a time, so the
+          // boxes come out of the van pre-sorted.
+          folderOf,
+        )
+        set(project(world, result, dims))
+        if (folderOf) applyFolderLabels(result.folderLabels)
+
+        if (!hasSavedLayout) {
+          // First run in this folder: everything is in a box, and which box is
+          // written down so the piles are the same on the second launch.
+          set({ savedRows: result.rows, savedBoxes: result.boxes, hasSavedLayout: true })
+          scheduleSave()
+        }
+        // Deliberately no save: boxed books stay written down against the shelf
+        // they came from, so restoring the bookcase puts them back on it.
+      } finally {
+        rebuilding = false
       }
-      // Deliberately no save: boxed books stay written down against the shelf
-      // they came from, so restoring the bookcase puts them back on it.
     },
 
     setProgress: (bookId, spread) => {
@@ -778,34 +845,49 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
     /** Runs a new library's own reconciliation, so the result matches a fresh folder. */
     packEverything: () => {
+      if (rebuilding) return 0
       const { books, dims } = get()
-      const world = currentWorld()
+      let world = currentWorld()
       if (!world) return 0
       const before = Object.values(get().rows).flat().length + Object.keys(get().loose).length
 
-      const result = reconcile(
-        world,
-        { rows: {}, boxes: {} },
-        books.map((b) => b.id),
-        (id) => dims.get(id),
+      rebuilding = true
+      try {
         // The same folder-per-box rule a scan follows, so clearing the shelves
         // with the option on repacks the library sorted rather than levelled.
-        useSettings.getState().boxPerFolder
-          ? (id) => bookFolder(get().byId.get(id)?.path ?? '')
-          : undefined,
-      )
+        const folderOf = useSettings.getState().boxPerFolder
+          ? (id: string) => bookFolder(get().byId.get(id)?.path ?? '')
+          : undefined
 
-      set({
-        ...project(world, result, dims),
-        savedRows: {},
-        savedBoxes: result.boxes,
-        loose: {},
-        // Reconciliation would report "everything is new", which reads as an
-        // alarm rather than as the thing that was just asked for.
-        reconciliation: null,
-      })
-      scheduleSave()
-      return before
+        if (folderOf) {
+          // The repack empties every box, so all of them are free.
+          const folders = new Set(books.map((b) => folderOf(b.id))).size
+          world = growFolderBoxes(world, folders - boxesIn(world).length)
+        }
+
+        const result = reconcile(
+          world,
+          { rows: {}, boxes: {} },
+          books.map((b) => b.id),
+          (id) => dims.get(id),
+          folderOf,
+        )
+
+        set({
+          ...project(world, result, dims),
+          savedRows: {},
+          savedBoxes: result.boxes,
+          loose: {},
+          // Reconciliation would report "everything is new", which reads as an
+          // alarm rather than as the thing that was just asked for.
+          reconciliation: null,
+        })
+        if (folderOf) applyFolderLabels(result.folderLabels, true)
+        scheduleSave()
+        return before
+      } finally {
+        rebuilding = false
+      }
     },
 
     packLooseBooks: () => {

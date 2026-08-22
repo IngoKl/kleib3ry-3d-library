@@ -42,7 +42,7 @@ import { cableRide, startRide, stepRide } from '../src/state/cableCar'
 import { occupied } from '../src/world/forest'
 import { SITE_IDS, parseWorldText, type WorldDocument } from '../src/world/schema'
 import { DEFAULT_WORLD_TEXT } from '../src/world/defaults'
-import { bookFolder, reconcile } from '../src/world/reconcile'
+import { bookFolder, planFolderBoxSpots, reconcile } from '../src/world/reconcile'
 import { boxesIn, packBoxes } from '../src/world/boxes'
 import { allRowKeys, arrangeInto, emptyRowsFirst, nearestRowsFirst, parseRowKey } from '../src/scene/shelving'
 import { dimensionsFor } from '../src/data/dimensions'
@@ -1118,6 +1118,7 @@ test.describe('one box per folder', () => {
     )
 
     // Every folder's books share one box — a folder is never split.
+    const homeOf = new Map<string, string>()
     for (const prefix of ['f', 's', 'p']) {
       const homes = new Set(
         Object.entries(result.boxes)
@@ -1125,15 +1126,128 @@ test.describe('one box per folder', () => {
           .map(([boxId]) => boxId),
       )
       expect(homes.size, `folder ${prefix} split across ${homes.size} boxes`).toBe(1)
+      homeOf.set(prefix, [...homes][0]!)
     }
     // And nothing was lost in the sorting.
     expect(result.boxed.length).toBe(sorted.length)
+
+    // A box with exactly one folder in it is named after that folder.
+    expect(result.folderLabels[homeOf.get('f')!]).toBe('Fiction')
+    expect(result.folderLabels[homeOf.get('s')!]).toBe('Science')
+    expect(result.folderLabels[homeOf.get('p')!]).toBe('Poetry')
   })
 
   test('without the option, arrivals still level out book by book', () => {
     const result = reconcile(WORLD, null, BOOKS.map((b) => b.id), lookup)
     const counts = Object.values(result.boxes).map((ids) => ids.length)
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1)
+    expect(result.folderLabels).toEqual({})
+  })
+
+  test('a box shared by two folders — boxes ran short — is left unlabelled', () => {
+    // Five subjects, four boxes: one box must take two, and that one gets no name.
+    const five = ['A', 'B', 'C', 'D', 'E'].flatMap((subject) =>
+      Array.from({ length: 3 }, (_, i) =>
+        book(`${subject}${i}`, { path: `C:\\l\\books\\${subject}\\x${i}.pdf` }),
+      ),
+    )
+    const dims = new Map(five.map((b) => [b.id, dimensionsFor(b)]))
+    const byId = new Map(five.map((b) => [b.id, b]))
+
+    const result = reconcile(
+      WORLD,
+      null,
+      five.map((b) => b.id),
+      (id) => dims.get(id),
+      (id) => bookFolder(byId.get(id)!.path),
+    )
+
+    const named = Object.values(result.folderLabels)
+    expect(named.length).toBe(3)
+    expect(new Set(named).size).toBe(3)
+  })
+
+  test('root-level files pack together but take no label', () => {
+    const loose = Array.from({ length: 3 }, (_, i) => book(`root${i}`, { path: `C:\\l\\books\\r${i}.pdf` }))
+    const dims = new Map(loose.map((b) => [b.id, dimensionsFor(b)]))
+    const byId = new Map(loose.map((b) => [b.id, b]))
+
+    const result = reconcile(
+      WORLD,
+      null,
+      loose.map((b) => b.id),
+      (id) => dims.get(id),
+      (id) => bookFolder(byId.get(id)!.path),
+    )
+
+    expect(result.folderLabels).toEqual({})
+  })
+})
+
+test.describe('spawning boxes for One Box per Folder', () => {
+  test('a non-positive count asks for nothing', () => {
+    expect(planFolderBoxSpots(WORLD, {}, [], 0)).toBeNull()
+    expect(planFolderBoxSpots(WORLD, {}, [], -3)).toBeNull()
+  })
+
+  test('spawns fresh ids beside the existing pile, in its room', () => {
+    const made = planFolderBoxSpots(WORLD, {}, [], 2)
+    expect(made).not.toBeNull()
+    const existingIds = new Set(boxesIn(WORLD).map((b) => b.id))
+    const newIds = Object.keys(made!).filter((id) => !existingIds.has(id))
+    expect(newIds.length).toBe(2)
+
+    const room = WORLD.rooms.find((r) => r.id === boxesIn(WORLD)[0]!.roomId)!
+    for (const id of newIds) expect(made![id]!.room).toBe(room.id)
+
+    // Each new box sits further along than the last, not on top of it.
+    const xs = newIds.map((id) => made![id]!.at[0])
+    expect(xs[1]).toBeGreaterThan(xs[0]!)
+  })
+
+  test('a big delivery wraps into rows and stays inside the room', () => {
+    const made = planFolderBoxSpots(WORLD, {}, [], 40)
+    expect(made).not.toBeNull()
+    const room = WORLD.rooms.find((r) => r.id === boxesIn(WORLD)[0]!.roomId)!
+
+    const spots = Object.values(made!)
+    expect(spots.length).toBe(40)
+    for (const spot of spots) {
+      expect(Math.abs(spot.at[0])).toBeLessThanOrEqual(room.size[0] / 2)
+      expect(Math.abs(spot.at[1])).toBeLessThanOrEqual(room.size[1] / 2)
+    }
+
+    // Forty boxes cannot be one line across an eight-metre room.
+    const rows = new Set(spots.map((spot) => spot.at[1]))
+    expect(rows.size).toBeGreaterThan(1)
+
+    // And no two stand on the same spot.
+    const places = new Set(spots.map((spot) => `${spot.at[0]},${spot.at[1]}`))
+    expect(places.size).toBe(spots.length)
+  })
+
+  test('never reuses an id already standing, spawned, or broken down', () => {
+    const made = planFolderBoxSpots(
+      WORLD,
+      { 'box-5': { room: WORLD.rooms[0]!.id, at: [0, 0], facing: 0 } },
+      ['box-6'],
+      2,
+    )
+    expect(made).not.toBeNull()
+    const before = new Set(['box-1', 'box-2', 'box-3', 'box-4', 'box-5'])
+    const newIds = Object.keys(made!).filter((id) => !before.has(id))
+    expect(newIds).not.toContain('box-6')
+    expect(new Set(newIds).size).toBe(newIds.length)
+  })
+
+  test('falls back to the first room when no box furniture stands anywhere', () => {
+    const world = deriveWorld(parseWorldText(DEFAULT_WORLD_TEXT), {}, {
+      removed: ['box-1', 'box-2', 'box-3', 'box-4'],
+    })
+    const made = planFolderBoxSpots(world, {}, ['box-1', 'box-2', 'box-3', 'box-4'], 1)
+    expect(made).not.toBeNull()
+    const [id] = Object.keys(made!)
+    expect(made![id!]!.room).toBe(world.rooms[0]!.id)
   })
 })
 

@@ -186,12 +186,14 @@ export function Handling() {
         e.preventDefault()
         // The shelf position under the crosshair, else the case the focused
         // book stands in, else the carcass — which is what makes an empty
-        // bookcase labellable at all.
-        const shelfId =
+        // bookcase labellable at all — else the box under the crosshair, so a
+        // pile of cardboard takes the same key as a bookcase.
+        const targetId =
           app.shelfTarget?.shelfId ??
           shelf.packed.find((item) => item.id === app.focusedBook)?.shelfId ??
-          app.focusedShelf
-        if (shelfId) app.setLabelling(shelfId)
+          app.focusedShelf ??
+          app.focusedBox
+        if (targetId) app.setLabelling(targetId)
         return
       }
 

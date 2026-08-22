@@ -1,7 +1,7 @@
 import type { BookDimensions } from '../data/dimensions'
 import { ROW_CAPACITY, parseRowKey, rowKey, type RowKey } from '../scene/shelving'
 import { boxesIn } from './boxes'
-import type { DerivedWorld } from './derive'
+import type { DerivedWorld, SpawnedBox } from './derive'
 
 /**
  * Where books go when the room or the index changes underneath them. Two rules:
@@ -40,6 +40,12 @@ export type Reconciliation = {
   boxed: string[]
   /** True when this was a library with no saved layout at all. */
   firstRun: boolean
+  /**
+   * Box furniture id -> folder name, for a box that took fresh arrivals from
+   * exactly one folder under One Box per Folder. A box that took more than one
+   * — boxes ran short — is left out rather than mislabelled with either name.
+   */
+  folderLabels: Record<string, string>
 }
 
 /** Spread books level across the boxes: a fuller box takes fewer, not round robin. */
@@ -75,14 +81,17 @@ export function bookFolder(path: string): string {
 /**
  * Like `distribute` but whole folders at a time, so unpacking a box is unpacking
  * a subject. Biggest folder first into the emptiest box; a folder is never split.
+ * Returns which folders landed in which box, so a box that took exactly one can
+ * be labelled with it.
  */
 function distributeByFolder(
   boxes: Record<string, string[]>,
   boxIds: readonly string[],
   ids: readonly string[],
   folderOf: (id: string) => string,
-) {
-  if (boxIds.length === 0) return
+): Map<string, Set<string>> {
+  const landed = new Map<string, Set<string>>()
+  if (boxIds.length === 0) return landed
   const folders = new Map<string, string[]>()
   for (const id of ids) {
     const key = folderOf(id)
@@ -91,14 +100,18 @@ function distributeByFolder(
     else folders.set(key, [id])
   }
 
-  const bySize = [...folders.values()].sort((a, b) => b.length - a.length)
-  for (const group of bySize) {
+  const bySize = [...folders.entries()].sort((a, b) => b[1].length - a[1].length)
+  for (const [name, group] of bySize) {
     let target = boxIds[0]!
     for (const boxId of boxIds) {
       if ((boxes[boxId]?.length ?? 0) < (boxes[target]?.length ?? 0)) target = boxId
     }
     ;(boxes[target] ??= []).push(...group)
+    const names = landed.get(target)
+    if (names) names.add(name)
+    else landed.set(target, new Set([name]))
   }
+  return landed
 }
 
 /**
@@ -187,13 +200,22 @@ export function reconcile(
   // Books the layout never mentioned are new, and new books arrive in boxes.
   const fresh = books.filter((id) => !wasPlaced.has(id))
   distribute(boxes, boxIds, [...displaced, ...orphaned])
-  if (folderOf) distributeByFolder(boxes, boxIds, fresh, folderOf)
-  else distribute(boxes, boxIds, fresh)
+  const landed: Map<string, Set<string>> = folderOf
+    ? distributeByFolder(boxes, boxIds, fresh, folderOf)
+    : new Map()
+  if (!folderOf) distribute(boxes, boxIds, fresh)
 
   // With no box furniture there is nowhere to show these, but they are still
   // unshelved and still counted.
   const assigned = new Set(Object.values(boxes).flat())
   const homeless = [...displaced, ...orphaned, ...fresh].filter((id) => !assigned.has(id))
+
+  const folderLabels: Record<string, string> = {}
+  for (const [boxId, names] of landed) {
+    if (names.size !== 1) continue
+    const [name] = names
+    if (name) folderLabels[boxId] = name
+  }
 
   return {
     rows,
@@ -202,6 +224,7 @@ export function reconcile(
     fresh,
     boxed: [...boxIds.flatMap((boxId) => boxes[boxId] ?? []), ...homeless],
     firstRun: saved === null,
+    folderLabels,
   }
 }
 
@@ -213,4 +236,75 @@ export function describeReconciliation(result: Reconciliation): string | null {
     `${count} book${count === 1 ? '' : 's'} lost ` +
     `${count === 1 ? 'its shelf' : 'their shelves'} — packed into the boxes.`
   )
+}
+
+/** Metres between box centres in a spawned grid, along a row and between rows. */
+const BOX_GAP = 0.62
+/** How close to a wall a spawned box may stand. */
+const WALL_MARGIN = 0.45
+
+/**
+ * Where the next `count` boxes for One Box per Folder would go: a grid growing
+ * out of the existing pile, filling each row to the wall and starting the next
+ * one a step toward the middle of the room — clamped to the room, so a big
+ * delivery stacks up indoors instead of marching out through a wall. Null
+ * spawns nothing, for `count <= 0` or a document with no rooms at all.
+ */
+export function planFolderBoxSpots(
+  world: DerivedWorld,
+  spawnedBoxes: Record<string, SpawnedBox>,
+  removedBoxes: readonly string[],
+  count: number,
+): Record<string, SpawnedBox> | null {
+  if (count <= 0) return null
+  const existing = boxesIn(world)
+  const roomId = existing[0]?.roomId ?? world.rooms[0]?.id
+  const room = roomId === undefined ? undefined : world.rooms.find((r) => r.id === roomId)
+  if (!room) return null
+
+  const halfX = Math.max(room.size[0] / 2 - WALL_MARGIN, BOX_GAP)
+  const halfZ = Math.max(room.size[1] / 2 - WALL_MARGIN, BOX_GAP)
+
+  const here = existing.filter((box) => box.roomId === room.id)
+  const locals = here.map((box) => [box.x - room.origin[0], box.z - room.origin[1]] as const)
+  const xs = locals.map(([lx]) => lx)
+  const zs = locals.map(([, lz]) => lz)
+
+  const clamp = (v: number, half: number) => Math.max(-half, Math.min(half, v))
+
+  // Rows run along X from the pile's west edge; each full row wraps to a new
+  // one a step deeper into the room, away from whichever wall the pile hugs.
+  // With no pile at all the grid starts along the room's south wall.
+  const meanZ = zs.length ? zs.reduce((sum, lz) => sum + lz, 0) / zs.length : halfZ
+  const step = meanZ > 0 ? -BOX_GAP : BOX_GAP
+  const rowStart = clamp(xs.length ? Math.min(...xs) : -halfX, halfX)
+  // The pile's leading edge in the step direction, so the first wrapped row
+  // clears the pile instead of standing in it.
+  const pileEdge = zs.length ? (step < 0 ? Math.min(...zs) : Math.max(...zs)) : halfZ
+  let x = Math.max(rowStart, xs.length ? Math.max(...xs) : -halfX)
+  let z = clamp(pileEdge, halfZ)
+  const facing = here[0]?.facing ?? 0
+
+  // A broken-down id stays burned, same as a box made by hand off the stack.
+  const taken = new Set([
+    ...world.furniture.map((item) => item.id),
+    ...Object.keys(spawnedBoxes),
+    ...removedBoxes,
+  ])
+  const made: Record<string, SpawnedBox> = { ...spawnedBoxes }
+  let n = 1
+  for (let i = 0; i < count; i++) {
+    x += BOX_GAP
+    if (x > halfX) {
+      x = rowStart
+      z = clamp(z + step, halfZ)
+    }
+    while (taken.has(`box-${n}`)) n += 1
+    const id = `box-${n}`
+    taken.add(id)
+    // A couple of degrees of disagreement, so a delivery reads as a pile of
+    // cardboard rather than a warehouse.
+    made[id] = { room: room.id, at: [x, z], facing: facing + (((i * 37) % 13) - 6) }
+  }
+  return made
 }

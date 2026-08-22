@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added mountain and cable car
 - Added Inventory system
 - Added autoscan and scan status indicator
+- Added box labelling
+- Added automatic box spawning and folder labels for One Box per Folder
 
 ### Changed
 

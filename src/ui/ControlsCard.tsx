@@ -26,7 +26,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string[], string]> }> = [
       [['I'], 'The satchel: stow the book or record in your hand — it holds one of each — or, empty-handed, take one back out'],
       [['X'], 'Carry a box, or the folding chair or table; again to set it down'],
       [['⌫'], 'Break down an empty box — spares wait on the stack in the kitchen, E takes one'],
-      [['L'], 'Write a label on the bookcase you are aiming at'],
+      [['L'], 'Write a label on the bookcase or box you are aiming at'],
       [['T'], 'Write a note to pin up; E sticks it to whatever wall you look at'],
     ],
   },

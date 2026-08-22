@@ -969,6 +969,69 @@ test('a box can be browsed, so a buried book can be brought to the top', async (
   expect((await page.evaluate((id) => window.__app.boxView(id as string), boxId!))!.offset).toBe(0)
 })
 
+/**
+ * Stand before a box and put the crosshair on its cardboard, not on a book
+ * lying in it — the box card (and `L`) only speak for the box itself, the way
+ * a book under the crosshair is spoken for by its own card. Aims below the rim
+ * at the outside of the near wall.
+ */
+async function faceCardboard(page: Page) {
+  const boxes = (await page.evaluate(() => window.__app.places())).boxes
+  expect(boxes.length, 'this world has no boxes').toBeGreaterThan(0)
+
+  for (const box of boxes) {
+    for (const bearing of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      for (const distance of [0.62, 0.8]) {
+        await page.evaluate(
+          ([box, bearing, distance]) => {
+            const b = box as { x: number; z: number; height: number }
+            const yaw = bearing as number
+            const away = distance as number
+            const x = b.x - Math.sin(yaw) * away
+            const z = b.z - Math.cos(yaw) * away
+            window.__app.teleport(x, z, yaw)
+            // Steep enough that the ray meets the outside of the near wall
+            // well under the rim, where no book can be lying.
+            const eye = window.__app.player().eye
+            window.__app.look(yaw, -Math.atan2(eye - b.height * 0.3, away - 0.2))
+          },
+          [box, bearing, distance] as const,
+        )
+        const reached = await settled(
+          page,
+          () => window.__app.focusedBox() !== null && window.__app.focusedBook() === null,
+        )
+        if (reached) return await page.evaluate(() => window.__app.focusedBox())
+      }
+    }
+  }
+  return null
+}
+
+test('a box under the crosshair offers a label, and writing one shows up on it', async ({
+  page,
+}) => {
+  await boot(page)
+
+  const boxId = await faceCardboard(page)
+  expect(boxId, 'no box was reachable cardboard-first from any pose').not.toBeNull()
+
+  // The same verb the bookcase offers, on the same key.
+  await expect(page.getByTestId('box-card')).toContainText(/write on it/i)
+
+  await page.keyboard.press('KeyL')
+  const field = page.getByTestId('label-field')
+  await expect(field).toBeVisible()
+
+  await field.locator('input').fill('Field Notes')
+  await page.keyboard.press('Enter')
+  await expect(field).toBeHidden()
+
+  expect(await page.evaluate((id) => window.__app.labelOf(id as string), boxId!)).toBe(
+    'Field Notes',
+  )
+})
+
 test('a crate can be riffled, so a record behind the front one can be reached', async ({
   page,
 }) => {

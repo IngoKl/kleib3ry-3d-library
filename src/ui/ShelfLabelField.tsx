@@ -5,7 +5,8 @@ import { useAppStore } from '../state/store'
 /**
  * A one-line field that takes the keyboard entirely while open — the walk
  * controller and the reader both bail out on `labelling`, because `W` has to be
- * a letter while somebody types a word.
+ * a letter while somebody types a word. `labelling` holds a bookcase id or a
+ * box id; `setLabel`/`labelOf` are keyed by furniture id either way.
  */
 export function ShelfLabelField() {
   const shelfId = useAppStore((s) => s.labelling)

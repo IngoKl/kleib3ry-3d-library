@@ -8,6 +8,7 @@ import { Roofs } from './scene/Roofs'
 import { Furniture } from './scene/Furniture'
 import { Bookshelves } from './scene/Bookshelves'
 import { ShelfLabels } from './scene/ShelfLabels'
+import { BoxLabels } from './scene/BoxLabels'
 import { Books } from './scene/Books'
 import { BoxedBooks } from './scene/BoxedBooks'
 import { LooseBooks } from './scene/LooseBooks'
@@ -536,6 +537,7 @@ export default function App() {
         <Furniture />
         <Bookshelves />
         <ShelfLabels />
+        <BoxLabels />
         <Books />
         <BoxedBooks />
         <LooseBooks />

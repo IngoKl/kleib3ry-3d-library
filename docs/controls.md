@@ -48,7 +48,7 @@ your hand.
 - **`,`** **`.`** — riffle down through the box you are looking at. **`[`** and
   **`]`** do the same, for layouts where the comma and full stop need AltGr. The
   mouse wheel works too.
-- **`L`** — write a label on the bookcase you are aiming at.
+- **`L`** — write a label on the bookcase or box you are aiming at.
 - **`T`** — write a note to pin up, then `E` at whatever wall you want it on.
 
 ## Records and Tapes
@@ -177,7 +177,8 @@ than your library:
   **Sound in the Room** (the deck and television attenuate with distance and
   come from where they stand).
 - **One Box per Folder** — whether a scan levels new books across the boxes or
-  gives each folder of `books/` a box of its own.
+  gives each folder of `books/` a box of its own, spawning more boxes when the
+  folders outnumber the empty ones and labelling each with its folder's name.
 
 Those live in browser storage, so a library folder copied to another computer
 does not carry an opinion about that computer's GPU.

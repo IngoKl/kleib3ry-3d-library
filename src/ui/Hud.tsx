@@ -845,12 +845,12 @@ export function Hud() {
                       </>
                     )}
                     {' · '}
-                    <kbd>X</kbd> Carry it
+                    <kbd>X</kbd> Carry it · <kbd>L</kbd> Write on it
                   </>
                 ) : (
                   <>
                     <span className="dim">Empty</span> · <kbd>X</kbd> Carry it ·{' '}
-                    <kbd>⌫</kbd> Break it down
+                    <kbd>⌫</kbd> Break it down · <kbd>L</kbd> Write on it
                   </>
                 )}
               </p>
